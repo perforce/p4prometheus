@@ -1,15 +1,16 @@
 # p4prometheus
-Perforce (Helix Core) interface for writing Prometheus metrics from real-time analysis of p4d log files.
 
-Uses [go-libp4dlog](https://github.com/rcowham/go-libp4dlog) for actual parsing.
+Utility which integrates Perforce (Helix Core) with Prometheus. If performs real-time analysis of p4d log files feeding to a dashboard and for system alerting.
 
-This is a cmd line utility to continuously parse log files and write a summary to 
-a specified Prometheus compatible metrics file which can be handled via node_exporter
+It continuously parses p4d log files and write a summary to 
+a specified Prometheus compatible metrics file which can be handled via the `node_exporter`
 textfile collector module.
+
+Uses [go-libp4dlog](https://github.com/rcowham/go-libp4dlog) for actual log file parsing.
 
 ## Overview
 
-This is a solution consisting of the following components:
+This is part of a solution consisting of the following components:
 
 * Prometheus - time series metrics management system: https://prometheus.io/
 * Grafana - The leading open source software for time series analytics - https://grafana.com/
@@ -21,6 +22,32 @@ Two custom components:
 * monitor_metrics.sh - [SDP](https://swarm.workshop.perforce.com/projects/perforce-software-sdp) compatible bash script to generate simple supplementary metrics - [monitor_metrics.sh](https://swarm.workshop.perforce.com/files/guest/perforce_software/sdp/dev/Server/Unix/p4/common/site/bin/monitor_metrics.sh)
 
 Check out the [Prometheus architecture](https://prometheus.io/assets/architecture.png) - the custom components are "Prometheus targets".
+
+# Grafana Dashboards
+
+When installed and setup, you can get dashboards such as the following to appear.
+
+Commands Summary:
+
+![Commands Summary](images/p4stats_cmds_summary.png)
+
+Rates for command durations and count:
+
+![Commands](images/p4stats_cmds.png)
+
+Active commands (monitor):
+
+![Commands](images/p4stats_monitor.png)
+
+Replication status:
+
+![Commands](images/p4stats_replication.png)
+
+Read/write locks held/waiting status:
+
+![Commands](images/p4stats_table_read_locks.png)
+
+Dashboard alerts can be defined, as well as alert rules which are actioned by [alertmanager](https://prometheus.io/docs/alerting/alertmanager/)
 
 # Detailed Installation
 
