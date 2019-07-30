@@ -7,7 +7,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -16,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/prometheus/common/log"
 	p4dlog "github.com/rcowham/go-libp4dlog"
 	"github.com/rcowham/go-libp4dlog/cmd/p4prometheus/config"
 	"github.com/rcowham/go-libtail/tailer"
@@ -307,12 +305,9 @@ func main() {
 		).Bool()
 	)
 
-	log.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("p4prometheus"))
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
-
-	flag.Parse()
 
 	logger := logrus.New()
 	logger.Level = logrus.InfoLevel

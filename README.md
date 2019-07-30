@@ -22,37 +22,18 @@ Two custom components:
 
 Check out the [Prometheus architecture](https://prometheus.io/assets/architecture.png) - the custom components are "Prometheus targets".
 
-## Installation Overview
-
-1. Download latest release and install in `/usr/local/bin`
-2. Create a simple service (/etc/systemd/system/) and run the following as say user `perforce`.
-
-    ```/usr/local/bin/p4prometheus -config /p4/common/config/p4prometheus.yaml```
-
-See below for detailed steps.
-
-## Config file
-
-For standard SDP installation:
-
-```yaml
-log_path:       /p4/1/logs/log
-metrics_output: /p4/metrics/cmds.prom
-server_id:      
-sdp_instance:   1
-```
-
-Note that server_id can be explicitly specified or will be automatically read from /p4/`instance`/root/server.id
-
 # Detailed Installation
 
-You need to install Prometheus and Grafana using standard methods. I recommend installing latest released binaries - haven't yet found good packages.
+You need to install Prometheus and Grafana using standard methods. This is typically done on a seperate VM/machine to the Perforce server itself (for security and HA reasons).
 
-In addition you would normally install on a seperate VM/machine to the Perforce server itself (for security and HA reasons).
+For example:
+
+* https://www.howtoforge.com/tutorial/how-to-install-grafana-on-linux-servers/
+* https://www.howtoforge.com/tutorial/how-to-install-prometheus-and-node-exporter-on-centos-7/
 
 ## Install node_exporter
 
-This must be done on the Perforce (Helix Core) server machine (ditto for any other boxes to be maintained).
+Use above instructions, or these. This must be done on the Perforce (Helix Core) server machine (ditto for any other servers such as replicas which are being monitored).
 
 Run the following as root:
 
@@ -109,4 +90,75 @@ Check logs for service in case of errors:
 Check that metrics are being exposed:
 
     curl http://localhost:9100/metrics | less
+
+## Install p4prometheus - details
+
+This must be done on the Perforce (Helix Core) server machine (and any replica machines).
+
+This assumes SDP structure is in use on the server, and thus that user `perforce` exists.
+
+Get latest release download link: https://github.com/rcowham/p4prometheus/releases
+
+Run the following as `root` (using link copied from above page):
+
+    wget https://github.com/rcowham/p4prometheus/files/3446515/p4prometheus.linux-amd64.gz
+
+    gunzip p4prometheus.linux-amd64.gz
+    
+    chmod +x p4prometheus.linux-amd64
+
+    mv p4prometheus.linux-amd64 /usr/local/bin/p4prometheus
+
+As user `perforce`:
+
+```bash
+cat << EOF > /p4/common/config/p4prometheus.yaml
+# SDP instance - typically integer, but can be
+# See: https://swarm.workshop.perforce.com/projects/perforce-software-sdp for more
+sdp_instance:   1
+# Path to p4d server log
+log_path:       /p4/1/logs/log
+# Name of output file to write for processing by node_exporter
+metrics_output: /hxlogs/metrics/p4_cmds.prom
+# Optional - serverid for metrics - typically read from /p4/<sdp_instance>/root/server.id
+server_id:      
+EOF
+```
+
+As user `root`:
+
+Create service file:
+
+```bash
+cat << EOF > /etc/systemd/system/p4prometheus.service
+[Unit]
+Description=P4prometheus
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=perforce
+Group=perforce
+Type=simple
+ExecStart=/usr/local/bin/p4prometheus --config=/p4/common/config/p4prometheus.yaml
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+Start and enable service:
+
+    sudo systemctl daemon-reload
+    sudo systemctl start p4prometheus
+    sudo systemctl status p4prometheus
+    sudo systemctl enable p4prometheus
+
+Check logs for service in case of errors:
+
+    journalctl -u p4prometheus --no-pager | tail
+
+Check that metrics are being written:
+
+    cat /hxlogs/metrics/p4_cmds.prom
 
