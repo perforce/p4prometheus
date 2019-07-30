@@ -16,10 +16,10 @@ import (
 	"time"
 
 	p4dlog "github.com/rcowham/go-libp4dlog"
-	"github.com/rcowham/go-libp4dlog/cmd/p4prometheus/config"
 	"github.com/rcowham/go-libtail/tailer"
 	"github.com/rcowham/go-libtail/tailer/fswatcher"
 	"github.com/rcowham/go-libtail/tailer/glob"
+	"github.com/rcowham/p4prometheus/config"
 	"github.com/rcowham/p4prometheus/version"
 
 	"gopkg.in/alecthomas/kingpin.v2"
