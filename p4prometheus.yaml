@@ -1,0 +1,9 @@
+# Path to p4d server log
+log_path:       /p4/1/logs/log
+# Name of output file to write for processing by node_exporter
+metrics_output: /hxlogs/metrics/cmds.prom
+# Optional - serverid for metrics - typically read from /p4/<sdp_instance>/root/server.id
+server_id:      
+# SDP instance - typically integer, but can be
+# See: https://swarm.workshop.perforce.com/projects/perforce-software-sdp for more
+sdp_instance:   1
