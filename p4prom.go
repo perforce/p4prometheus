@@ -6,7 +6,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -53,7 +52,7 @@ type P4Prometheus struct {
 	cmdsProcessed     int64
 	linesRead         int64
 	lines             chan []byte
-	events            chan string
+	events            chan p4dlog.Command
 	lastOutputTime    time.Time
 }
 
@@ -62,7 +61,7 @@ func newP4Prometheus(config *config.Config, logger *logrus.Logger) (p4p *P4Prome
 		config:            config,
 		logger:            logger,
 		lines:             make(chan []byte, 10000),
-		events:            make(chan string, 10000),
+		events:            make(chan p4dlog.Command, 10000),
 		cmdCounter:        make(map[string]int32),
 		cmdCumulative:     make(map[string]float64),
 		totalReadWait:     make(map[string]float64),
@@ -189,57 +188,22 @@ func (p4p *P4Prometheus) getMilliseconds(tmap map[string]interface{}, fieldName 
 	return 0
 }
 
-func (p4p *P4Prometheus) publishEvent(str string) {
-	p4p.logger.Debugf("publish json: %v\n", str)
-	var f interface{}
-	err := json.Unmarshal([]byte(str), &f)
-	if err != nil {
-		fmt.Printf("Error %v to unmarshal %s", err, str)
-	}
-	m := f.(map[string]interface{})
-	p4p.logger.Debugf("unmarshalled: %v\n", m)
-	p4p.logger.Debugf("cmd{\"%s\"}=%0.3f\n", m["cmd"], m["completedLapse"])
-	var cmd string
-	var ok bool
-	if cmd, ok = m["cmd"].(string); !ok {
-		fmt.Printf("Failed string: %v", m["cmd"])
-		return
-	}
-	var lapse float64
-	if lapse, ok = m["completedLapse"].(float64); !ok {
-		fmt.Printf("Failed float: %v", m["completedLapse"])
-		return
-	}
+func (p4p *P4Prometheus) publishEvent(cmd p4dlog.Command) {
+	p4p.logger.Debugf("publish cmd: %v\n", cmd)
 
-	p4p.cmdCounter[cmd]++
-	p4p.cmdCumulative[cmd] += lapse
-
-	var tables []interface{}
+	p4p.cmdCounter[string(cmd.Cmd)]++
+	p4p.cmdCumulative[string(cmd.Cmd)] += float64(cmd.CompletedLapse)
 	const triggerPrefix = "trigger_"
-	p4p.logger.Debugf("Type: %v\n", reflect.TypeOf(m["tables"]))
-	if tables, ok = m["tables"].([]interface{}); ok {
-		for i := range tables {
-			p4p.logger.Debugf("table: %v, %v\n", reflect.TypeOf(tables[i]), tables[i])
-			var table map[string]interface{}
-			var tableName string
-			if table, ok = tables[i].(map[string]interface{}); !ok {
-				continue
-			}
-			if tableName, ok = table["tableName"].(string); !ok {
-				continue
-			}
-			if tableName == "" {
-				continue
-			}
-			if len(tableName) > len(triggerPrefix) && tableName[:len(triggerPrefix)] == triggerPrefix {
-				triggerName := tableName[len(triggerPrefix):]
-				p4p.totalTriggerLapse[triggerName] += p4p.getSeconds(table, "triggerLapse")
-			} else {
-				p4p.totalReadHeld[tableName] += p4p.getMilliseconds(table, "totalReadHeld")
-				p4p.totalReadWait[tableName] += p4p.getMilliseconds(table, "totalReadWait")
-				p4p.totalWriteHeld[tableName] += p4p.getMilliseconds(table, "totalWriteHeld")
-				p4p.totalWriteWait[tableName] += p4p.getMilliseconds(table, "totalWriteWait")
-			}
+
+	for _, t := range cmd.Tables {
+		if len(t.TableName) > len(triggerPrefix) && t.TableName[:len(triggerPrefix)] == triggerPrefix {
+			triggerName := t.TableName[len(triggerPrefix):]
+			p4p.totalTriggerLapse[triggerName] += float64(t.TriggerLapse)
+		} else {
+			p4p.totalReadHeld[t.TableName] += float64(t.TotalReadHeld)
+			p4p.totalReadWait[t.TableName] += float64(t.TotalReadWait)
+			p4p.totalWriteHeld[t.TableName] += float64(t.TotalWriteHeld)
+			p4p.totalWriteWait[t.TableName] += float64(t.TotalWriteWait)
 		}
 	}
 	p4p.publishCumulative()
@@ -248,8 +212,8 @@ func (p4p *P4Prometheus) publishEvent(str string) {
 func (p4p *P4Prometheus) processEvents() {
 	for {
 		select {
-		case json := <-p4p.events:
-			p4p.publishEvent(json)
+		case cmd := <-p4p.events:
+			p4p.publishEvent(cmd)
 		default:
 			return
 		}
@@ -330,14 +294,14 @@ func main() {
 
 	fp := p4dlog.NewP4dFileParser()
 	p4p.fp = fp
-	go fp.LogParser(p4p.lines, p4p.events)
+	go fp.LogParser(p4p.lines, p4p.events, nil)
 
 	//---------------
 
 	logcfg := &logConfig{
 		Type:                 "file",
 		Path:                 cfg.LogPath,
-		PollInterval:         0,
+		PollInterval:         time.Second * 1,
 		Readall:              true,
 		FailOnMissingLogfile: true,
 	}
