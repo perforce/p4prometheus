@@ -302,7 +302,7 @@ func main() {
 		Type:                 "file",
 		Path:                 cfg.LogPath,
 		PollInterval:         time.Second * 1,
-		Readall:              true,
+		Readall:              false,
 		FailOnMissingLogfile: true,
 	}
 
