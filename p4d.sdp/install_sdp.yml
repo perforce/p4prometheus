@@ -1,0 +1,40 @@
+# Install SDP
+
+# ------------------------------------------------------------------
+- name: Rotate master journals
+  hosts: commit
+
+  tasks:
+    - name: Rotate journals on master to contain replica info
+      shell: /p4/common/bin/daily_checkpoint.sh 1
+
+# ------------------------------------------------------------------
+- name: Install SDP
+  hosts: replicas
+  # user: perforce
+
+  tasks:
+    - name: Set ownership of /hx* to perforce user
+      file: 
+        path: /hxdepots/sdp
+        owner: "perforce"
+        recurse: true
+      with_items:
+        - /hxdepots
+        - /hxmetadata
+        - /hxlogs
+      become: yes
+
+    - name: copy SDP from master to replica
+      synchronize:
+        src: /hxdepots/sdp
+        dest: /hxdepots/
+
+- name: Install SDP edge server.
+  hosts: replica_edge
+  tasks:
+    - include_tasks: replica_tasks.yml
+      vars: 
+        - server_type:  p4d_edge
+        - server_id:    p4d_edge_bos
+

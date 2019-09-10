@@ -1,0 +1,39 @@
+version: '3.4'
+
+# A couple of machines to show installation of SDP, Prometheus, Grafana, p4prometheus etc.
+
+services:        
+    master:
+        build:
+          context: p4d.sdp/
+          target: sdpmaster
+        hostname: master
+        ports:
+        - "2166:1999"
+        - "9101:9100"
+        command: /usr/sbin/sshd -D
+
+    replica_edge:
+        build:
+          context: p4d.sdp/
+          target: sdpbase
+        hostname: replica_edge
+        ports:
+        - "2266:1999"
+        - "9102:9100"
+        command: /usr/sbin/sshd -D
+        links:
+        - master
+
+    monitor:
+        build:
+          context: p4d.sdp/
+          target: monitor
+        hostname: monitor
+        ports:
+        - "3000:3000"
+        - "9100:9100"
+        - "9090:9090"
+        command: /p4/setup.sh
+        links:
+        - master

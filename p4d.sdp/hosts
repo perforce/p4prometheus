@@ -1,0 +1,10 @@
+[all:vars]
+
+[commit]
+master
+
+[replicas]
+replica_edge
+
+[monitor]
+monitor

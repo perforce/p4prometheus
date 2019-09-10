@@ -1,0 +1,70 @@
+# replica_tasks.yml
+# Included from install_sdp.yml
+# Parameters:
+#   server_type
+#   server_id
+
+---
+
+- name: Update variables in config file
+  lineinfile:
+    dest: /hxdepots/sdp/Server/Unix/setup/mkdirs.cfg
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - {regexp: '^SSL_PREFIX=', line: 'SSL_PREFIX='}
+    - {regexp: '^P4DNSNAME=', line: 'P4DNSNAME=master'}
+    - {regexp: '^SERVER_TYPE=', line: 'SERVER_TYPE={{server_type}}'}
+    - {regexp: '^REPLICA_ID=', line: 'REPLICA_ID={{server_id}}'}
+
+- name: Execute replica mkdirs (as root)
+  shell: cd /hxdepots/sdp/Server/Unix/setup && ./mkdirs.sh 1
+  become: yes
+
+- name: copy checkpoints to replica
+  synchronize:
+    src: /p4/1/checkpoints/
+    dest: /p4/1/checkpoints/
+
+- name: copy mkrep logs to replica
+  synchronize:
+    src: "{{item}}"
+    dest: /p4/1/logs/
+  with_lines: "find /p4/1/logs/ -name mkrep*.log"
+
+  # There could have been more than one mkrep log
+- name: Record name of latest mkrep log for this server
+  shell: grep -l "p4 server {{server_id}}" /p4/1/logs/mkrep* | tail -1
+  register: mkrep_log
+
+- name: Get local service user command which contains random generated password
+  shell: grep -A1 "Create local service user password file" {{mkrep_log.stdout_lines[0]}} | tail -1
+  register: pwd_cmd
+
+- name: STEP 5.1 Create local service user password file - execute command
+  shell: "{{pwd_cmd.stdout_lines[0]}}"
+
+- name: Record latest checkpoint file
+  shell: ls -tr /p4/1/checkpoints/*.ckp.*.gz | tail -1
+  register: ckp_file
+
+- name: STEP 7 Create server id
+  shell: "echo {{server_id}} > /p4/1/root/server.id"
+
+- name: STEP 7.1 Create offline server id
+  shell: "echo {{server_id}} > /p4/1/offline_db/server.id"
+
+- name: STEP 9 Create db files
+  shell: "/p4/1/bin/p4d_1 -r /p4/1/root -z -jr {{ ckp_file.stdout_lines[0] }}"
+
+- name: STEP 9.1 Create offline_db files
+  shell: "/p4/1/bin/p4d_1 -r /p4/1/offline_db -z -jr {{ ckp_file.stdout_lines[0] }}"
+
+- name: STEP 9.2 Mark the Offline_db as usable
+  shell: "echo Usable > /p4/1/offline_db/offline_db_usable.txt"
+
+- name: STEP 10.1 Login the service user to the master
+  shell: "P4TICKETS=/p4/1/.p4tickets /p4/1/bin/p4_1 -u svc_{{server_id}} -p master:1999 login < /p4/common/config/.p4passwd.p4_1.service"
+
+- name: STEP 10. Start the replica
+  shell: "/p4/1/bin/p4d_1_init start"
