@@ -83,3 +83,4 @@ ADD files/p4prometheus.service /p4
 ADD install_p4prometheus.yml /p4
 
 USER root
+EXPOSE 9090

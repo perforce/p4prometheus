@@ -31,9 +31,16 @@ services:
           target: monitor
         hostname: monitor
         ports:
-        - "3000:3000"
         - "9100:9100"
         - "9090:9090"
         command: /p4/setup.sh
         links:
         - master
+
+    grafana:
+        image: grafana/grafana
+        hostname: grafana
+        ports:
+        - "3000:3000"
+        links:
+        - monitor
