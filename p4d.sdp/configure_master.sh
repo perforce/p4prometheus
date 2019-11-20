@@ -33,6 +33,8 @@ p4 configure set rpl=4
 p4 configure set monitor=2
 p4 configure show
 
+p4 server -o master.1 | sed -e "s/Services:\s*standard/Services:\tcommit-server/g" | p4 server -i
+
 # Now run mkrep.sh
 cp /p4/sdp/Server/Unix/p4/common/config/SiteTags.cfg /p4/common/config/
 
