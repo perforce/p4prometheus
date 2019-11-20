@@ -18,6 +18,8 @@ RUN yum install -y openssh-server openssh-clients passwd; \
 RUN yum install -y https://centos7.iuscommunity.org/ius-release.rpm; \
     yum update; \
     yum install -y python36u python36u-libs python36u-devel python36u-pip; \
+    rm -f /usr/bin/python3; \
+    rm -f /usr/bin/pip3; \
     ln -s /usr/bin/python3.6 /usr/bin/python3; \
     ln -s /usr/bin/pip3.6 /usr/bin/pip3;
 
