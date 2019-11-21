@@ -14,9 +14,10 @@ docker-compose up -d
 ```
 
 実行後は、以下のイメージを元にしたコンテナが起動します。
+
 ホスト名 | IMAGE名 | ポート設定1 | ポート設定2 
 --- | --- | --- | ---
-grafana | grafana/grafana | 3000:3000 |
+grafana | grafana/grafana | 3000:3000 | 
 monitor | p4prometheus_monitor | 9090:9090 | 9100:9100
 master | p4prometheus_master | 2166:1999 | 9101:9100
 replica_edge | p4prometheus_replica_edge | 2266:1999 | 9101:9100
@@ -41,7 +42,7 @@ cd /p4
 Dockerのホスト側のIPアドレスが 192.168.1.2 であると仮定した場合、それぞれのツールに以下の方法でアクセスできます。
 
 ツール | アクセスに使うツール | アクセス方法 | ユーザ | パスワード
---- | --- | --- 
+--- | --- | --- | --- | --- 
 grafana | WEBブラウザ | http://192.168.1.2:3000 | admin | admin
 prometheus | WEBブラウザ | http://192.168.1.2:9090 | なし | なし
 Helix Coreコミットサーバ | P4Vなど | 192.168.1.2:2166 | bruno | なし
