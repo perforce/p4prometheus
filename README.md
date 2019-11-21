@@ -23,9 +23,9 @@ master | p4prometheus_master | 2166:1999 | 9101:9100
 replica_edge | p4prometheus_replica_edge | 2266:1999 | 9101:9100
 
 互いのリンク状態は以下のとおりです。
-grafana -> monitor
-monitor -> master
-replica_edge -> master 
+- grafana -> monitor
+- monitor -> master
+- replica_edge -> master 
 
 コンテナを起動させるだけでは、Helix Coreのコミットサーバとエッジサーバが起動しません。
 
