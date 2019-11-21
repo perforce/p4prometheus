@@ -24,6 +24,7 @@ cat <<"EOF" >$BASH_PROF
 export PATH=/sdp/Server/Unix/p4/common/bin:$PATH
 export P4CONFIG=.p4config
 export P4P4PORT=1666
+export P4CHARSET=utf8
 PS1='\u@\h:\w$ '
 EOF
 chown perforce:perforce $BASH_PROF

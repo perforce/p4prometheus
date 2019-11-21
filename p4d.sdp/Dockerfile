@@ -49,8 +49,11 @@ FROM sdpbase as sdpmaster
 USER root
 RUN pip3.6 install ansible 
 
+ADD configure_sample_depot_for_sdp.sh /root
 RUN mkdir -p /hxdepots/reset && \
     cd /hxdepots/reset && \
+    mv /root/configure_sample_depot_for_sdp.sh . && \
+    chmod +x configure_sample_depot_for_sdp.sh && \
     curl -k -s -O https://swarm.workshop.perforce.com/download/guest/perforce_software/helix-installer/main/src/reset_sdp.sh && \
     chmod +x reset_sdp.sh && \
     ./reset_sdp.sh -fast -no_ssl

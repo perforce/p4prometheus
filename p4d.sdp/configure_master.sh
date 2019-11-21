@@ -25,6 +25,7 @@ cat p4_1.vars.old | sed -e 's/=helix/=master/' > p4_1.vars
 
 # Set configurables - but without restarting server
 . /p4/common/bin/p4_vars 1
+p4d -xi
 p4 configure set server.depot.root=/p4/1/depots
 p4 configure set journalPrefix=/p4/1/checkpoints/p4_1
 p4 configure set track=1
