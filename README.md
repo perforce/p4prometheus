@@ -20,7 +20,7 @@ docker-compose up -d
 grafana | grafana/grafana | 3000:3000 | 
 monitor | p4prometheus_monitor | 9090:9090 | 9100:9100
 master | p4prometheus_master | 2166:1999 | 9101:9100
-replica_edge | p4prometheus_replica_edge | 2266:1999 | 9101:9100
+replica_edge | p4prometheus_replica_edge | 2266:1999 | 9102:9100
 
 互いのリンク状態は以下のとおりです。
 - grafana -> monitor
