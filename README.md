@@ -96,7 +96,7 @@ After=network-online.target
 User=node_exporter
 Group=node_exporter
 Type=simple
-ExecStart=/usr/local/bin/node_exporter --collector.textfile.directory="/hxlogs/metrics"
+ExecStart=/usr/local/bin/node_exporter --collector.textfile.directory=/hxlogs/metrics
 
 [Install]
 WantedBy=multi-user.target
