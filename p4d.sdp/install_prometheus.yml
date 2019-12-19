@@ -10,9 +10,10 @@
     prometheus_use_service: False
     prometheus_conf_main: prometheus.yml
 
+
 - hosts:
     - master
-    - replica_edge
+    - replicas
   become: True
   roles:
     - william-yeh.prometheus

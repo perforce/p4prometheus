@@ -2,26 +2,26 @@
 - name: Setup node_exporter
   hosts:
     - master
-    - replica_edge
-    - monitor
+    - replicas
+  vars:
+    - metrics_dir: /hxlogs/metrics
 
   tasks:
-    - name: Create /hxlogs/metrics and allow everyone to read
+    - name: Create metrics dir and give everyone read access
       file: 
         path: "{{item}}"
         owner: "perforce"
         state: directory
         mode: '0755'
       with_items:
-        - /hxlogs
-        - /hxlogs/metrics
+        - "{{ metrics_dir }}"
       become: yes
 
     - name: Update node_exporter config
       lineinfile:
         dest: /etc/systemd/system/node_exporter.service
         regexp: '(ExecStart=.*)'
-        line: '\1  --collector.systemd --collector.systemd.unit-whitelist="(p4.*|node_exporter)\.service" --collector.textfile.directory="/hxlogs/metrics"'
+        line: '\1  --collector.systemd --collector.systemd.unit-whitelist="(p4.*|node_exporter)\.service" --collector.textfile.directory={{ metrics_dir }}'
         backrefs: yes
       become: True
 
@@ -36,7 +36,7 @@
 - name: Install p4prometheus
   hosts:
     - master
-    - replica_edge
+    - replicas
 
   tasks:
     - name: Download published p4prometheus
@@ -81,19 +81,19 @@
         state: started
       become: True
 
-- name: Install services on monitor
-  hosts:
-      - monitor
+# - name: Install services on monitor
+#   hosts:
+#       - monitor
 
-  tasks:
-    - name: Start service 
-      become: True
-      shell: systemctl start prometheus
+#   tasks:
+#     - name: Start service 
+#       become: True
+#       shell: systemctl start prometheus
 
-    - name: Start service 
-      become: True
-      shell: systemctl start alertmanager
+#     - name: Start service 
+#       become: True
+#       shell: systemctl start alertmanager
 
-    - name: Status services
-      become: True
-      shell: ps ax | grep -E "node_exporter/alertmanager"
+#     - name: Status services
+#       become: True
+#       shell: ps ax | grep -E "node_exporter/alertmanager"
