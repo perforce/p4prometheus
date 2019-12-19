@@ -1,6 +1,7 @@
 # Installation Details for P4Prometheus and Other Components
 
 - [Installation Details for P4Prometheus and Other Components](#installation-details-for-p4prometheus-and-other-components)
+  - [Package Install of Grafana](#package-install-of-grafana)
   - [Ansible Installation](#ansible-installation)
 - [Configure prometheus components](#configure-prometheus-components)
   - [Run installation](#run-installation)
@@ -9,8 +10,22 @@
   - [Install p4prometheus - details](#install-p4prometheus---details)
 - [Alerting](#alerting)
   - [Prometheus config](#prometheus-config)
+  - [Grafana Dashboard](#grafana-dashboard)
   - [Alerting rules](#alerting-rules)
   - [Alertmanager config](#alertmanager-config)
+  - [Install monitor_metrics cron job](#install-monitormetrics-cron-job)
+- [Troubleshooting](#troubleshooting)
+  - [p4prometheus](#p4prometheus)
+  - [monitor_metrics](#monitormetrics)
+  - [node_exporter](#nodeexporter)
+  - [prometheus](#prometheus)
+  - [Grafana](#grafana)
+- [Advanced config options](#advanced-config-options)
+
+## Package Install of Grafana
+
+* https://grafana.com/docs/grafana/latest/installation/debian/
+* https://grafana.com/docs/grafana/latest/installation/rpm/
 
 ## Ansible Installation
 
@@ -24,9 +39,9 @@ Assumptions:
 * appropriate sudo access for current account on the various machines (to install services)
 
 Configure the `hosts` file for your env with the 3 `groups`:
-* master - the main p4d instance
-* replicas - any replica machines to be monitored
-* monitor - the server where we will install Prometheus/Grafana (and node_exporter)
+* master - the main p4d instance (node_exporter and p4prometheus)
+* replicas - any replica machines to be monitored (as for master)
+* monitor - the server where we will install Prometheus/Grafana and node_exporter
 
 ```ini
 [master]
@@ -107,7 +122,7 @@ scrape_configs:
     - targets: ['localhost:9100', 'perforce01:9100', 'replica_1:9100', 'edge_1:9100']
 ```
 
-Create `install_p4prometheus.yml` using example (install_p4prometheus.yml)[p4d.sdp/install_p4prometheus.yml]
+Create `install_p4prometheus.yml` using example [install_p4prometheus.yml](p4d.sdp/install_p4prometheus.yml)
 
 You may need to adjust the `metrics_dir` variable. Note the script also copies over a p4prometheus config file: `p4prometheus.yml` (review this file and check it is correct).
 
@@ -120,11 +135,11 @@ You may need to adjust the `metrics_dir` variable. Note the script also copies o
 
 # Manual Installation
 
-Alternatively do the manual installation steps below, suitably customised.
+Alternatively do the manual installation steps below, suitably customised for your environment.
 
 ## Install node_exporter
 
-Use above instructions, or these. This must be done on the Perforce (Helix Core) server machine (ditto for any other servers such as replicas which are being monitored).
+This must be done on the Perforce (Helix Core) server machine (ditto for any other servers such as replicas which are being monitored).
 
 Run the following as root:
 
@@ -277,7 +292,6 @@ WantedBy=multi-user.target
 * create alertmanager user
 * create /etc/alertmanager directory
 
-
 ## Prometheus config
 
 ```yaml
@@ -309,6 +323,16 @@ scrape_configs:
     - targets: ['p4hms:9100', 'p4main:9100', 'p4_ha:9100']
 
 ```
+
+## Grafana Dashboard
+
+See the [Sample dashboard](p4d.sdp/p4_stats_dashboard.json) which is easy to import as a Grafana dashboard.
+
+In addition we recommend oen or more of the node_exporter dashboards for servers stats, e.g.:
+
+* https://grafana.com/grafana/dashboards/405
+* https://grafana.com/grafana/dashboards/1860
+* https://grafana.com/grafana/dashboards?search=node%20exporter
 
 ## Alerting rules
 
@@ -400,3 +424,76 @@ receivers:
   email_configs:
   - to: p4-group@perforce.com
 ```
+
+## Install monitor_metrics cron job
+
+Download [monitor_metrics.sh](https://swarm.workshop.perforce.com/files/guest/perforce_software/sdp/dev/Server/Unix/p4/common/site/bin/monitor_metrics.sh)
+
+Configure it for your metrics directory (e.g. /hxlogs/metrics)
+
+Install in crontab to run every minute:
+
+    INSTANCE=1
+
+    */1 * * * * /p4/common/site/bin/monitor_metrics.sh $INSTANCE > /dev/null 2>&1 ||:
+
+# Troubleshooting
+
+Make sure all firewalls are appropriate and the various components on each machine can see each other!
+
+Port defaults are:
+* Grafana: 3000
+* Prometheus: 9090
+* Node_exporter: 9100
+
+## p4prometheus
+
+If this is running correctly, it should write into the designated log file, e.g. `/hxlogs/metrics/p4_cmds.prom`
+
+You can just grep for the most basic metric a couple of times (make sure it is increasing every minute or so):
+
+    $ grep lines /p4/metrics/p4_cmds.prom 
+    # HELP p4_prom_log_lines_read A count of log lines read
+    # TYPE p4_prom_log_lines_read counter
+    p4_prom_log_lines_read{serverid="master.1",sdpinst="1"} 7143
+
+## monitor_metrics
+
+Make sure monitor_metrics.sh is working:
+
+```bash
+bash -xv /p4/common/site/bin/monitor_metrics.sh 1
+```
+
+Check that appropriate files are listed in your metrics dir, e.g.
+
+    ls -l /hxlogs/metrics
+
+## node_exporter
+
+Make sure node_exporter is working (it is easy for there to be permissions access problems to the meterics dir).
+
+Assuming you have installed the `/etc/systemd/system/node_exporter.service` then find the ExecStart line and run it manually and check for errors (optionally appending "--log.level=debug").
+
+Check that you can see values:
+
+    curl http://localhost:9100/metrics | grep p4_
+
+## prometheus
+
+Access page http://monitor:9090 and search for some metrics.
+
+## Grafana
+
+Check that a suitable data source is setup (e.g. Prometheus)
+
+Use the `Explore` option to look for some basic metrics, e.g. just start typing p4_ and it should autocomplete if it has found p4_ metrics being collected.
+
+# Advanced config options
+
+For improved security:
+
+* consider LDAP integration for Grafana
+* implement appropriate authentication for the various end-points such as Prometheus/node_exporter
+
+

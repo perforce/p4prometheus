@@ -12,7 +12,6 @@ Uses [go-libp4dlog](https://github.com/rcowham/go-libp4dlog) for actual log file
   - [Overview](#overview)
 - [Grafana Dashboards](#grafana-dashboards)
 - [Detailed Installation](#detailed-installation)
-  - [Installation Overview](#installation-overview)
 
 ## Overview
 
@@ -60,18 +59,10 @@ Dashboard alerts can be defined, as well as alert rules which are actioned by [a
 
 You need to install Prometheus and Grafana using standard methods. This is typically done on a seperate VM/machine to the Perforce server itself (for security and HA reasons).
 
-For example:
-
-* https://grafana.com/docs/grafana/latest/installation/debian/
-* https://grafana.com/docs/grafana/latest/installation/rpm/
-* https://www.howtoforge.com/tutorial/how-to-install-prometheus-and-node-exporter-on-centos-7/
-
-See [Detailed Instatallation Options](INSTALL.md) in this project.
-
-## Installation Overview
-
 The easiest way is to use Ansible with a Galaxy module.
 
 Example files are to be found in the p4d.sdp folder for this project which is an as yet incomplete Docker Compose demonstrator.
 
 Note that all the components do run on Windows but you will need an appropriate Service wrapper.
+
+See [Detailed Instatallation Instructions (INSTALL.md)](INSTALL.md) in this project.
