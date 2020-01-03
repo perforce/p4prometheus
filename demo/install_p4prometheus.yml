@@ -5,6 +5,7 @@
     - replicas
   vars:
     - metrics_dir: /hxlogs/metrics
+    - p4prometheus_version: v0.4.0
 
   tasks:
     - name: Create metrics dir and give everyone read access
@@ -41,7 +42,7 @@
   tasks:
     - name: Download published p4prometheus
       get_url:
-        url: https://github.com/rcowham/p4prometheus/files/3595236/p4prometheus.linux-amd64.gz
+        url: "https://github.com/rcowham/p4prometheus/releases/download/{{ p4prometheus_version }}/p4prometheus.linux-amd64.gz"
         dest: /usr/local/bin
       become: True
 

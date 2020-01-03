@@ -6,6 +6,8 @@
 #   */1 * * * * /p4/common/site/bin/monitor_metrics.sh $INSTANCE > /dev/null 2>&1 ||:
 # Otherwise:
 #   */1 * * * * /path/to/monitor_metrics.sh -p $P4PORT -u $P4USER -nosdp > /dev/null 2>&1 ||:
+# If not using SDP then please ensure that appropriate LONG TERM TICKET is setup in the environment
+# that this script is running.
 #
 # Please note you need to make sure that the specified directory below (which may be linked)
 # can be read by the node_exporter user (and is setup via --collector.textfile.directory parameter)

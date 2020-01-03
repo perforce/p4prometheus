@@ -5,7 +5,7 @@ version: '3.4'
 services:        
     master:
         build:
-          context: p4d.sdp/
+          context: demo/
           target: sdpmaster
         hostname: master
         ports:
@@ -15,7 +15,7 @@ services:
 
     replica_edge:
         build:
-          context: p4d.sdp/
+          context: demo/
           target: sdpbase
         hostname: replica_edge
         ports:
@@ -27,7 +27,7 @@ services:
 
     monitor:
         build:
-          context: p4d.sdp/
+          context: demo/
           target: monitor
         hostname: monitor
         ports:
