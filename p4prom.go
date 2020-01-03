@@ -39,40 +39,53 @@ type logConfig struct {
 
 // P4Prometheus structure
 type P4Prometheus struct {
-	config            *config.Config
-	logger            *logrus.Logger
-	fp                *p4dlog.P4dFileParser
-	cmdCounter        map[string]int32
-	cmdCumulative     map[string]float64
-	totalReadWait     map[string]float64
-	totalReadHeld     map[string]float64
-	totalWriteWait    map[string]float64
-	totalWriteHeld    map[string]float64
-	totalTriggerLapse map[string]float64
-	cmdsProcessed     int64
-	linesRead         int64
-	lines             chan []byte
-	events            chan p4dlog.Command
-	lastOutputTime    time.Time
+	config              *config.Config
+	logger              *logrus.Logger
+	fp                  *p4dlog.P4dFileParser
+	cmdCounter          map[string]int32
+	cmdCumulative       map[string]float64
+	cmdByUserCounter    map[string]int32
+	cmdByUserCumulative map[string]float64
+	totalReadWait       map[string]float64
+	totalReadHeld       map[string]float64
+	totalWriteWait      map[string]float64
+	totalWriteHeld      map[string]float64
+	totalTriggerLapse   map[string]float64
+	cmdsProcessed       int64
+	linesRead           int64
+	lines               chan []byte
+	events              chan p4dlog.Command
+	lastOutputTime      time.Time
 }
 
 func newP4Prometheus(config *config.Config, logger *logrus.Logger) (p4p *P4Prometheus) {
 	return &P4Prometheus{
-		config:            config,
-		logger:            logger,
-		lines:             make(chan []byte, 10000),
-		events:            make(chan p4dlog.Command, 10000),
-		cmdCounter:        make(map[string]int32),
-		cmdCumulative:     make(map[string]float64),
-		totalReadWait:     make(map[string]float64),
-		totalReadHeld:     make(map[string]float64),
-		totalWriteWait:    make(map[string]float64),
-		totalWriteHeld:    make(map[string]float64),
-		totalTriggerLapse: make(map[string]float64),
+		config:              config,
+		logger:              logger,
+		lines:               make(chan []byte, 10000),
+		events:              make(chan p4dlog.Command, 10000),
+		cmdCounter:          make(map[string]int32),
+		cmdCumulative:       make(map[string]float64),
+		cmdByUserCounter:    make(map[string]int32),
+		cmdByUserCumulative: make(map[string]float64),
+		totalReadWait:       make(map[string]float64),
+		totalReadHeld:       make(map[string]float64),
+		totalWriteWait:      make(map[string]float64),
+		totalWriteHeld:      make(map[string]float64),
+		totalTriggerLapse:   make(map[string]float64),
 	}
 }
 
+func printMetricHeader(f *os.File, name string, help string, metricType string) {
+	fmt.Fprintf(f, "# HELP %s %s\n# TYPE %s %s\n", name, help, name, metricType)
+}
+
 func (p4p *P4Prometheus) publishCumulative() {
+	sdpInstanceLabel := ""
+	serverIDLabel := fmt.Sprintf("serverid=\"%s\"", p4p.config.ServerID)
+	if p4p.config.SDPInstance != "" {
+		sdpInstanceLabel = fmt.Sprintf(",sdpinst=\"%s\"", p4p.config.SDPInstance)
+	}
 	if p4p.lastOutputTime == blankTime || time.Now().Sub(p4p.lastOutputTime) >= time.Second*10 {
 		f, err := os.Create(p4p.config.MetricsOutput)
 		if err != nil {
@@ -82,81 +95,90 @@ func (p4p *P4Prometheus) publishCumulative() {
 		p4p.logger.Infof("Writing stats\n")
 		p4p.lastOutputTime = time.Now()
 
-		fmt.Fprintf(f, "# HELP p4_prom_log_lines_read A count of log lines read\n"+
-			"# TYPE p4_prom_log_lines_read counter\n")
-		buf := fmt.Sprintf("p4_prom_log_lines_read{serverid=\"%s\",sdpinst=\"%s\"} %d\n",
-			p4p.config.ServerID, p4p.config.SDPInstance, p4p.linesRead)
+		printMetricHeader(f, "p4_prom_log_lines_read", "A count of log lines read", "counter")
+		buf := fmt.Sprintf("p4_prom_log_lines_read{%s%s} %d\n",
+			serverIDLabel, sdpInstanceLabel, p4p.linesRead)
 		p4p.logger.Debugf(buf)
 		fmt.Fprint(f, buf)
 
-		fmt.Fprintf(f, "# HELP p4_prom_cmds_processed A count of all cmds processed\n"+
-			"# TYPE p4_prom_cmds_processed counter\n")
-		buf = fmt.Sprintf("p4_prom_cmds_processed{serverid=\"%s\",sdpinst=\"%s\"} %d\n",
-			p4p.config.ServerID, p4p.config.SDPInstance, p4p.cmdsProcessed)
+		printMetricHeader(f, "p4_prom_cmds_processed", "A count of all cmds processed", "counter")
+		buf = fmt.Sprintf("p4_prom_cmds_processed{%s%s} %d\n",
+			serverIDLabel, sdpInstanceLabel, p4p.cmdsProcessed)
 		p4p.logger.Debugf(buf)
 		fmt.Fprint(f, buf)
 
-		fmt.Fprintf(f, "# HELP p4_prom_cmds_pending A count of all current cmds (not completed)\n"+
-			"# TYPE p4_prom_cmds_pending gauge\n")
-		buf = fmt.Sprintf("p4_prom_cmds_pending{serverid=\"%s\",sdpinst=\"%s\"} %d\n",
-			p4p.config.ServerID, p4p.config.SDPInstance, p4p.fp.CmdsPendingCount())
+		printMetricHeader(f, "p4_prom_cmds_pending", "A count of all current cmds (not completed)", "gauge")
+		buf = fmt.Sprintf("p4_prom_cmds_pending{%s%s} %d\n",
+			serverIDLabel, sdpInstanceLabel, p4p.fp.CmdsPendingCount())
 		p4p.logger.Debugf(buf)
 		fmt.Fprint(f, buf)
 
-		fmt.Fprintf(f, "# HELP p4_cmd_counter A count of completed p4 cmds (by cmd)\n"+
-			"# TYPE p4_cmd_counter counter\n")
+		printMetricHeader(f, "p4_cmd_counter", "A count of completed p4 cmds (by cmd)", "counter")
 		for cmd, count := range p4p.cmdCounter {
-			buf := fmt.Sprintf("p4_cmd_counter{cmd=\"%s\",serverid=\"%s\",sdpinst=\"%s\"} %d\n",
-				cmd, p4p.config.ServerID, p4p.config.SDPInstance, count)
+			buf := fmt.Sprintf("p4_cmd_counter{cmd=\"%s\",%s%s} %d\n",
+				cmd, serverIDLabel, sdpInstanceLabel, count)
 			p4p.logger.Debugf(buf)
 			fmt.Fprint(f, buf)
 		}
-		fmt.Fprintf(f, "# HELP p4_cmd_cumulative_seconds The total in seconds (by cmd)\n"+
-			"# TYPE p4_cmd_cumulative_seconds counter\n")
+		printMetricHeader(f, "p4_cmd_cumulative_seconds", "The total in seconds (by cmd)", "counter")
 		for cmd, lapse := range p4p.cmdCumulative {
-			buf := fmt.Sprintf("p4_cmd_cumulative_seconds{cmd=\"%s\",serverid=\"%s\",sdpinst=\"%s\"} %0.3f\n",
-				cmd, p4p.config.ServerID, p4p.config.SDPInstance, lapse)
+			buf := fmt.Sprintf("p4_cmd_cumulative_seconds{cmd=\"%s\",%s%s} %0.3f\n",
+				cmd, serverIDLabel, sdpInstanceLabel, lapse)
 			p4p.logger.Debugf(buf)
 			fmt.Fprint(f, buf)
 		}
-		fmt.Fprintf(f, "# HELP p4_total_read_wait_seconds The total waiting for read locks in seconds (by table)\n"+
-			"# TYPE p4_total_read_wait_seconds counter\n")
+		printMetricHeader(f, "p4_cmd_user_counter", "A count of completed p4 cmds (by user)", "counter")
+		for cmd, count := range p4p.cmdByUserCounter {
+			buf := fmt.Sprintf("p4_cmd_user_counter{user=\"%s\",%s%s} %d\n",
+				cmd, serverIDLabel, sdpInstanceLabel, count)
+			p4p.logger.Debugf(buf)
+			fmt.Fprint(f, buf)
+		}
+		printMetricHeader(f, "p4_cmd_user_cumulative_seconds", "The total in seconds (by user)", "counter")
+		for cmd, lapse := range p4p.cmdByUserCumulative {
+			buf := fmt.Sprintf("p4_cmd_user_cumulative_seconds{user=\"%s\",%s%s} %0.3f\n",
+				cmd, serverIDLabel, sdpInstanceLabel, lapse)
+			p4p.logger.Debugf(buf)
+			fmt.Fprint(f, buf)
+		}
+		printMetricHeader(f, "p4_total_read_wait_seconds",
+			"The total waiting for read locks in seconds (by table)", "counter")
 		for table, total := range p4p.totalReadWait {
-			buf := fmt.Sprintf("p4_total_read_wait_seconds{table=\"%s\",serverid=\"%s\",sdpinst=\"%s\"} %0.3f\n",
-				table, p4p.config.ServerID, p4p.config.SDPInstance, total)
+			buf := fmt.Sprintf("p4_total_read_wait_seconds{table=\"%s\",%s%s} %0.3f\n",
+				table, serverIDLabel, sdpInstanceLabel, total)
 			p4p.logger.Debugf(buf)
 			fmt.Fprint(f, buf)
 		}
-		fmt.Fprintf(f, "# HELP p4_total_read_held_seconds The total read locks held in seconds (by table)\n"+
-			"# TYPE p4_total_read_held_seconds counter\n")
+		printMetricHeader(f, "p4_total_read_held_seconds",
+			"The total read locks held in seconds (by table)", "counter")
 		for table, total := range p4p.totalReadHeld {
-			buf := fmt.Sprintf("p4_total_read_held_seconds{table=\"%s\",serverid=\"%s\",sdpinst=\"%s\"} %0.3f\n",
-				table, p4p.config.ServerID, p4p.config.SDPInstance, total)
+			buf := fmt.Sprintf("p4_total_read_held_seconds{table=\"%s\",%s%s} %0.3f\n",
+				table, serverIDLabel, sdpInstanceLabel, total)
 			p4p.logger.Debugf(buf)
 			fmt.Fprint(f, buf)
 		}
-		fmt.Fprintf(f, "# HELP p4_total_write_wait_seconds The total waiting for write locks in seconds (by table)\n"+
-			"# TYPE p4_total_write_wait_seconds counter\n")
+		printMetricHeader(f, "p4_total_write_wait_seconds",
+			"The total waiting for write locks in seconds (by table)", "counter")
 		for table, total := range p4p.totalWriteWait {
-			buf := fmt.Sprintf("p4_total_write_wait_seconds{table=\"%s\",serverid=\"%s\",sdpinst=\"%s\"} %0.3f\n",
-				table, p4p.config.ServerID, p4p.config.SDPInstance, total)
+			buf := fmt.Sprintf("p4_total_write_wait_seconds{table=\"%s\",%s%s} %0.3f\n",
+				table, serverIDLabel, sdpInstanceLabel, total)
 			p4p.logger.Debugf(buf)
 			fmt.Fprint(f, buf)
 		}
-		fmt.Fprintf(f, "# HELP p4_total_write_held_seconds The total write locks held in seconds (by table)\n"+
-			"# TYPE p4_total_write_held_seconds counter\n")
+		printMetricHeader(f, "p4_total_write_held_seconds", "The total write locks held in seconds (by table)",
+			"counter")
 		for table, total := range p4p.totalWriteHeld {
-			buf := fmt.Sprintf("p4_total_write_held_seconds{table=\"%s\",serverid=\"%s\",sdpinst=\"%s\"} %0.3f\n",
-				table, p4p.config.ServerID, p4p.config.SDPInstance, total)
+			buf := fmt.Sprintf("p4_total_write_held_seconds{table=\"%s\",%s%s} %0.3f\n",
+				table, serverIDLabel, sdpInstanceLabel, total)
 			p4p.logger.Debugf(buf)
 			fmt.Fprint(f, buf)
 		}
 		if len(p4p.totalTriggerLapse) > 0 {
-			fmt.Fprintf(f, "# HELP p4_total_trigger_lapse_seconds The total lapse time for triggers in seconds (by trigger)\n"+
-				"# TYPE p4_total_trigger_lapse_seconds counter\n")
+			printMetricHeader(f, "p4_total_trigger_lapse_seconds",
+				"The total lapse time for triggers in seconds (by trigger)", "counter")
 			for table, total := range p4p.totalTriggerLapse {
-				buf := fmt.Sprintf("p4_total_trigger_lapse_seconds{trigger=\"%s\",serverid=\"%s\",sdpinst=\"%s\"} %0.3f\n",
-					table, p4p.config.ServerID, p4p.config.SDPInstance, total)
+				buf := fmt.Sprintf("p4_total_trigger_lapse_seconds{trigger=\"%s\",%s%s} %0.3f\n",
+					table, serverIDLabel, sdpInstanceLabel, total)
 				p4p.logger.Debugf(buf)
 				fmt.Fprint(f, buf)
 			}
@@ -193,6 +215,8 @@ func (p4p *P4Prometheus) publishEvent(cmd p4dlog.Command) {
 
 	p4p.cmdCounter[string(cmd.Cmd)]++
 	p4p.cmdCumulative[string(cmd.Cmd)] += float64(cmd.CompletedLapse)
+	p4p.cmdByUserCounter[string(cmd.User)]++
+	p4p.cmdByUserCumulative[string(cmd.User)] += float64(cmd.CompletedLapse)
 	const triggerPrefix = "trigger_"
 
 	for _, t := range cmd.Tables {
@@ -207,17 +231,6 @@ func (p4p *P4Prometheus) publishEvent(cmd p4dlog.Command) {
 		}
 	}
 	p4p.publishCumulative()
-}
-
-func (p4p *P4Prometheus) processEvents() {
-	for {
-		select {
-		case cmd := <-p4p.events:
-			p4p.publishEvent(cmd)
-		default:
-			return
-		}
-	}
 }
 
 func startTailer(cfgInput *logConfig, logger *logrus.Logger) (fswatcher.FileTailer, error) {
@@ -286,7 +299,11 @@ func main() {
 	}
 	logger.Infof("Processing log file: '%s' output to '%s' SDP instance '%s'\n",
 		cfg.LogPath, cfg.MetricsOutput, cfg.SDPInstance)
-	if len(cfg.ServerID) == 0 {
+	if cfg.SDPInstance == "" && len(cfg.ServerID) == 0 {
+		logger.Errorf("error loading config file - if no sdp_instance then please specifiy server_id!")
+		os.Exit(-1)
+	}
+	if len(cfg.ServerID) == 0 && cfg.SDPInstance != "" {
 		cfg.ServerID = readServerID(logger, cfg.SDPInstance)
 	}
 	logger.Infof("Server id: '%s'\n", cfg.ServerID)
@@ -294,6 +311,9 @@ func main() {
 
 	fp := p4dlog.NewP4dFileParser()
 	p4p.fp = fp
+	if *debug {
+		fp.SetDebugMode()
+	}
 	go fp.LogParser(p4p.lines, p4p.events, nil)
 
 	//---------------
@@ -303,7 +323,7 @@ func main() {
 		Path:                 cfg.LogPath,
 		PollInterval:         time.Second * 1,
 		Readall:              false,
-		FailOnMissingLogfile: true,
+		FailOnMissingLogfile: false,
 	}
 
 	tail, err := startTailer(logcfg, logger)
@@ -319,7 +339,7 @@ func main() {
 	for {
 		select {
 		case <-time.After(time.Second * 1):
-			p4p.processEvents()
+			logger.Debugf("publishCumulative")
 			p4p.publishCumulative()
 		case err := <-tail.Errors():
 			if os.IsNotExist(err.Cause()) {
@@ -330,11 +350,13 @@ func main() {
 				os.Exit(-4)
 			}
 		case line := <-tail.Lines():
+			logger.Debugf("Line: %v", line.Line)
 			p4p.linesRead++
 			p4p.lines <- []byte(line.Line)
-		case json := <-p4p.events:
+		case cmd := <-p4p.events:
+			logger.Debugf("Publishing cmd: %v", cmd)
 			p4p.cmdsProcessed++
-			p4p.publishEvent(json)
+			p4p.publishEvent(cmd)
 		case sig := <-sigs:
 			logger.Infof("Terminating normally - signal %v", sig)
 			os.Exit(0)
