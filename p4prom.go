@@ -230,7 +230,7 @@ func (p4p *P4Prometheus) publishEvent(cmd p4dlog.Command) {
 			p4p.totalWriteWait[t.TableName] += float64(t.TotalWriteWait)
 		}
 	}
-	p4p.publishCumulative()
+	// p4p.publishCumulative()
 }
 
 func startTailer(cfgInput *logConfig, logger *logrus.Logger) (fswatcher.FileTailer, error) {
@@ -266,6 +266,36 @@ func readServerID(logger *logrus.Logger, instance string) string {
 		return string(bytes.TrimRight(buf, " \r\n"))
 	}
 	return ""
+}
+
+// ProcessEvents - main event loop for P4Prometheus
+func (p4p *P4Prometheus) ProcessEvents(publishInterval time.Duration, tailer fswatcher.FileTailer, done chan int) int {
+	ticker := time.NewTicker(publishInterval)
+	for {
+		select {
+		case <-ticker.C:
+			p4p.logger.Debugf("publishCumulative")
+			p4p.publishCumulative()
+		case err := <-tailer.Errors():
+			if os.IsNotExist(err.Cause()) {
+				p4p.logger.Errorf("error reading log lines: %v: use 'fail_on_missing_logfile: false' in the input configuration if you want p4prometheus to start even though the logfile is missing", err)
+				return -3
+			} else {
+				p4p.logger.Errorf("error reading log lines: %v", err)
+				return -4
+			}
+		case line := <-tailer.Lines():
+			p4p.logger.Debugf("Line: %v", line.Line)
+			p4p.linesRead++
+			p4p.lines <- []byte(line.Line)
+		case cmd := <-p4p.events:
+			p4p.logger.Debugf("Publishing cmd: %v", cmd)
+			p4p.cmdsProcessed++
+			p4p.publishEvent(cmd)
+		case <-done:
+			return 0
+		}
+	}
 }
 
 func main() {
@@ -326,41 +356,20 @@ func main() {
 		FailOnMissingLogfile: false,
 	}
 
-	tail, err := startTailer(logcfg, logger)
+	tailer, err := startTailer(logcfg, logger)
 	if err != nil {
 		logger.Errorf("error starting to tail log lines: %v", err)
 		os.Exit(-2)
 	}
 
+	done := make(chan int, 1)
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
+	go func() {
+		sig := <-sigs
+		logger.Infof("Terminating normally - signal %v", sig)
+		done <- 1
+	}()
 	p4p.linesRead = 0
-	for {
-		select {
-		case <-time.After(time.Second * 1):
-			logger.Debugf("publishCumulative")
-			p4p.publishCumulative()
-		case err := <-tail.Errors():
-			if os.IsNotExist(err.Cause()) {
-				logger.Errorf("error reading log lines: %v: use 'fail_on_missing_logfile: false' in the input configuration if you want p4prometheus to start even though the logfile is missing", err)
-				os.Exit(-3)
-			} else {
-				logger.Errorf("error reading log lines: %v", err)
-				os.Exit(-4)
-			}
-		case line := <-tail.Lines():
-			logger.Debugf("Line: %v", line.Line)
-			p4p.linesRead++
-			p4p.lines <- []byte(line.Line)
-		case cmd := <-p4p.events:
-			logger.Debugf("Publishing cmd: %v", cmd)
-			p4p.cmdsProcessed++
-			p4p.publishEvent(cmd)
-		case sig := <-sigs:
-			logger.Infof("Terminating normally - signal %v", sig)
-			os.Exit(0)
-		}
-	}
-
+	os.Exit(p4p.ProcessEvents(1*time.Second, tailer, done))
 }
