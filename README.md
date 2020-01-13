@@ -2,7 +2,7 @@
 
 Utility which integrates Perforce (Helix Core) with Prometheus. If performs real-time analysis of p4d log files feeding to a dashboard and for system alerting.
 
-It continuously parses p4d log files and write a summary to 
+It continuously parses p4d log files and writes a summary to 
 a specified Prometheus compatible metrics file which can be handled via the `node_exporter`
 textfile collector module.
 
@@ -24,14 +24,14 @@ This is part of a solution consisting of the following components:
 Two custom components:
 
 * p4prometheus - This component.
-* monitor_metrics.sh - [SDP](https://swarm.workshop.perforce.com/projects/perforce-software-sdp) compatible bash script to generate simple supplementary metrics - [monitor_metrics.sh](https://swarm.workshop.perforce.com/files/guest/perforce_software/sdp/dev/Server/Unix/p4/common/site/bin/monitor_metrics.sh)
+* monitor_metrics.sh - [SDP](https://swarm.workshop.perforce.com/projects/perforce-software-sdp) compatible bash script to generate simple supplementary metrics - [monitor_metrics.sh](demo/monitor_metrics.sh)
 
 Check out the ![Prometheus architecture](https://prometheus.io/assets/architecture.png)
-The custom components are "Prometheus targets".
+The custom components referred to above are "Prometheus targets".
 
 # Grafana Dashboards
 
-When installed and setup, you can get dashboards such as the following to appear.
+When installed and setup, you can get dashboards such as the following:
 
 Commands Summary:
 
@@ -53,7 +53,7 @@ Read/write locks held/waiting status:
 
 ![Commands](images/p4stats_table_read_locks.png)
 
-Dashboard alerts can be defined, as well as alert rules which are actioned by [alertmanager](https://prometheus.io/docs/alerting/alertmanager/)
+Dashboard alerts can be defined, as well as alert rules which are actioned by [alertmanager](https://prometheus.io/docs/alerting/alertmanager/) - see installation below for link to examples.
 
 # Detailed Installation
 
@@ -61,7 +61,7 @@ You need to install Prometheus and Grafana using standard methods. This is typic
 
 The easiest way is to use Ansible with a Galaxy module.
 
-Example files are to be found in the p4d.sdp folder for this project which is an as yet incomplete Docker Compose demonstrator.
+Example files are to be found in the [demo folder](demo/) for this project which is an (as yet incomplete) Docker Compose demonstrator.
 
 Note that all the components do run on Windows but you will need an appropriate Service wrapper.
 

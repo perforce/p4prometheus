@@ -31,7 +31,7 @@
 
 This is the quickest way to install with a little bit of configuration for your setup.
 
-Example files are in the `p4d.sdp` folder of this project.
+Example files are in the `demo` folder of this project.
 
 Assumptions:
 * ansible installed (e.g. `pip install ansible`) - see [installation](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#intro-installation-guide)
@@ -122,7 +122,7 @@ scrape_configs:
     - targets: ['localhost:9100', 'perforce01:9100', 'replica_1:9100', 'edge_1:9100']
 ```
 
-Create `install_p4prometheus.yml` using example [install_p4prometheus.yml](p4d.sdp/install_p4prometheus.yml)
+Create `install_p4prometheus.yml` using example [install_p4prometheus.yml](demo/install_p4prometheus.yml)
 
 You may need to adjust the `metrics_dir` variable. Note the script also copies over a p4prometheus config file: `p4prometheus.yml` (review this file and check it is correct).
 
@@ -157,7 +157,7 @@ Create a metrics directory, give ownership to account writing metrics, and make 
     chown perforce:perforce /hxlogs/metrics
     ls -al /hxlogs/metrics
 
-Ensure the above has global read access (perforce user will write files, node_exporter will read them).
+Ensure the above has global read access (e.g. user `perforce` will write files, user `node_exporter` will read them).
 
 Create service file (note value for directory - may need to be adjusted):
 
@@ -218,19 +218,26 @@ As user `perforce`:
 cat << EOF > /p4/common/config/p4prometheus.yaml
 # SDP instance - typically integer, but can be
 # See: https://swarm.workshop.perforce.com/projects/perforce-software-sdp for more
+# If this value is blank then it is assumed to be a non-SDP instance.
 sdp_instance:   1
 # Path to p4d server log
 log_path:       /p4/1/logs/log
-# Name of output file to write for processing by node_exporter
+# Name of output file to write for processing by node_exporter.
+# Ensure that node_exporter user has read access to this folder.
 metrics_output: /hxlogs/metrics/p4_cmds.prom
-# Optional - serverid for metrics - typically read from /p4/<sdp_instance>/root/server.id
+# Optional - serverid for metrics - typically read from /p4/<sdp_instance>/root/server.id for 
+# SDP installations - please specify if non-SDP install
 server_id:      
 EOF
 ```
 
 As user `root`:
 
-Create service file:
+Create service file as below - parameters you may need to customise:
+
+* User
+* Group
+* ExecStart
 
 ```ini
 cat << EOF > /etc/systemd/system/p4prometheus.service
@@ -326,9 +333,9 @@ scrape_configs:
 
 ## Grafana Dashboard
 
-See the [Sample dashboard](p4d.sdp/p4_stats_dashboard.json) which is easy to import as a Grafana dashboard.
+See the [Sample dashboard](demo/p4_stats_dashboard.json) which is easy to import as a Grafana dashboard.
 
-In addition we recommend oen or more of the node_exporter dashboards for servers stats, e.g.:
+In addition we recommend one or more of the node_exporter dashboards for server stats, e.g.:
 
 * https://grafana.com/grafana/dashboards/405
 * https://grafana.com/grafana/dashboards/1860
@@ -336,7 +343,7 @@ In addition we recommend oen or more of the node_exporter dashboards for servers
 
 ## Alerting rules
 
-This is an example, assuming simple email and local postfix or equivalent setup.
+This is an example, assuming simple email and local postfix or equivalent have been setup.
 
 ```yaml
 groups:
@@ -406,7 +413,7 @@ This is an example, assuming simple email and local postfix or equivalent setup 
 
 ```yaml
 global:
-  smtp_from: alertmanager@perforce.com
+  smtp_from: alertmanager@example.com
   smtp_smarthost: localhost:25
   smtp_require_tls: false
   # Hello is the local machine name
@@ -422,20 +429,25 @@ route:
 receivers:
 - name: mail
   email_configs:
-  - to: p4-group@perforce.com
+  - to: p4-group@example.com
 ```
 
 ## Install monitor_metrics cron job
 
-Download [monitor_metrics.sh](https://swarm.workshop.perforce.com/files/guest/perforce_software/sdp/dev/Server/Unix/p4/common/site/bin/monitor_metrics.sh)
+Download [monitor_metrics.sh](demo/monitor_metrics.sh)
 
 Configure it for your metrics directory (e.g. /hxlogs/metrics)
 
 Install in crontab to run every minute:
 
     INSTANCE=1
-
     */1 * * * * /p4/common/site/bin/monitor_metrics.sh $INSTANCE > /dev/null 2>&1 ||:
+
+For non-SDP installation:
+    */1 * * * * /path/to/monitor_metrics.sh -p $P4PORT -u $P4USER -nosdp > /dev/null 2>&1 ||:
+
+If not using SDP then please ensure that appropriate LONG TERM TICKET is setup in the environment
+that this script is running.
 
 # Troubleshooting
 
@@ -465,13 +477,13 @@ Make sure monitor_metrics.sh is working:
 bash -xv /p4/common/site/bin/monitor_metrics.sh 1
 ```
 
-Check that appropriate files are listed in your metrics dir, e.g.
+Check that appropriate files are listed in your metrics dir (and are being updated every minute), e.g.
 
     ls -l /hxlogs/metrics
 
 ## node_exporter
 
-Make sure node_exporter is working (it is easy for there to be permissions access problems to the meterics dir).
+Make sure node_exporter is working (it is easy for there to be permissions access problems to the metrics dir).
 
 Assuming you have installed the `/etc/systemd/system/node_exporter.service` then find the ExecStart line and run it manually and check for errors (optionally appending "--log.level=debug").
 
@@ -481,7 +493,7 @@ Check that you can see values:
 
 ## prometheus
 
-Access page http://monitor:9090 and search for some metrics.
+Access page http://monitor:9090 in your browser and search for some metrics.
 
 ## Grafana
 
@@ -495,5 +507,4 @@ For improved security:
 
 * consider LDAP integration for Grafana
 * implement appropriate authentication for the various end-points such as Prometheus/node_exporter
-
 
