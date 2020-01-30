@@ -9,9 +9,14 @@ textfile collector module.
 Uses [go-libp4dlog](https://github.com/rcowham/go-libp4dlog) for actual log file parsing.
 
 - [p4prometheus](#p4prometheus)
+  - [Support Status](#support-status)
   - [Overview](#overview)
 - [Grafana Dashboards](#grafana-dashboards)
 - [Detailed Installation](#detailed-installation)
+
+## Support Status
+
+This is currently a Community Supported Perforce tool.
 
 ## Overview
 

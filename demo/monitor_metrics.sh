@@ -105,8 +105,8 @@ else
     $p4 info -s || bail "Can't connect to P4PORT: $p4port"
     sdpinst_label=""
     sdpinst_suffix=""
-    p4logfile=$(p4 configure show | grep P4LOG | sed -e 's/P4LOG=//' -e 's/ .*//')
-    errors_file=$(p4 configure show | egrep "serverlog.file.*errors.csv" | cut -d= -f2 | sed -e 's/ (.*//')
+    p4logfile=$($p4 configure show | grep P4LOG | sed -e 's/P4LOG=//' -e 's/ .*//')
+    errors_file=$($p4 configure show | egrep "serverlog.file.*errors.csv" | cut -d= -f2 | sed -e 's/ (.*//')
 
 fi
 

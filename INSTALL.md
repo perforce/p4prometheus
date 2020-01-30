@@ -8,8 +8,10 @@
 - [Manual Installation](#manual-installation)
   - [Install node_exporter](#install-nodeexporter)
   - [Install p4prometheus - details](#install-p4prometheus---details)
-- [Alerting](#alerting)
+- [Install prometheus](#install-prometheus)
   - [Prometheus config](#prometheus-config)
+  - [Start and enable service](#start-and-enable-service)
+- [Alerting](#alerting)
   - [Grafana Dashboard](#grafana-dashboard)
   - [Alerting rules](#alerting-rules)
   - [Alertmanager config](#alertmanager-config)
@@ -23,6 +25,8 @@
 - [Advanced config options](#advanced-config-options)
 
 ## Package Install of Grafana
+
+Use the appropriate link below depending if you using `apt` or `yum`:
 
 * https://grafana.com/docs/grafana/latest/installation/debian/
 * https://grafana.com/docs/grafana/latest/installation/rpm/
@@ -137,6 +141,16 @@ You may need to adjust the `metrics_dir` variable. Note the script also copies o
 
 Alternatively do the manual installation steps below, suitably customised for your environment.
 
+- On monitoring server, install:
+  - grafana
+  - prometheus
+  - node_exporter
+  - alertmanager
+- On your commit/master or any perforce replica servers, install:
+  - p4prometheus
+  - monitor_metrics.sh
+  - node_exporter
+
 ## Install node_exporter
 
 This must be done on the Perforce (Helix Core) server machine (ditto for any other servers such as replicas which are being monitored).
@@ -151,7 +165,7 @@ Run the following as root:
     tar xvf node_exporter-$PVER.linux-amd64.tar.gz 
     mv node_exporter-$PVER.linux-amd64/node_exporter /usr/local/bin/
 
-Create a metrics directory, give ownership to account writing metrics, and make sure it has global read access (so `node_exporter` account can read entries)
+If you are installing on a Helix Core commit or replica server, then create a metrics directory, give ownership to account writing metrics, and make sure it has global read access (so `node_exporter` account can read entries)
 
     mkdir /hxlogs/metrics
     chown perforce:perforce /hxlogs/metrics
@@ -159,7 +173,9 @@ Create a metrics directory, give ownership to account writing metrics, and make 
 
 Ensure the above has global read access (e.g. user `perforce` will write files, user `node_exporter` will read them).
 
-Create service file (note value for directory - may need to be adjusted):
+Create service file (note value for directory - may need to be adjusted).
+
+Note that when installing on the monitoring machine, you do not need the /hxlogs/metrics directory, and you don't need the `collector.textfile.directory` parameter in the service file shown below.
 
 ```ini
 cat << EOF > /etc/systemd/system/node_exporter.service
@@ -204,7 +220,8 @@ Get latest release download link: https://github.com/rcowham/p4prometheus/releas
 
 Run the following as `root` (using link copied from above page):
 
-    wget https://github.com/rcowham/p4prometheus/files/3595236/p4prometheus.linux-amd64.gz
+    export $PVER=0.4.0
+    wget https://github.com/rcowham/p4prometheus/releases/download/v$PVER/p4prometheus.linux-amd64.gz
 
     gunzip p4prometheus.linux-amd64.gz
     
@@ -226,10 +243,12 @@ log_path:       /p4/1/logs/log
 # Ensure that node_exporter user has read access to this folder.
 metrics_output: /hxlogs/metrics/p4_cmds.prom
 # Optional - serverid for metrics - typically read from /p4/<sdp_instance>/root/server.id for 
-# SDP installations - please specify if non-SDP install
+# SDP installations - please specify a value if non-SDP install
 server_id:      
 EOF
 ```
+
+  chown perforce:perforce /p4/common/config/p4prometheus.yaml
 
 As user `root`:
 
@@ -270,7 +289,117 @@ Check logs for service in case of errors:
 
 Check that metrics are being written:
 
-    cat /hxlogs/metrics/p4_cmds.prom
+    grep lines /hxlogs/metrics/p4_cmds.prom
+
+# Install prometheus
+
+This must be done on the monitoring machine only.
+
+Run the following as root:
+
+  sudo useradd --no-create-home --shell /bin/false prometheus
+  sudo mkdir /etc/prometheus
+  sudo mkdir /var/lib/prometheus
+  sudo chown prometheus:prometheus /etc/prometheus
+  sudo chown prometheus:prometheus /var/lib/prometheus
+
+  export PVER="2.15.2"
+  wget https://github.com/prometheus/prometheus/releases/download/v$PVER/prometheus-$PVER.linux-amd64.tar.gz
+
+  tar xvf prometheus-$PVER.linux-amd64.tar.gz 
+  mv prometheus-$PVER.linux-amd64 prometheus-files
+
+  sudo cp prometheus-files/prometheus /usr/local/bin/
+  sudo cp prometheus-files/promtool /usr/local/bin/
+  sudo chown prometheus:prometheus /usr/local/bin/prometheus
+  sudo chown prometheus:prometheus /usr/local/bin/promtool
+  sudo chmod 755 /usr/local/bin/prometheus
+  sudo chmod 755 /usr/local/bin/promtool
+
+  sudo cp -r prometheus-files/consoles /etc/prometheus
+  sudo cp -r prometheus-files/console_libraries /etc/prometheus
+  sudo chown -R prometheus:prometheus /etc/prometheus/consoles
+  sudo chown -R prometheus:prometheus /etc/prometheus/console_libraries
+
+Create service file:
+
+```ini
+cat << EOF > /etc/systemd/system/prometheus.service
+[Unit]
+Description=Prometheus
+Wants=network-online.target
+After=network-online.target
+ 
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+ExecStart=/usr/local/bin/prometheus \
+    --config.file /etc/prometheus/prometheus.yml \
+    --storage.tsdb.path /var/lib/prometheus/ \
+    --web.console.templates=/etc/prometheus/consoles \
+    --web.console.libraries=/etc/prometheus/console_libraries
+ 
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+## Prometheus config
+
+```yaml
+cat << EOF > /etc/prometheus/prometheus.yml
+global:
+  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
+  # scrape_timeout is set to the global default (10s).
+
+# Alertmanager configuration - optional
+# alerting:
+#   alertmanagers:
+#   - static_configs:
+#     - targets:
+#         - localhost:9093
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+# rule_files:
+  # - "perforce_rules.yml"
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+    - targets: ['localhost:9090']
+
+  - job_name: 'node_exporter'
+    static_configs:
+    # CONFIGURE THESE VALUES FOR YOUR SERVERS!!!!
+    - targets: ['p4hms:9100', 'p4main:9100', 'p4_ha:9100']
+
+EOF
+```
+
+Make sure user has access:
+
+  sudo chown prometheus:prometheus /etc/prometheus/prometheus.yml
+
+## Start and enable service
+
+    sudo systemctl daemon-reload
+    sudo systemctl start prometheus
+    sudo systemctl status prometheus
+    sudo systemctl enable prometheus
+
+Check logs for service in case of errors:
+
+    journalctl -u prometheus --no-pager | tail
+
+Check that prometheus web interface is running:
+
+    curl http://localhost:9090/
+
+Or open URL in a browser.
 
 # Alerting
 
@@ -299,38 +428,6 @@ WantedBy=multi-user.target
 * create alertmanager user
 * create /etc/alertmanager directory
 
-## Prometheus config
-
-```yaml
-global:
-  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
-  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
-  # scrape_timeout is set to the global default (10s).
-
-# Alertmanager configuration
-alerting:
-  alertmanagers:
-  - static_configs:
-    - targets:
-        - localhost:9093
-
-# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
-rule_files:
-  - "perforce_rules.yml"
-
-# A scrape configuration containing exactly one endpoint to scrape:
-# Here it's Prometheus itself.
-scrape_configs:
-  - job_name: 'prometheus'
-    static_configs:
-    - targets: ['localhost:9090']
-
-  - job_name: 'node_exporter'
-    static_configs:
-    - targets: ['p4hms:9100', 'p4main:9100', 'p4_ha:9100']
-
-```
-
 ## Grafana Dashboard
 
 See the [Sample dashboard](demo/p4_stats_dashboard.json) which is easy to import as a Grafana dashboard.
@@ -344,6 +441,12 @@ In addition we recommend one or more of the node_exporter dashboards for server 
 ## Alerting rules
 
 This is an example, assuming simple email and local postfix or equivalent have been setup.
+
+It would be setup as /etc/prometheus/perforce_rules.yml
+
+Then uncomment the relevant section in prometheus.yml
+
+Please customize the below for things like `serverid` values and replica host names.
 
 ```yaml
 groups:
@@ -477,6 +580,8 @@ Make sure monitor_metrics.sh is working:
 bash -xv /p4/common/site/bin/monitor_metrics.sh 1
 ```
 
+Or if not using SDP, copy the [monitor_metrics.sh script](demo/monitor_metrics.sh) to an appropriate place such as `/usr/local/bin` and install it in your crontab.
+
 Check that appropriate files are listed in your metrics dir (and are being updated every minute), e.g.
 
     ls -l /hxlogs/metrics
@@ -493,11 +598,11 @@ Check that you can see values:
 
 ## prometheus
 
-Access page http://monitor:9090 in your browser and search for some metrics.
+Access page http://localhost:9090 in your browser and search for some metrics.
 
 ## Grafana
 
-Check that a suitable data source is setup (e.g. Prometheus)
+Check that a suitable data source is setup (i.e. Prometheus)
 
 Use the `Explore` option to look for some basic metrics, e.g. just start typing p4_ and it should autocomplete if it has found p4_ metrics being collected.
 
