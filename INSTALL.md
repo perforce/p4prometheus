@@ -23,6 +23,7 @@
   - [prometheus](#prometheus)
   - [Grafana](#grafana)
 - [Advanced config options](#advanced-config-options)
+- [Windows Installation](#windows-installation)
 
 ## Package Install of Grafana
 
@@ -613,3 +614,9 @@ For improved security:
 * consider LDAP integration for Grafana
 * implement appropriate authentication for the various end-points such as Prometheus/node_exporter
 
+# Windows Installation
+
+The above instructions are all for Linux. However, all the components have Windows binaries, with the exception of
+monitor_metrics.sh. A version in Powershell is on the TODO list!
+
+For p4prometheus you need to install as a service using for example [NSSM - Non Sucking Service Manager!](https://nssm.cc/)
