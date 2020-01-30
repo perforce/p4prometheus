@@ -24,9 +24,9 @@ dist:
 	GOOS=linux GOARCH=amd64 go build -o p4prometheus.linux-amd64 ${LDFLAGS}
 	GOOS=windows GOARCH=amd64 go build -o p4prometheus.windows-amd64 ${LDFLAGS}
 	go build -o p4prometheus.darwin-amd64 ${LDFLAGS}
-	-chmod +x $(wildcard p4prometheus*amd64)
-	-rm $(wildcard p4prometheus*amd64.gz)
-	gzip $(wildcard p4prometheus*amd64)
+	-chmod +x p4prometheus.linux-amd64 p4prometheus.windows-amd64 p4prometheus.darwin-amd64
+	-rm p4prometheus.linux-amd64.gz p4prometheus.windows-amd64.gz p4prometheus.darwin-amd64.gz
+	gzip p4prometheus.linux-amd64 p4prometheus.windows-amd64 p4prometheus.darwin-amd64
 
 # Installs our project: copies binaries
 install:

@@ -6,6 +6,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -42,7 +43,6 @@ type logConfig struct {
 type P4Prometheus struct {
 	config              *config.Config
 	logger              *logrus.Logger
-	testchan            chan string
 	fp                  *p4dlog.P4dFileParser
 	metricWriter        io.Writer
 	cmdCounter          map[string]int32
@@ -56,18 +56,19 @@ type P4Prometheus struct {
 	totalTriggerLapse   map[string]float64
 	cmdsProcessed       int64
 	linesRead           int64
+	metrics             chan string
 	lines               chan []byte
-	events              chan p4dlog.Command
+	cmdchan             chan p4dlog.Command
 	lastOutputTime      time.Time
 }
 
-func newP4Prometheus(config *config.Config, logger *logrus.Logger, testchan chan string) (p4p *P4Prometheus) {
+func newP4Prometheus(config *config.Config, logger *logrus.Logger) (p4p *P4Prometheus) {
 	return &P4Prometheus{
 		config:              config,
 		logger:              logger,
-		testchan:            testchan,
 		lines:               make(chan []byte, 10000),
-		events:              make(chan p4dlog.Command, 10000),
+		metrics:             make(chan string, 100),
+		cmdchan:             make(chan p4dlog.Command, 10000),
 		cmdCounter:          make(map[string]int32),
 		cmdCumulative:       make(map[string]float64),
 		cmdByUserCounter:    make(map[string]int32),
@@ -85,7 +86,7 @@ func printMetricHeader(f io.Writer, name string, help string, metricType string)
 }
 
 // Publish cumulative results - called on a ticker
-func (p4p *P4Prometheus) getCumulativeMetrics() []byte {
+func (p4p *P4Prometheus) getCumulativeMetrics() string {
 	sdpInstanceLabel := ""
 	serverIDLabel := fmt.Sprintf("serverid=\"%s\"", p4p.config.ServerID)
 	if p4p.config.SDPInstance != "" {
@@ -183,7 +184,7 @@ func (p4p *P4Prometheus) getCumulativeMetrics() []byte {
 			fmt.Fprint(metrics, buf)
 		}
 	}
-	return metrics.Bytes()
+	return metrics.String()
 }
 
 func (p4p *P4Prometheus) getSeconds(tmap map[string]interface{}, fieldName string) float64 {
@@ -203,7 +204,7 @@ func (p4p *P4Prometheus) getMilliseconds(tmap map[string]interface{}, fieldName 
 }
 
 func (p4p *P4Prometheus) publishEvent(cmd p4dlog.Command) {
-	p4p.logger.Debugf("publish cmd: %v\n", cmd)
+	p4p.logger.Debugf("publish cmd: %s\n", cmd.String())
 
 	p4p.cmdCounter[string(cmd.Cmd)]++
 	p4p.cmdCumulative[string(cmd.Cmd)] += float64(cmd.CompletedLapse)
@@ -224,6 +225,63 @@ func (p4p *P4Prometheus) publishEvent(cmd p4dlog.Command) {
 	}
 }
 
+// ProcessEvents - main event loop for P4Prometheus - reads lines and outputs metrics
+func (p4p *P4Prometheus) ProcessEvents(ctx context.Context,
+	publishInterval time.Duration, lines <-chan []byte, metrics chan<- string) int {
+	ticker := time.NewTicker(publishInterval)
+	for {
+		select {
+		case <-ctx.Done():
+			p4p.logger.Debugf("Done received")
+			close(metrics)
+			return -1
+		case <-ticker.C:
+			p4p.logger.Debugf("publishCumulative")
+			metrics <- p4p.getCumulativeMetrics()
+		case cmd, ok := <-p4p.cmdchan:
+			if ok {
+				p4p.logger.Debugf("Publishing cmd: %s", cmd.String())
+				p4p.cmdsProcessed++
+				p4p.publishEvent(cmd)
+			} else {
+				metrics <- p4p.getCumulativeMetrics()
+				close(metrics)
+				return 0
+			}
+		case line, ok := <-lines:
+			if ok {
+				p4p.logger.Debugf("Line: %s", line)
+				p4p.linesRead++
+				p4p.lines <- []byte(line)
+			} else {
+				p4p.logger.Debugf("Tailer closed")
+				if p4p.lines != nil {
+					close(p4p.lines)
+					p4p.lines = nil
+				} else {
+					time.Sleep(100 * time.Millisecond)
+				}
+				// We wait for the parser to close cmdchan before returning
+			}
+		}
+	}
+}
+
+// Reads server id for SDP instance
+func readServerID(logger *logrus.Logger, instance string) string {
+	idfile := fmt.Sprintf("/p4/%s/root/server.id", instance)
+	if _, err := os.Stat(idfile); err == nil {
+		buf, err := ioutil.ReadFile(idfile) // just pass the file name
+		if err != nil {
+			logger.Errorf("Failed to read %v - %v", idfile, err)
+			return ""
+		}
+		return string(bytes.TrimRight(buf, " \r\n"))
+	}
+	return ""
+}
+
+// Writes metrics to appropriate file
 func (p4p *P4Prometheus) writeMetricsFile(metrics []byte) {
 	f, err := os.Create(p4p.config.MetricsOutput)
 	if err != nil {
@@ -239,10 +297,10 @@ func (p4p *P4Prometheus) writeMetricsFile(metrics []byte) {
 	if err != nil {
 		p4p.logger.Errorf("Error chmod-ing file: %v", err)
 	}
-
 }
 
-func startTailer(cfgInput *logConfig, logger *logrus.Logger) (fswatcher.FileTailer, error) {
+// Returns a tailer object for specified file
+func getTailer(cfgInput *logConfig, logger *logrus.Logger) (fswatcher.FileTailer, error) {
 
 	var tail fswatcher.FileTailer
 	g, err := glob.FromPath(cfgInput.Path)
@@ -262,56 +320,6 @@ func startTailer(cfgInput *logConfig, logger *logrus.Logger) (fswatcher.FileTail
 		return nil, fmt.Errorf("config error: Input type '%v' unknown", cfgInput.Type)
 	}
 	return tail, nil
-}
-
-func readServerID(logger *logrus.Logger, instance string) string {
-	idfile := fmt.Sprintf("/p4/%s/root/server.id", instance)
-	if _, err := os.Stat(idfile); err == nil {
-		buf, err := ioutil.ReadFile(idfile) // just pass the file name
-		if err != nil {
-			logger.Errorf("Failed to read %v - %v", idfile, err)
-			return ""
-		}
-		return string(bytes.TrimRight(buf, " \r\n"))
-	}
-	return ""
-}
-
-// ProcessEvents - main event loop for P4Prometheus
-func (p4p *P4Prometheus) ProcessEvents(publishInterval time.Duration, tailer fswatcher.FileTailer, done chan int) int {
-	ticker := time.NewTicker(publishInterval)
-	for {
-		select {
-		case <-ticker.C:
-			p4p.logger.Debugf("publishCumulative")
-			if p4p.testchan == nil {
-				p4p.writeMetricsFile(p4p.getCumulativeMetrics())
-			} else {
-				p4p.testchan <- string(p4p.getCumulativeMetrics())
-			}
-		case err := <-tailer.Errors():
-			if os.IsNotExist(err.Cause()) {
-				p4p.logger.Errorf("error reading log lines: %v: use 'fail_on_missing_logfile: false' in the input configuration if you want p4prometheus to start even though the logfile is missing", err)
-				return -3
-			} else {
-				p4p.logger.Errorf("error reading log lines: %v", err)
-				return -4
-			}
-		case line := <-tailer.Lines():
-			p4p.logger.Debugf("Line: %v", line.Line)
-			p4p.linesRead++
-			p4p.lines <- []byte(line.Line)
-		case cmd := <-p4p.events:
-			p4p.logger.Debugf("Publishing cmd: %v", cmd)
-			p4p.cmdsProcessed++
-			p4p.publishEvent(cmd)
-		case <-done:
-			if p4p.testchan != nil {
-				close(p4p.testchan)
-			}
-			return 0
-		}
-	}
 }
 
 func main() {
@@ -353,17 +361,11 @@ func main() {
 		cfg.ServerID = readServerID(logger, cfg.SDPInstance)
 	}
 	logger.Infof("Server id: '%s'\n", cfg.ServerID)
-	p4p := newP4Prometheus(cfg, logger, nil)
 
-	fp := p4dlog.NewP4dFileParser()
-	p4p.fp = fp
-	if *debug {
-		fp.SetDebugMode()
-	}
-	go fp.LogParser(p4p.lines, p4p.events, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	//---------------
-
 	logcfg := &logConfig{
 		Type:                 "file",
 		Path:                 cfg.LogPath,
@@ -372,20 +374,65 @@ func main() {
 		FailOnMissingLogfile: false,
 	}
 
-	tailer, err := startTailer(logcfg, logger)
+	tailer, err := getTailer(logcfg, logger)
 	if err != nil {
 		logger.Errorf("error starting to tail log lines: %v", err)
 		os.Exit(-2)
 	}
 
-	done := make(chan int, 1)
+	// Setup P4Prometheus object and a file parser
+	p4p := newP4Prometheus(cfg, logger)
+	fp := p4dlog.NewP4dFileParser(logger)
+	p4p.fp = fp
+	if *debug {
+		fp.SetDebugMode()
+	}
+
+	metrics := make(chan string, 100)
+	lines := make(chan []byte, 100)
+	go fp.LogParser(ctx, p4p.lines, p4p.cmdchan)
+	go p4p.ProcessEvents(ctx, 10*time.Second, lines, metrics)
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigs
-		logger.Infof("Terminating normally - signal %v", sig)
-		done <- 1
+		logger.Infof("Terminating - signal %v", sig)
+		tailer.Close()
+		cancel()
 	}()
+
 	p4p.linesRead = 0
-	os.Exit(p4p.ProcessEvents(10*time.Second, tailer, done))
+	for {
+		select {
+		case metric, ok := <-metrics:
+			if ok {
+				p4p.writeMetricsFile([]byte(metric))
+			} else {
+				os.Exit(0)
+			}
+		case line, ok := <-tailer.Lines():
+			if ok {
+				p4p.linesRead++
+				p4p.lines <- []byte(line.Line)
+			} else {
+				// if p4p.lines != nil {
+				// 	close(p4p.lines)
+				// 	p4p.lines = nil
+				// }
+				os.Exit(0)
+			}
+		case err := <-tailer.Errors():
+			if err != nil {
+				if os.IsNotExist(err.Cause()) {
+					p4p.logger.Errorf("error reading log lines: %v: use 'fail_on_missing_logfile: false' in the input configuration if you want p4prometheus to start even though the logfile is missing", err)
+					os.Exit(-3)
+				}
+				p4p.logger.Errorf("error reading log lines: %v", err)
+				os.Exit(-4)
+			}
+			os.Exit(0)
+		}
+	}
+	os.Exit(0)
 }
