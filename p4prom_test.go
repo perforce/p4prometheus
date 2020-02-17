@@ -5,6 +5,7 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -22,7 +23,7 @@ var (
 	eol    = regexp.MustCompile("\r\n|\n")
 	logger = &logrus.Logger{Out: os.Stderr,
 		Formatter: &logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true},
-		Level:     logrus.DebugLevel}
+		Level:     logrus.InfoLevel}
 )
 
 func getResult(output chan string) []string {
@@ -88,18 +89,11 @@ func getOutput(testchan chan string) []string {
 			result = append(result, line)
 		}
 	}
+	sort.Strings(result)
 	return result
 }
 
-// func basicTest(cfg *config.Config, input string) []string {
-
-// }
-
-func TestP4PromBasic(t *testing.T) {
-	cfg := &config.Config{
-		ServerID:         "myserverid",
-		UpdateInterval:   10 * time.Millisecond,
-		OutputCmdsByUser: true}
+func basicTest(t *testing.T, cfg *config.Config, input string) []string {
 	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
 	logger.SetReportCaller(true)
 	logger.Infof("Function: %s", funcName())
@@ -108,7 +102,7 @@ func TestP4PromBasic(t *testing.T) {
 	defer cancel()
 
 	fp := p4dlog.NewP4dFileParser(logger)
-	fp.SetDebugMode()
+	// fp.SetDebugMode()
 	fp.SetDurations(10*time.Millisecond, 20*time.Millisecond)
 	lines := make(chan []byte, 100)
 	metrics := make(chan string, 100)
@@ -132,15 +126,7 @@ func TestP4PromBasic(t *testing.T) {
 		assert.Equal(t, 0, result)
 	}()
 
-	input := eol.Split(`
-Perforce server info:
-	2015/09/02 15:23:09 pid 1616 robert@robert-test 127.0.0.1 [p4/2016.2/LINUX26X86_64/1598668] 'user-sync //...'
-Perforce server info:
-	2015/09/02 15:23:09 pid 1616 compute end .031s
-Perforce server info:
-	2015/09/02 15:23:09 pid 1616 completed .031s
-`, -1)
-	for _, l := range input {
+	for _, l := range eol.Split(input, -1) {
 		lines <- []byte(l)
 	}
 
@@ -159,88 +145,134 @@ Perforce server info:
 	logger.Debugf("Waiting for finish")
 	wg.Wait()
 	logger.Debugf("Finished")
+	return output
+}
+
+func TestP4PromBasic(t *testing.T) {
+	cfg := &config.Config{
+		ServerID:         "myserverid",
+		UpdateInterval:   10 * time.Millisecond,
+		OutputCmdsByUser: true}
+
+	input := `
+Perforce server info:
+	2015/09/02 15:23:09 pid 1616 robert@robert-test 127.0.0.1 [p4/2016.2/LINUX26X86_64/1598668] 'user-sync //...'
+Perforce server info:
+	2015/09/02 15:23:09 pid 1616 compute end .031s
+Perforce server info:
+	2015/09/02 15:23:09 pid 1616 completed .031s
+`
+
+	output := basicTest(t, cfg, input)
+
 	assert.Equal(t, 7, len(output))
-	expected := eol.Split(`p4_prom_log_lines_read{serverid="myserverid"} 8
-p4_prom_cmds_processed{serverid="myserverid"} 1
-p4_prom_cmds_pending{serverid="myserverid"} 0
-p4_cmd_counter{cmd="user-sync",serverid="myserverid"} 1
+	expected := eol.Split(`p4_cmd_counter{cmd="user-sync",serverid="myserverid"} 1
 p4_cmd_cumulative_seconds{cmd="user-sync",serverid="myserverid"} 0.031
 p4_cmd_user_counter{user="robert",serverid="myserverid"} 1
-p4_cmd_user_cumulative_seconds{user="robert",serverid="myserverid"} 0.031`, -1)
+p4_cmd_user_cumulative_seconds{user="robert",serverid="myserverid"} 0.031
+p4_prom_cmds_pending{serverid="myserverid"} 0
+p4_prom_cmds_processed{serverid="myserverid"} 1
+p4_prom_log_lines_read{serverid="myserverid"} 8`, -1)
 	assert.Equal(t, expected, output)
 
 }
 
-// func TestP4PromBasic2(t *testing.T) {
-// 	cfg := &config.Config{SserverID: "myserverid"}
-// 	logger := logrus.New()
-// 	logger.Level = logrus.DebugLevel
-// 	logger.SetReportCaller(true)
+func TestP4PromBasicNoUser(t *testing.T) {
+	cfg := &config.Config{
+		ServerID:         "myserverid",
+		UpdateInterval:   10 * time.Millisecond,
+		OutputCmdsByUser: false}
 
-// 	tailer := newMockTailer()
-// 	fp := p4dlogrus.NewP4dFileParser()
-// 	fp.SetDebugMode()
-// 	testchan := make(chan string)
-// 	p4p := newP4Prometheus(cfg, logger, testchan)
-// 	p4p.fp = fp
-// 	p4p.logger = logger
-// 	done := make(chan int, 1)
-// 	go fp.LogParser(p4p.lines, p4p.events, nil)
-// 	go func() {
-// 		logger.Debugf("Starting to process events")
-// 		result := p4p.ProcessEvents(10*time.Millisecond, tailer, done)
-// 		logger.Debugf("Finished process events")
-// 		assert.Equal(t, 0, result)
-// 	}()
-// 	input := eol.Split(`
-// Perforce server info:
-// 	2017/12/07 15:00:21 pid 148469 Fred@LONWS 10.40.16.14/10.40.48.29 [3DSMax/1.0.0.0] 'user-change -i' trigger swarm.changesave
-// lapse .044s
-// Perforce server info:
-// 	2017/12/07 15:00:21 pid 148469 completed .413s 7+4us 0+584io 0+0net 4580k 0pf
-// Perforce server info:
-// 	2017/12/07 15:00:21 pid 148469 Fred@LONWS 10.40.16.14/10.40.48.29 [3DSMax/1.0.0.0] 'user-change -i'
-// --- lapse .413s
-// --- usage 10+11us 12+13io 14+15net 4088k 22pf
-// --- rpc msgs/size in+out 20+21/22mb+23mb himarks 318788/318789 snd/rcv .001s/.002s
-// --- db.counters
-// ---   pages in+out+cached 6+3+2
-// ---   locks read/write 0/2 rows get+pos+scan put+del 2+0+0 1+0
+	input := `
+Perforce server info:
+	2015/09/02 15:23:09 pid 1616 robert@robert-test 127.0.0.1 [p4/2016.2/LINUX26X86_64/1598668] 'user-sync //...'
+Perforce server info:
+	2015/09/02 15:23:09 pid 1616 compute end .031s
+Perforce server info:
+	2015/09/02 15:23:09 pid 1616 completed .031s
+`
 
-// Perforce server info:
-// 	2018/06/10 23:30:08 pid 25568 fred@lon_ws 10.1.2.3 [p4/2016.2/LINUX26X86_64/1598668] 'dm-CommitSubmit'
+	output := basicTest(t, cfg, input)
 
-// Perforce server info:
-// 	2018/06/10 23:30:08 pid 25568 fred@lon_ws 10.1.2.3 [p4/2016.2/LINUX26X86_64/1598668] 'dm-CommitSubmit'
-// --- meta/commit(W)
-// ---   total lock wait+held read/write 0ms+0ms/0ms+795ms
+	assert.Equal(t, 5, len(output))
+	expected := eol.Split(`p4_cmd_counter{cmd="user-sync",serverid="myserverid"} 1
+p4_cmd_cumulative_seconds{cmd="user-sync",serverid="myserverid"} 0.031
+p4_prom_cmds_pending{serverid="myserverid"} 0
+p4_prom_cmds_processed{serverid="myserverid"} 1
+p4_prom_log_lines_read{serverid="myserverid"} 8`, -1)
+	assert.Equal(t, expected, output)
 
-// Perforce server info:
-// 	2018/06/10 23:30:08 pid 25568 fred@lon_ws 10.1.2.3 [p4/2016.2/LINUX26X86_64/1598668] 'dm-CommitSubmit'
-// --- clients/MCM_client_184%2E51%2E33%2E29_prod_prefix1(W)
-// ---   total lock wait+held read/write 0ms+0ms/0ms+1367ms
+}
 
-// Perforce server info:
-// 	2018/06/10 23:30:09 pid 25568 completed 1.38s 34+61us 59680+59904io 0+0net 127728k 1pf
-// Perforce server info:
-// 	2018/06/10 23:30:08 pid 25568 fred@lon_ws 10.1.2.3 [p4/2016.2/LINUX26X86_64/1598668] 'dm-CommitSubmit'
-// --- db.integed
-// ---   total lock wait+held read/write 0ms+0ms/0ms+795ms
-// --- db.archmap
-// ---   total lock wait+held read/write 0ms+0ms/0ms+780ms`, -1)
-// 	tailer.addLines(input)
-// 	time.Sleep(40 * time.Millisecond)
-// 	// time.Sleep(4 * time.Second)
-// 	logger.Debugf("Sending done")
-// 	done <- 1
-// 	time.Sleep(10 * time.Millisecond)
-// 	logger.Debugf("Getting output")
-// 	lines := getOutput(testchan)
-// 	logger.Debugf("Got output")
-// 	assert.Equal(t, 3, len(lines))
-// 	expected := eol.Split(`p4_prom_log_lines_read{serverid="myserverid"} 36
-// p4_prom_cmds_processed{serverid="myserverid"} 0
-// p4_prom_cmds_pending{serverid="myserverid"} 0`, -1)
-// 	assert.Equal(t, expected, lines)
+func TestP4PromMultiCmds(t *testing.T) {
+	cfg := &config.Config{
+		ServerID:         "myserverid",
+		UpdateInterval:   10 * time.Millisecond,
+		OutputCmdsByUser: true}
 
-// }
+	input := `
+Perforce server info:
+	2017/12/07 15:00:21 pid 148469 fred@LONWS 10.40.16.14/10.40.48.29 [3DSMax/1.0.0.0] 'user-change -i' trigger swarm.changesave
+lapse .044s
+Perforce server info:
+	2017/12/07 15:00:21 pid 148469 completed .413s 7+4us 0+584io 0+0net 4580k 0pf
+Perforce server info:
+	2017/12/07 15:00:21 pid 148469 fred@LONWS 10.40.16.14/10.40.48.29 [3DSMax/1.0.0.0] 'user-change -i'
+--- lapse .413s
+--- usage 10+11us 12+13io 14+15net 4088k 22pf
+--- rpc msgs/size in+out 20+21/22mb+23mb himarks 318788/318789 snd/rcv .001s/.002s
+--- db.counters
+---   pages in+out+cached 6+3+2
+---   locks read/write 0/2 rows get+pos+scan put+del 2+0+0 1+0
+
+Perforce server info:
+	2018/06/10 23:30:08 pid 25568 fred@lon_ws 10.1.2.3 [p4/2016.2/LINUX26X86_64/1598668] 'dm-CommitSubmit'
+
+Perforce server info:
+	2018/06/10 23:30:08 pid 25568 fred@lon_ws 10.1.2.3 [p4/2016.2/LINUX26X86_64/1598668] 'dm-CommitSubmit'
+--- meta/commit(W)
+---   total lock wait+held read/write 0ms+0ms/0ms+795ms
+
+Perforce server info:
+	2018/06/10 23:30:08 pid 25568 fred@lon_ws 10.1.2.3 [p4/2016.2/LINUX26X86_64/1598668] 'dm-CommitSubmit'
+--- clients/MCM_client_184%2E51%2E33%2E29_prod_prefix1(W)
+---   total lock wait+held read/write 0ms+0ms/0ms+1367ms
+
+Perforce server info:
+	2018/06/10 23:30:09 pid 25568 completed 1.38s 34+61us 59680+59904io 0+0net 127728k 1pf
+Perforce server info:
+	2018/06/10 23:30:08 pid 25568 fred@lon_ws 10.1.2.3 [p4/2016.2/LINUX26X86_64/1598668] 'dm-CommitSubmit'
+--- db.integed
+---   total lock wait+held read/write 12ms+22ms/24ms+795ms
+--- db.archmap
+---   total lock wait+held read/write 32ms+33ms/34ms+780ms
+`
+
+	output := basicTest(t, cfg, input)
+
+	assert.Equal(t, 22, len(output))
+	expected := eol.Split(`p4_cmd_counter{cmd="dm-CommitSubmit",serverid="myserverid"} 1
+p4_cmd_counter{cmd="user-change",serverid="myserverid"} 1
+p4_cmd_cumulative_seconds{cmd="dm-CommitSubmit",serverid="myserverid"} 1.380
+p4_cmd_cumulative_seconds{cmd="user-change",serverid="myserverid"} 0.413
+p4_cmd_user_counter{user="fred",serverid="myserverid"} 2
+p4_cmd_user_cumulative_seconds{user="fred",serverid="myserverid"} 1.793
+p4_prom_cmds_pending{serverid="myserverid"} 0
+p4_prom_cmds_processed{serverid="myserverid"} 2
+p4_prom_log_lines_read{serverid="myserverid"} 37
+p4_total_read_held_seconds{table="archmap",serverid="myserverid"} 0.033
+p4_total_read_held_seconds{table="counters",serverid="myserverid"} 0.000
+p4_total_read_held_seconds{table="integed",serverid="myserverid"} 0.022
+p4_total_read_wait_seconds{table="archmap",serverid="myserverid"} 0.032
+p4_total_read_wait_seconds{table="counters",serverid="myserverid"} 0.000
+p4_total_read_wait_seconds{table="integed",serverid="myserverid"} 0.012
+p4_total_trigger_lapse_seconds{trigger="swarm.changesave",serverid="myserverid"} 0.044
+p4_total_write_held_seconds{table="archmap",serverid="myserverid"} 0.780
+p4_total_write_held_seconds{table="counters",serverid="myserverid"} 0.000
+p4_total_write_held_seconds{table="integed",serverid="myserverid"} 0.795
+p4_total_write_wait_seconds{table="archmap",serverid="myserverid"} 0.034
+p4_total_write_wait_seconds{table="counters",serverid="myserverid"} 0.000
+p4_total_write_wait_seconds{table="integed",serverid="myserverid"} 0.024`, -1)
+	assert.Equal(t, expected, output)
+
+}

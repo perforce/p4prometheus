@@ -220,10 +220,10 @@ func (p4p *P4Prometheus) publishEvent(cmd p4dlog.Command) {
 			triggerName := t.TableName[len(triggerPrefix):]
 			p4p.totalTriggerLapse[triggerName] += float64(t.TriggerLapse)
 		} else {
-			p4p.totalReadHeld[t.TableName] += float64(t.TotalReadHeld)
-			p4p.totalReadWait[t.TableName] += float64(t.TotalReadWait)
-			p4p.totalWriteHeld[t.TableName] += float64(t.TotalWriteHeld)
-			p4p.totalWriteWait[t.TableName] += float64(t.TotalWriteWait)
+			p4p.totalReadHeld[t.TableName] += float64(t.TotalReadHeld) / 1000
+			p4p.totalReadWait[t.TableName] += float64(t.TotalReadWait) / 1000
+			p4p.totalWriteHeld[t.TableName] += float64(t.TotalWriteHeld) / 1000
+			p4p.totalWriteWait[t.TableName] += float64(t.TotalWriteWait) / 1000
 		}
 	}
 }
