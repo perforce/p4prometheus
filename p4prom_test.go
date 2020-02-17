@@ -88,51 +88,18 @@ func getOutput(testchan chan string) []string {
 			result = append(result, line)
 		}
 	}
-	// for output := range testchan {
-	// 	for _, line := range eol.Split(output, -1) {
-	// 		if len(line) > 0 && !strings.HasPrefix(line, "#") {
-	// 			result = append(result, line)
-	// 		}
-	// 	}
-	// }
 	return result
 }
 
-// func TestP4Prom(t *testing.T) {
-// 	// This test sees what is returned if no log data is processed.
-// 	cfg := &config.Config{}
-// 	logger.SetReportCaller(true)
-// 	logger.Infof("Function: %s", funcName())
-
-// 	done := make(chan int, 1)
-// 	tailer := newMockTailer()
-// 	fp := p4dlog.NewP4dFileParser(logger)
-// 	testchan := make(chan string)
-// 	p4p := newP4Prometheus(cfg, logger, testchan)
-// 	p4p.fp = fp
-// 	go fp.LogParser(p4p.lines, p4p.events, nil)
-// 	go func() {
-// 		logger.Debugf("Starting to process events")
-// 		result := p4p.ProcessEvents(10*time.Millisecond, tailer, done)
-// 		logger.Debugf("Finished process events")
-// 		assert.Equal(t, 0, result)
-// 	}()
-// 	time.Sleep(20 * time.Millisecond)
-// 	logger.Debugf("Sending done")
-// 	done <- 1
-// 	logger.Debugf("Getting output")
-// 	lines := getOutput(testchan)
-// 	logger.Debugf("Got output")
-// 	assert.Equal(t, 3, len(lines))
-// 	expected := eol.Split(`p4_prom_log_lines_read{serverid=""} 0
-// p4_prom_cmds_processed{serverid=""} 0
-// p4_prom_cmds_pending{serverid=""} 0`, -1)
-// 	assert.Equal(t, expected, lines)
+// func basicTest(cfg *config.Config, input string) []string {
 
 // }
 
 func TestP4PromBasic(t *testing.T) {
-	cfg := &config.Config{ServerID: "myserverid"}
+	cfg := &config.Config{
+		ServerID:         "myserverid",
+		UpdateInterval:   10 * time.Millisecond,
+		OutputCmdsByUser: true}
 	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
 	logger.SetReportCaller(true)
 	logger.Infof("Function: %s", funcName())
@@ -160,7 +127,7 @@ func TestP4PromBasic(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		logger.Debugf("Starting to process events")
-		result := p4p.ProcessEvents(ctx, 10*time.Millisecond, lines, metrics)
+		result := p4p.ProcessEvents(ctx, lines, metrics)
 		logger.Debugf("Finished process events")
 		assert.Equal(t, 0, result)
 	}()

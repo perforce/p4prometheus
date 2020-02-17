@@ -128,19 +128,22 @@ func (p4p *P4Prometheus) getCumulativeMetrics() string {
 		p4p.logger.Debugf(buf)
 		fmt.Fprint(metrics, buf)
 	}
-	printMetricHeader(metrics, "p4_cmd_user_counter", "A count of completed p4 cmds (by user)", "counter")
-	for cmd, count := range p4p.cmdByUserCounter {
-		buf := fmt.Sprintf("p4_cmd_user_counter{user=\"%s\",%s%s} %d\n",
-			cmd, serverIDLabel, sdpInstanceLabel, count)
-		p4p.logger.Debugf(buf)
-		fmt.Fprint(metrics, buf)
-	}
-	printMetricHeader(metrics, "p4_cmd_user_cumulative_seconds", "The total in seconds (by user)", "counter")
-	for cmd, lapse := range p4p.cmdByUserCumulative {
-		buf := fmt.Sprintf("p4_cmd_user_cumulative_seconds{user=\"%s\",%s%s} %0.3f\n",
-			cmd, serverIDLabel, sdpInstanceLabel, lapse)
-		p4p.logger.Debugf(buf)
-		fmt.Fprint(metrics, buf)
+	// For large sites this might not be sensible - so they can turn it off
+	if p4p.config.OutputCmdsByUser {
+		printMetricHeader(metrics, "p4_cmd_user_counter", "A count of completed p4 cmds (by user)", "counter")
+		for cmd, count := range p4p.cmdByUserCounter {
+			buf := fmt.Sprintf("p4_cmd_user_counter{user=\"%s\",%s%s} %d\n",
+				cmd, serverIDLabel, sdpInstanceLabel, count)
+			p4p.logger.Debugf(buf)
+			fmt.Fprint(metrics, buf)
+		}
+		printMetricHeader(metrics, "p4_cmd_user_cumulative_seconds", "The total in seconds (by user)", "counter")
+		for cmd, lapse := range p4p.cmdByUserCumulative {
+			buf := fmt.Sprintf("p4_cmd_user_cumulative_seconds{user=\"%s\",%s%s} %0.3f\n",
+				cmd, serverIDLabel, sdpInstanceLabel, lapse)
+			p4p.logger.Debugf(buf)
+			fmt.Fprint(metrics, buf)
+		}
 	}
 	printMetricHeader(metrics, "p4_total_read_wait_seconds",
 		"The total waiting for read locks in seconds (by table)", "counter")
@@ -227,8 +230,8 @@ func (p4p *P4Prometheus) publishEvent(cmd p4dlog.Command) {
 
 // ProcessEvents - main event loop for P4Prometheus - reads lines and outputs metrics
 func (p4p *P4Prometheus) ProcessEvents(ctx context.Context,
-	publishInterval time.Duration, lines <-chan []byte, metrics chan<- string) int {
-	ticker := time.NewTicker(publishInterval)
+	lines <-chan []byte, metrics chan<- string) int {
+	ticker := time.NewTicker(p4p.config.UpdateInterval)
 	for {
 		select {
 		case <-ctx.Done():
@@ -391,7 +394,7 @@ func main() {
 	metrics := make(chan string, 100)
 	lines := make(chan []byte, 100)
 	go fp.LogParser(ctx, p4p.lines, p4p.cmdchan)
-	go p4p.ProcessEvents(ctx, 10*time.Second, lines, metrics)
+	go p4p.ProcessEvents(ctx, lines, metrics)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)

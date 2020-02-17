@@ -4,21 +4,25 @@ import (
 	"fmt"
 	"io/ioutil"
 	"strings"
+	"time"
 
 	yaml "gopkg.in/yaml.v2"
 )
 
 // Config for p4prometheus
 type Config struct {
-	LogPath       string `yaml:"log_path"`
-	MetricsOutput string `yaml:"metrics_output"`
-	ServerID      string `yaml:"server_id"`
-	SDPInstance   string `yaml:"sdp_instance"`
+	LogPath          string        `yaml:"log_path"`
+	MetricsOutput    string        `yaml:"metrics_output"`
+	ServerID         string        `yaml:"server_id"`
+	SDPInstance      string        `yaml:"sdp_instance"`
+	UpdateInterval   time.Duration `yaml:"update_interval"`
+	OutputCmdsByUser bool          `yaml:"output_cmds_by_user"`
 }
 
 // Unmarshal the config
 func Unmarshal(config []byte) (*Config, error) {
-	cfg := &Config{}
+	// Default values specified here
+	cfg := &Config{UpdateInterval: 15 * time.Second, OutputCmdsByUser: true}
 	err := yaml.Unmarshal(config, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("invalid configuration: %v. make sure to use 'single quotes' around strings with special characters (like match patterns or label templates), and make sure to use '-' only for lists (metrics) but not for maps (labels)", err.Error())
@@ -30,6 +34,7 @@ func Unmarshal(config []byte) (*Config, error) {
 	return cfg, nil
 }
 
+// LoadConfigFile - loads p4prometheus config file
 func LoadConfigFile(filename string) (*Config, error) {
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -42,6 +47,7 @@ func LoadConfigFile(filename string) (*Config, error) {
 	return cfg, nil
 }
 
+// LoadConfigString - loads a string
 func LoadConfigString(content []byte) (*Config, error) {
 	cfg, err := Unmarshal([]byte(content))
 	return cfg, err
