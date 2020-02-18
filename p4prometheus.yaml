@@ -1,9 +1,20 @@
-# Path to p4d server log
+# log_path: Path to p4d server log
 log_path:       /p4/1/logs/log
-# Name of output file to write for processing by node_exporter
+# metrics_output: Name of output file to write for processing by node_exporter
 metrics_output: /hxlogs/metrics/cmds.prom
-# Optional - serverid for metrics - typically read from /p4/<sdp_instance>/root/server.id
+# server_id: Optional - serverid for metrics - typically read from /p4/<sdp_instance>/root/server.id
+# if SDP instance is set
 server_id:      
-# SDP instance - typically integer, but can be
+# sdp_instance: SDP instance - typically integer, but can be
 # See: https://swarm.workshop.perforce.com/projects/perforce-software-sdp for more
+# Leave as blank or don't set if not an SDP server
 sdp_instance:   1
+# output_cmds_by_user: Whether to output metrics p4_cmd_user_counter/p4_cmd_user_cumulative_seconds
+# Normally this should be set to true
+# If you have a p4d instance with thousands of users you may find the number
+# of metrics labels is too great (one per distinct user), so turn this off.
+output_cmds_by_user: true
+# case_sensitive_server: if output_cmds_by_user is true then if this value is set to false
+# all userids will be written in lowercase - otherwise as they occur in the log file
+# If not present, this value will default to true on Windows and false otherwise.
+case_sensitive_server: true

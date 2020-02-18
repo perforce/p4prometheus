@@ -153,7 +153,6 @@ func TestP4PromBasic(t *testing.T) {
 		ServerID:         "myserverid",
 		UpdateInterval:   10 * time.Millisecond,
 		OutputCmdsByUser: true}
-
 	input := `
 Perforce server info:
 	2015/09/02 15:23:09 pid 1616 robert@robert-test 127.0.0.1 [p4/2016.2/LINUX26X86_64/1598668] 'user-sync //...'
@@ -209,7 +208,6 @@ func TestP4PromMultiCmds(t *testing.T) {
 		ServerID:         "myserverid",
 		UpdateInterval:   10 * time.Millisecond,
 		OutputCmdsByUser: true}
-
 	input := `
 Perforce server info:
 	2017/12/07 15:00:21 pid 148469 fred@LONWS 10.40.16.14/10.40.48.29 [3DSMax/1.0.0.0] 'user-change -i' trigger swarm.changesave
@@ -273,6 +271,60 @@ p4_total_write_held_seconds{table="integed",serverid="myserverid"} 0.795
 p4_total_write_wait_seconds{table="archmap",serverid="myserverid"} 0.034
 p4_total_write_wait_seconds{table="counters",serverid="myserverid"} 0.000
 p4_total_write_wait_seconds{table="integed",serverid="myserverid"} 0.024`, -1)
+	assert.Equal(t, expected, output)
+
+}
+
+var multiUserIntput = `
+Perforce server info:
+	2015/09/02 15:23:09 pid 1616 robert@robert-test 127.0.0.1 [p4/2016.2/LINUX26X86_64/1598668] 'user-fstat //some/file'
+Perforce server info:
+	2015/09/02 15:23:09 pid 1616 completed .011s
+
+Perforce server info:
+	2015/09/02 15:23:10 pid 1616 ROBERT@robert-test 127.0.0.1 [p4/2016.2/LINUX26X86_64/1598668] 'user-fstat //some/file'
+Perforce server info:
+	2015/09/02 15:23:10 pid 1616 completed .011s
+`
+
+func TestP4PromBasicMultiUserCaseSensitive(t *testing.T) {
+	// Case sensitive/insensitive user
+	cfg := &config.Config{
+		ServerID:            "myserverid",
+		UpdateInterval:      10 * time.Millisecond,
+		OutputCmdsByUser:    true,
+		CaseSensitiveServer: true}
+	output := basicTest(t, cfg, multiUserIntput)
+	assert.Equal(t, 9, len(output))
+	expected := eol.Split(`p4_cmd_counter{cmd="user-fstat",serverid="myserverid"} 2
+p4_cmd_cumulative_seconds{cmd="user-fstat",serverid="myserverid"} 0.022
+p4_cmd_user_counter{user="ROBERT",serverid="myserverid"} 1
+p4_cmd_user_counter{user="robert",serverid="myserverid"} 1
+p4_cmd_user_cumulative_seconds{user="ROBERT",serverid="myserverid"} 0.011
+p4_cmd_user_cumulative_seconds{user="robert",serverid="myserverid"} 0.011
+p4_prom_cmds_pending{serverid="myserverid"} 0
+p4_prom_cmds_processed{serverid="myserverid"} 2
+p4_prom_log_lines_read{serverid="myserverid"} 11`, -1)
+	assert.Equal(t, expected, output)
+
+}
+
+func TestP4PromBasicMultiUserCaseInsensitive(t *testing.T) {
+	// Case sensitive/insensitive user
+	cfg := &config.Config{
+		ServerID:            "myserverid",
+		UpdateInterval:      10 * time.Millisecond,
+		OutputCmdsByUser:    true,
+		CaseSensitiveServer: false}
+	output := basicTest(t, cfg, multiUserIntput)
+	assert.Equal(t, 7, len(output))
+	expected := eol.Split(`p4_cmd_counter{cmd="user-fstat",serverid="myserverid"} 2
+p4_cmd_cumulative_seconds{cmd="user-fstat",serverid="myserverid"} 0.022
+p4_cmd_user_counter{user="robert",serverid="myserverid"} 2
+p4_cmd_user_cumulative_seconds{user="robert",serverid="myserverid"} 0.022
+p4_prom_cmds_pending{serverid="myserverid"} 0
+p4_prom_cmds_processed{serverid="myserverid"} 2
+p4_prom_log_lines_read{serverid="myserverid"} 11`, -1)
 	assert.Equal(t, expected, output)
 
 }

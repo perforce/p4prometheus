@@ -234,18 +234,27 @@ As user `perforce`:
 
 ```bash
 cat << EOF > /p4/common/config/p4prometheus.yaml
-# SDP instance - typically integer, but can be
+# sdp_instance: SDP instance - typically integer, but can be
 # See: https://swarm.workshop.perforce.com/projects/perforce-software-sdp for more
 # If this value is blank then it is assumed to be a non-SDP instance.
 sdp_instance:   1
-# Path to p4d server log
+# log_path: Path to p4d server log
 log_path:       /p4/1/logs/log
-# Name of output file to write for processing by node_exporter.
+# metrics_output: Name of output file to write for processing by node_exporter.
 # Ensure that node_exporter user has read access to this folder.
 metrics_output: /hxlogs/metrics/p4_cmds.prom
-# Optional - serverid for metrics - typically read from /p4/<sdp_instance>/root/server.id for 
+# server_id: Optional - serverid for metrics - typically read from /p4/<sdp_instance>/root/server.id for 
 # SDP installations - please specify a value if non-SDP install
 server_id:      
+# output_cmds_by_user: Whether to output metrics p4_cmd_user_counter/p4_cmd_user_cumulative_seconds
+# Normally this should be set to true as the metrics are useful.
+# If you have a p4d instance with thousands of users you may find the number
+# of metrics labels is too great (one per distinct user), so set this to false.
+output_cmds_by_user: true
+# case_sensitive_server: if output_cmds_by_user=true then if this value is set to false
+# all userids will be written in lowercase - otherwise as they occur in the log file
+# If not present, this value will default to true on Windows and false otherwise.
+case_sensitive_server: true
 EOF
 ```
 

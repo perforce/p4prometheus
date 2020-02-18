@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"io/ioutil"
+	"runtime"
 	"strings"
 	"time"
 
@@ -11,18 +12,23 @@ import (
 
 // Config for p4prometheus
 type Config struct {
-	LogPath          string        `yaml:"log_path"`
-	MetricsOutput    string        `yaml:"metrics_output"`
-	ServerID         string        `yaml:"server_id"`
-	SDPInstance      string        `yaml:"sdp_instance"`
-	UpdateInterval   time.Duration `yaml:"update_interval"`
-	OutputCmdsByUser bool          `yaml:"output_cmds_by_user"`
+	LogPath             string        `yaml:"log_path"`
+	MetricsOutput       string        `yaml:"metrics_output"`
+	ServerID            string        `yaml:"server_id"`
+	SDPInstance         string        `yaml:"sdp_instance"`
+	UpdateInterval      time.Duration `yaml:"update_interval"`
+	OutputCmdsByUser    bool          `yaml:"output_cmds_by_user"`
+	CaseSensitiveServer bool          `yaml:"case_senstive_server"`
 }
 
 // Unmarshal the config
 func Unmarshal(config []byte) (*Config, error) {
 	// Default values specified here
-	cfg := &Config{UpdateInterval: 15 * time.Second, OutputCmdsByUser: true}
+	caseSensitive := true
+	if runtime.GOOS == "windows" {
+		caseSensitive = false
+	}
+	cfg := &Config{UpdateInterval: 15 * time.Second, OutputCmdsByUser: true, CaseSensitiveServer: caseSensitive}
 	err := yaml.Unmarshal(config, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("invalid configuration: %v. make sure to use 'single quotes' around strings with special characters (like match patterns or label templates), and make sure to use '-' only for lists (metrics) but not for maps (labels)", err.Error())

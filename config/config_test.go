@@ -1,6 +1,7 @@
 package config
 
 import (
+	"runtime"
 	"testing"
 	"time"
 )
@@ -12,6 +13,7 @@ server_id:			myserverid
 sdp_instance: 		1
 update_interval: 	15s
 output_cmds_by_user: true
+case_sensitive_server: true
 `
 
 const nonSDPConfig1 = `
@@ -20,6 +22,7 @@ metrics_output:		/hxlogs/metrics/cmds.prom
 server_id:			myserverid
 update_interval: 	1m
 output_cmds_by_user: false
+case_sensitive_server: true
 `
 
 const nonSDPConfig2 = `
@@ -29,6 +32,7 @@ server_id:			myserverid
 sdp_instance:
 update_interval: 	20s
 output_cmds_by_user: true
+case_sensitive_server: false
 `
 
 func checkValue(t *testing.T, fieldname string, val string, expected string) {
@@ -94,6 +98,15 @@ sdp_instance: 		1
 	}
 	if !cfg.OutputCmdsByUser {
 		t.Errorf("Failed default output_cmds_by_user")
+	}
+	if runtime.GOOS == "windows" {
+		if cfg.CaseSensitiveServer {
+			t.Errorf("Failed default case_senstive_server on Windows")
+		}
+	} else {
+		if !cfg.CaseSensitiveServer {
+			t.Errorf("Failed default case_senstive_server on Linux/Mac")
+		}
 	}
 
 }

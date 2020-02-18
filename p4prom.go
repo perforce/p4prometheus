@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"strings"
 	"syscall"
 	"time"
 
@@ -131,16 +132,16 @@ func (p4p *P4Prometheus) getCumulativeMetrics() string {
 	// For large sites this might not be sensible - so they can turn it off
 	if p4p.config.OutputCmdsByUser {
 		printMetricHeader(metrics, "p4_cmd_user_counter", "A count of completed p4 cmds (by user)", "counter")
-		for cmd, count := range p4p.cmdByUserCounter {
+		for user, count := range p4p.cmdByUserCounter {
 			buf := fmt.Sprintf("p4_cmd_user_counter{user=\"%s\",%s%s} %d\n",
-				cmd, serverIDLabel, sdpInstanceLabel, count)
+				user, serverIDLabel, sdpInstanceLabel, count)
 			p4p.logger.Debugf(buf)
 			fmt.Fprint(metrics, buf)
 		}
 		printMetricHeader(metrics, "p4_cmd_user_cumulative_seconds", "The total in seconds (by user)", "counter")
-		for cmd, lapse := range p4p.cmdByUserCumulative {
+		for user, lapse := range p4p.cmdByUserCumulative {
 			buf := fmt.Sprintf("p4_cmd_user_cumulative_seconds{user=\"%s\",%s%s} %0.3f\n",
-				cmd, serverIDLabel, sdpInstanceLabel, lapse)
+				user, serverIDLabel, sdpInstanceLabel, lapse)
 			p4p.logger.Debugf(buf)
 			fmt.Fprint(metrics, buf)
 		}
@@ -211,8 +212,12 @@ func (p4p *P4Prometheus) publishEvent(cmd p4dlog.Command) {
 
 	p4p.cmdCounter[string(cmd.Cmd)]++
 	p4p.cmdCumulative[string(cmd.Cmd)] += float64(cmd.CompletedLapse)
-	p4p.cmdByUserCounter[string(cmd.User)]++
-	p4p.cmdByUserCumulative[string(cmd.User)] += float64(cmd.CompletedLapse)
+	user := string(cmd.User)
+	if !p4p.config.CaseSensitiveServer {
+		user = strings.ToLower(user)
+	}
+	p4p.cmdByUserCounter[user]++
+	p4p.cmdByUserCumulative[user] += float64(cmd.CompletedLapse)
 	const triggerPrefix = "trigger_"
 
 	for _, t := range cmd.Tables {
