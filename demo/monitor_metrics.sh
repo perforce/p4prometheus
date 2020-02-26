@@ -335,7 +335,8 @@ monitor_errors () {
     # Metric for error counts - but only if structured error log exists
     fname="$metrics_root/p4_errors${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-
+    tmperrfile="${errors_file}.tmp"
+    
     [[ -f "$errors_file" ]] || { rm -f "$fname"; return; }
 
     declare -A subsystems=([0]=OS [1]=SUPP [2]=LBR [3]=RPC [4]=DB [5]=DBSUPP [6]=DM [7]=SERVER [8]=CLIENT \
@@ -358,8 +359,8 @@ monitor_errors () {
     # Create a new error file if the current line count is greater then the last line count
     # the new file is mapped to the original var
     if [[ $p4err_lc_curr -gt $p4err_lc_last ]]; then
-        sed -n "$p4err_lc_last,$p4err_lc_curr"p "$errors_file" >> "${errors_file}.tmp"
-        errors_file="${errors_file}.tmp"
+        sed -n "$p4err_lc_last,$p4err_lc_curr"p "$errors_file" >> "$tmperrfile"
+        errors_file="$tmperrfile"
     fi
 
     echo "" > "$tmpfname"
@@ -375,7 +376,7 @@ monitor_errors () {
     mv "$tmpfname" "$fname"
 
     # Delete the tmp file
-    rm -f "${errors_file}.tmp"
+    rm -f "$tmperrfile"
 }
 
 monitor_pull () {
