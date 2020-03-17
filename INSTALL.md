@@ -221,7 +221,7 @@ Get latest release download link: https://github.com/rcowham/p4prometheus/releas
 
 Run the following as `root` (using link copied from above page):
 
-    export $PVER=0.4.0
+    export PVER=0.4.0
     wget https://github.com/rcowham/p4prometheus/releases/download/v$PVER/p4prometheus.linux-amd64.gz
 
     gunzip p4prometheus.linux-amd64.gz
