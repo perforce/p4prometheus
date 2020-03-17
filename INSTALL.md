@@ -199,9 +199,9 @@ EOF
 Start and enable service:
 
     sudo systemctl daemon-reload
+    sudo systemctl enable node_exporter
     sudo systemctl start node_exporter
     sudo systemctl status node_exporter
-    sudo systemctl enable node_exporter
 
 Check logs for service in case of errors:
 
@@ -289,9 +289,9 @@ EOF
 Start and enable service:
 
     sudo systemctl daemon-reload
+    sudo systemctl enable p4prometheus
     sudo systemctl start p4prometheus
     sudo systemctl status p4prometheus
-    sudo systemctl enable p4prometheus
 
 Check logs for service in case of errors:
 
