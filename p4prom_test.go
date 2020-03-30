@@ -106,7 +106,7 @@ func basicTest(t *testing.T, cfg *config.Config, input string) []string {
 	fp.SetDurations(10*time.Millisecond, 20*time.Millisecond)
 	lines := make(chan []byte, 100)
 	metrics := make(chan string, 100)
-	p4p := newP4Prometheus(cfg, logger)
+	p4p := newP4Prometheus(cfg, logger, false)
 	p4p.fp = fp
 
 	var wg sync.WaitGroup
@@ -165,10 +165,10 @@ Perforce server info:
 	output := basicTest(t, cfg, input)
 
 	assert.Equal(t, 7, len(output))
-	expected := eol.Split(`p4_cmd_counter{cmd="user-sync",serverid="myserverid"} 1
-p4_cmd_cumulative_seconds{cmd="user-sync",serverid="myserverid"} 0.031
-p4_cmd_user_counter{user="robert",serverid="myserverid"} 1
-p4_cmd_user_cumulative_seconds{user="robert",serverid="myserverid"} 0.031
+	expected := eol.Split(`p4_cmd_counter{serverid="myserverid",cmd="user-sync"} 1
+p4_cmd_cumulative_seconds{serverid="myserverid",cmd="user-sync"} 0.031
+p4_cmd_user_counter{serverid="myserverid",user="robert"} 1
+p4_cmd_user_cumulative_seconds{serverid="myserverid",user="robert"} 0.031
 p4_prom_cmds_pending{serverid="myserverid"} 0
 p4_prom_cmds_processed{serverid="myserverid"} 1
 p4_prom_log_lines_read{serverid="myserverid"} 8`, -1)
@@ -194,8 +194,8 @@ Perforce server info:
 	output := basicTest(t, cfg, input)
 
 	assert.Equal(t, 5, len(output))
-	expected := eol.Split(`p4_cmd_counter{cmd="user-sync",serverid="myserverid"} 1
-p4_cmd_cumulative_seconds{cmd="user-sync",serverid="myserverid"} 0.031
+	expected := eol.Split(`p4_cmd_counter{serverid="myserverid",cmd="user-sync"} 1
+p4_cmd_cumulative_seconds{serverid="myserverid",cmd="user-sync"} 0.031
 p4_prom_cmds_pending{serverid="myserverid"} 0
 p4_prom_cmds_processed{serverid="myserverid"} 1
 p4_prom_log_lines_read{serverid="myserverid"} 8`, -1)
@@ -249,28 +249,28 @@ Perforce server info:
 	output := basicTest(t, cfg, input)
 
 	assert.Equal(t, 22, len(output))
-	expected := eol.Split(`p4_cmd_counter{cmd="dm-CommitSubmit",serverid="myserverid"} 1
-p4_cmd_counter{cmd="user-change",serverid="myserverid"} 1
-p4_cmd_cumulative_seconds{cmd="dm-CommitSubmit",serverid="myserverid"} 1.380
-p4_cmd_cumulative_seconds{cmd="user-change",serverid="myserverid"} 0.413
-p4_cmd_user_counter{user="fred",serverid="myserverid"} 2
-p4_cmd_user_cumulative_seconds{user="fred",serverid="myserverid"} 1.793
+	expected := eol.Split(`p4_cmd_counter{serverid="myserverid",cmd="dm-CommitSubmit"} 1
+p4_cmd_counter{serverid="myserverid",cmd="user-change"} 1
+p4_cmd_cumulative_seconds{serverid="myserverid",cmd="dm-CommitSubmit"} 1.380
+p4_cmd_cumulative_seconds{serverid="myserverid",cmd="user-change"} 0.413
+p4_cmd_user_counter{serverid="myserverid",user="fred"} 2
+p4_cmd_user_cumulative_seconds{serverid="myserverid",user="fred"} 1.793
 p4_prom_cmds_pending{serverid="myserverid"} 0
 p4_prom_cmds_processed{serverid="myserverid"} 2
 p4_prom_log_lines_read{serverid="myserverid"} 37
-p4_total_read_held_seconds{table="archmap",serverid="myserverid"} 0.033
-p4_total_read_held_seconds{table="counters",serverid="myserverid"} 0.000
-p4_total_read_held_seconds{table="integed",serverid="myserverid"} 0.022
-p4_total_read_wait_seconds{table="archmap",serverid="myserverid"} 0.032
-p4_total_read_wait_seconds{table="counters",serverid="myserverid"} 0.000
-p4_total_read_wait_seconds{table="integed",serverid="myserverid"} 0.012
-p4_total_trigger_lapse_seconds{trigger="swarm.changesave",serverid="myserverid"} 0.044
-p4_total_write_held_seconds{table="archmap",serverid="myserverid"} 0.780
-p4_total_write_held_seconds{table="counters",serverid="myserverid"} 0.000
-p4_total_write_held_seconds{table="integed",serverid="myserverid"} 0.795
-p4_total_write_wait_seconds{table="archmap",serverid="myserverid"} 0.034
-p4_total_write_wait_seconds{table="counters",serverid="myserverid"} 0.000
-p4_total_write_wait_seconds{table="integed",serverid="myserverid"} 0.024`, -1)
+p4_total_read_held_seconds{serverid="myserverid",table="archmap"} 0.033
+p4_total_read_held_seconds{serverid="myserverid",table="counters"} 0.000
+p4_total_read_held_seconds{serverid="myserverid",table="integed"} 0.022
+p4_total_read_wait_seconds{serverid="myserverid",table="archmap"} 0.032
+p4_total_read_wait_seconds{serverid="myserverid",table="counters"} 0.000
+p4_total_read_wait_seconds{serverid="myserverid",table="integed"} 0.012
+p4_total_trigger_lapse_seconds{serverid="myserverid",trigger="swarm.changesave"} 0.044
+p4_total_write_held_seconds{serverid="myserverid",table="archmap"} 0.780
+p4_total_write_held_seconds{serverid="myserverid",table="counters"} 0.000
+p4_total_write_held_seconds{serverid="myserverid",table="integed"} 0.795
+p4_total_write_wait_seconds{serverid="myserverid",table="archmap"} 0.034
+p4_total_write_wait_seconds{serverid="myserverid",table="counters"} 0.000
+p4_total_write_wait_seconds{serverid="myserverid",table="integed"} 0.024`, -1)
 	assert.Equal(t, expected, output)
 
 }
@@ -296,12 +296,12 @@ func TestP4PromBasicMultiUserCaseSensitive(t *testing.T) {
 		CaseSensitiveServer: true}
 	output := basicTest(t, cfg, multiUserIntput)
 	assert.Equal(t, 9, len(output))
-	expected := eol.Split(`p4_cmd_counter{cmd="user-fstat",serverid="myserverid"} 2
-p4_cmd_cumulative_seconds{cmd="user-fstat",serverid="myserverid"} 0.022
-p4_cmd_user_counter{user="ROBERT",serverid="myserverid"} 1
-p4_cmd_user_counter{user="robert",serverid="myserverid"} 1
-p4_cmd_user_cumulative_seconds{user="ROBERT",serverid="myserverid"} 0.011
-p4_cmd_user_cumulative_seconds{user="robert",serverid="myserverid"} 0.011
+	expected := eol.Split(`p4_cmd_counter{serverid="myserverid",cmd="user-fstat"} 2
+p4_cmd_cumulative_seconds{serverid="myserverid",cmd="user-fstat"} 0.022
+p4_cmd_user_counter{serverid="myserverid",user="ROBERT"} 1
+p4_cmd_user_counter{serverid="myserverid",user="robert"} 1
+p4_cmd_user_cumulative_seconds{serverid="myserverid",user="ROBERT"} 0.011
+p4_cmd_user_cumulative_seconds{serverid="myserverid",user="robert"} 0.011
 p4_prom_cmds_pending{serverid="myserverid"} 0
 p4_prom_cmds_processed{serverid="myserverid"} 2
 p4_prom_log_lines_read{serverid="myserverid"} 11`, -1)
@@ -318,10 +318,10 @@ func TestP4PromBasicMultiUserCaseInsensitive(t *testing.T) {
 		CaseSensitiveServer: false}
 	output := basicTest(t, cfg, multiUserIntput)
 	assert.Equal(t, 7, len(output))
-	expected := eol.Split(`p4_cmd_counter{cmd="user-fstat",serverid="myserverid"} 2
-p4_cmd_cumulative_seconds{cmd="user-fstat",serverid="myserverid"} 0.022
-p4_cmd_user_counter{user="robert",serverid="myserverid"} 2
-p4_cmd_user_cumulative_seconds{user="robert",serverid="myserverid"} 0.022
+	expected := eol.Split(`p4_cmd_counter{serverid="myserverid",cmd="user-fstat"} 2
+p4_cmd_cumulative_seconds{serverid="myserverid",cmd="user-fstat"} 0.022
+p4_cmd_user_counter{serverid="myserverid",user="robert"} 2
+p4_cmd_user_cumulative_seconds{serverid="myserverid",user="robert"} 0.022
 p4_prom_cmds_pending{serverid="myserverid"} 0
 p4_prom_cmds_processed{serverid="myserverid"} 2
 p4_prom_log_lines_read{serverid="myserverid"} 11`, -1)
