@@ -79,16 +79,26 @@ func funcName() string {
 	return caller.Name()
 }
 
-// Assuming there are several outputs - this returns the latest one
-func getOutput(testchan chan string) []string {
+// Assuming there are several outputs - this returns the latest one unless historical
+func getOutput(testchan chan string, historical bool) []string {
 	result := make([]string, 0)
 	lastoutput := ""
-	for output := range testchan {
-		lastoutput = output
-	}
-	for _, line := range eol.Split(lastoutput, -1) {
-		if len(line) > 0 && !strings.HasPrefix(line, "#") {
-			result = append(result, line)
+	if historical {
+		for output := range testchan {
+			for _, line := range eol.Split(output, -1) {
+				if len(line) > 0 && !strings.HasPrefix(line, "#") {
+					result = append(result, line)
+				}
+			}
+		}
+	} else {
+		for output := range testchan {
+			lastoutput = output
+		}
+		for _, line := range eol.Split(lastoutput, -1) {
+			if len(line) > 0 && !strings.HasPrefix(line, "#") {
+				result = append(result, line)
+			}
 		}
 	}
 	sort.Strings(result)
@@ -138,7 +148,7 @@ func basicTest(t *testing.T, cfg *config.Config, input string, historical bool) 
 		defer wg.Done()
 		time.Sleep(20 * time.Millisecond)
 		logger.Debugf("Waiting for metrics")
-		output = getOutput(metrics)
+		output = getOutput(metrics, historical)
 	}()
 
 	wg.Add(3)
@@ -235,6 +245,57 @@ p4_prom_log_lines_read;serverid=myserverid 8 1441207389`, -1)
 	assert.Equal(t, expected, output)
 }
 
+func TestP4PromBasicHistorical(t *testing.T) {
+	// Test with multiple outputs
+	cfg := &config.Config{
+		ServerID:         "myserverid",
+		UpdateInterval:   10 * time.Millisecond,
+		OutputCmdsByUser: false}
+
+	input := `
+Perforce server info:
+	2015/09/02 15:23:09 pid 1616 robert@robert-test 127.0.0.1 [p4/2016.2/LINUX26X86_64/1598668] 'user-sync //...'
+Perforce server info:
+	2015/09/02 15:23:09 pid 1616 compute end .031s
+Perforce server info:
+	2015/09/02 15:23:09 pid 1616 completed .031s
+
+Perforce server info:
+	2015/09/02 15:24:10 pid 1617 robert@robert-test 127.0.0.1 [p4/2016.2/LINUX26X86_64/1598668] 'user-sync //...'
+Perforce server info:
+	2015/09/02 15:24:10 pid 1617 compute end .032s
+Perforce server info:
+	2015/09/02 15:24:10 pid 1617 completed .032s
+
+Perforce server info:
+	2015/09/02 15:25:11 pid 1617 robert@robert-test 127.0.0.1 [p4/2016.2/LINUX26X86_64/1598668] 'user-sync //...'
+Perforce server info:
+	2015/09/02 15:25:11 pid 1617 compute end .033s
+Perforce server info:
+	2015/09/02 15:25:11 pid 1617 completed .033s
+`
+
+	cmdTime, _ := time.Parse(p4timeformat, "2015/09/02 15:25:11")
+	historical := true
+	output := basicTest(t, cfg, input, historical)
+
+	assert.Equal(t, 11, len(output))
+	// Cross check appropriate time is being produced for historical runs
+	assert.Contains(t, output[0], fmt.Sprintf("%d", cmdTime.Unix()))
+	expected := eol.Split(`p4_cmd_counter;serverid=myserverid;cmd=user-sync 3 1441207511
+p4_cmd_cumulative_seconds;serverid=myserverid;cmd=user-sync 0.096 1441207511
+p4_prom_cmds_pending;serverid=myserverid 0 1441207511
+p4_prom_cmds_pending;serverid=myserverid 1 1441207450
+p4_prom_cmds_pending;serverid=myserverid 2 1441207511
+p4_prom_cmds_processed;serverid=myserverid 0 1441207450
+p4_prom_cmds_processed;serverid=myserverid 0 1441207511
+p4_prom_cmds_processed;serverid=myserverid 3 1441207511
+p4_prom_log_lines_read;serverid=myserverid 10 1441207450
+p4_prom_log_lines_read;serverid=myserverid 17 1441207511
+p4_prom_log_lines_read;serverid=myserverid 22 1441207511`, -1)
+	assert.Equal(t, expected, output)
+}
+
 func TestP4PromMultiCmds(t *testing.T) {
 	cfg := &config.Config{
 		ServerID:         "myserverid",
@@ -310,7 +371,7 @@ p4_total_write_wait_seconds{serverid="myserverid",table="integed"} 0.024`, -1)
 	historical = true
 	output = basicTest(t, cfg, input, historical)
 
-	assert.Equal(t, 22, len(output))
+	assert.Equal(t, 28, len(output))
 	// Cross check appropriate time is being produced for historical runs
 	// assert.Contains(t, output[0], fmt.Sprintf("%d", cmdTime1.Unix()))
 	assert.Contains(t, output[len(output)-1], fmt.Sprintf("%d", cmdTime2.Unix()))
@@ -321,7 +382,13 @@ p4_cmd_cumulative_seconds;serverid=myserverid;cmd=user-change 0.413 1528673409
 p4_cmd_user_counter;serverid=myserverid;user=fred 2 1528673409
 p4_cmd_user_cumulative_seconds;serverid=myserverid;user=fred 1.793 1528673409
 p4_prom_cmds_pending;serverid=myserverid 0 1528673409
+p4_prom_cmds_pending;serverid=myserverid 1 1528673408
+p4_prom_cmds_pending;serverid=myserverid 2 1528673409
+p4_prom_cmds_processed;serverid=myserverid 0 1528673408
+p4_prom_cmds_processed;serverid=myserverid 0 1528673409
 p4_prom_cmds_processed;serverid=myserverid 2 1528673409
+p4_prom_log_lines_read;serverid=myserverid 17 1528673408
+p4_prom_log_lines_read;serverid=myserverid 30 1528673409
 p4_prom_log_lines_read;serverid=myserverid 37 1528673409
 p4_total_read_held_seconds;serverid=myserverid;table=archmap 0.033 1528673409
 p4_total_read_held_seconds;serverid=myserverid;table=counters 0.000 1528673409
