@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -48,6 +49,7 @@ type logConfig struct {
 type P4Prometheus struct {
 	config              *config.Config
 	historical          bool
+	timeLatestStartCmd  time.Time
 	logger              *logrus.Logger
 	fp                  *p4dlog.P4dFileParser
 	metricWriter        io.Writer
@@ -139,7 +141,7 @@ func (p4p *P4Prometheus) formatLabels(mname string, labels []labelStruct) string
 func (p4p *P4Prometheus) formatMetric(mname string, labels []labelStruct, metricVal string) string {
 	if p4p.historical {
 		return fmt.Sprintf("%s %s %d\n", p4p.formatLabels(mname, labels),
-			metricVal, p4p.lastOutputTime.Unix())
+			metricVal, p4p.timeLatestStartCmd.Unix())
 	}
 	return fmt.Sprintf("%s %s\n", p4p.formatLabels(mname, labels), metricVal)
 }
@@ -287,7 +289,7 @@ func (p4p *P4Prometheus) getMilliseconds(tmap map[string]interface{}, fieldName 
 }
 
 func (p4p *P4Prometheus) publishEvent(cmd p4dlog.Command) {
-	p4p.logger.Debugf("publish cmd: %s\n", cmd.String())
+	// p4p.logger.Debugf("publish cmd: %s\n", cmd.String())
 
 	p4p.cmdCounter[string(cmd.Cmd)]++
 	p4p.cmdCumulative[string(cmd.Cmd)] += float64(cmd.CompletedLapse)
@@ -312,6 +314,32 @@ func (p4p *P4Prometheus) publishEvent(cmd p4dlog.Command) {
 	}
 }
 
+// GO standard reference value/format: Mon Jan 2 15:04:05 -0700 MST 2006
+const p4timeformat = "2006/01/02 15:04:05"
+
+var reDate = regexp.MustCompile(`^\t(\d\d\d\d/\d\d/\d\d \d\d:\d\d:\d\d)`)
+
+// Searches for log lines starting with a date - assumes increasing
+func (p4p *P4Prometheus) historicalUpdateRequired(line []byte) bool {
+	if !p4p.historical {
+		return false
+	}
+	m := reDate.FindSubmatch(line)
+	if len(m) == 0 {
+		return false
+	}
+	dt, _ := time.Parse(p4timeformat, string(m[1]))
+	if p4p.timeLatestStartCmd.IsZero() {
+		p4p.timeLatestStartCmd = dt
+		return false
+	}
+	if dt.Sub(p4p.timeLatestStartCmd) >= p4p.config.UpdateInterval {
+		p4p.timeLatestStartCmd = dt
+		return true
+	}
+	return false
+}
+
 // ProcessEvents - main event loop for P4Prometheus - reads lines and outputs metrics
 func (p4p *P4Prometheus) ProcessEvents(ctx context.Context,
 	lines <-chan []byte, metrics chan<- string) int {
@@ -323,13 +351,24 @@ func (p4p *P4Prometheus) ProcessEvents(ctx context.Context,
 			close(metrics)
 			return -1
 		case <-ticker.C:
+			// Ticker only relevant for live log processing
 			p4p.logger.Debugf("publishCumulative")
-			metrics <- p4p.getCumulativeMetrics()
+			if !p4p.historical {
+				metrics <- p4p.getCumulativeMetrics()
+			}
+			// else {
+			// 	if p4p.historicalUpdateRequired() {
+			// 		metrics <- p4p.getCumulativeMetrics()
+			// 	}
+			// }
 		case cmd, ok := <-p4p.cmdchan:
 			if ok {
 				p4p.logger.Debugf("Publishing cmd: %s", cmd.String())
 				p4p.cmdsProcessed++
 				p4p.publishEvent(cmd)
+				// if p4p.historicalUpdateRequired() {
+				// 	metrics <- p4p.getCumulativeMetrics()
+				// }
 			} else {
 				metrics <- p4p.getCumulativeMetrics()
 				close(metrics)
@@ -340,6 +379,9 @@ func (p4p *P4Prometheus) ProcessEvents(ctx context.Context,
 				p4p.logger.Debugf("Line: %s", line)
 				p4p.linesRead++
 				p4p.lines <- []byte(line)
+				if p4p.historical && p4p.historicalUpdateRequired(line) {
+					metrics <- p4p.getCumulativeMetrics()
+				}
 			} else {
 				p4p.logger.Debugf("Tailer closed")
 				if p4p.lines != nil {
@@ -370,19 +412,31 @@ func readServerID(logger *logrus.Logger, instance string) string {
 
 // Writes metrics to appropriate file
 func (p4p *P4Prometheus) writeMetricsFile(metrics []byte) {
-	f, err := os.Create(p4p.config.MetricsOutput)
-	if err != nil {
-		p4p.logger.Errorf("Error opening %s: %v", p4p.config.MetricsOutput, err)
-		return
+	var f *os.File
+	var err error
+	if p4p.historical {
+		f, err = os.OpenFile(p4p.config.MetricsOutput, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			p4p.logger.Errorf("Error opening %s: %v", p4p.config.MetricsOutput, err)
+			return
+		}
+	} else {
+		f, err = os.Create(p4p.config.MetricsOutput)
+		if err != nil {
+			p4p.logger.Errorf("Error opening %s: %v", p4p.config.MetricsOutput, err)
+			return
+		}
 	}
 	f.Write(metrics)
 	err = f.Close()
 	if err != nil {
 		p4p.logger.Errorf("Error closing file: %v", err)
 	}
-	err = os.Chmod(p4p.config.MetricsOutput, 0644)
-	if err != nil {
-		p4p.logger.Errorf("Error chmod-ing file: %v", err)
+	if !p4p.historical {
+		err = os.Chmod(p4p.config.MetricsOutput, 0644)
+		if err != nil {
+			p4p.logger.Errorf("Error chmod-ing file: %v", err)
+		}
 	}
 }
 
@@ -429,9 +483,9 @@ func runLogTailer(logger *logrus.Logger, logcfg *logConfig, cfg *config.Config, 
 	}
 
 	metrics := make(chan string, 100)
-	lines := make(chan []byte, 100)
+	linesIn := make(chan []byte, 100)
 	go fp.LogParser(ctx, p4p.lines, p4p.cmdchan)
-	go p4p.ProcessEvents(ctx, lines, metrics)
+	go p4p.ProcessEvents(ctx, linesIn, metrics)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -514,15 +568,16 @@ func processHistoricalLog(logger *logrus.Logger, cfg *config.Config, logfile str
 	}
 
 	metrics := make(chan string, 100)
-	lines := make(chan []byte, 100)
+	linesIn := make(chan []byte, 100)
 	go fp.LogParser(ctx, p4p.lines, p4p.cmdchan)
-	go p4p.ProcessEvents(ctx, lines, metrics)
+	go p4p.ProcessEvents(ctx, linesIn, metrics)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigs
 		logger.Infof("Terminating - signal %v", sig)
+		os.Exit(-1)
 	}()
 
 	var file *os.File
@@ -573,12 +628,16 @@ func processHistoricalLog(logger *logrus.Logger, cfg *config.Config, logfile str
 
 	p4p.linesRead = 0
 
-	// Start a goroutine printing progress
+	// Start a goroutine processing all lines in file
 	go func() {
 		for scanner.Scan() {
 			p4p.linesRead++
-			p4p.lines <- scanner.Bytes()
+			if p4p.linesRead%100 == 0 {
+				logger.Debugf("Lines read %d", p4p.linesRead)
+			}
+			linesIn <- scanner.Bytes()
 		}
+		close(linesIn)
 		fmt.Fprintln(os.Stderr, "\nprocessing completed")
 	}()
 
@@ -676,6 +735,9 @@ func main() {
 	if *historical && len(*historicalMetricsFile) == 0 {
 		logger.Errorf("error in parameters - must specify --historical.metrics.file when --historical is set")
 		os.Exit(-1)
+	}
+	if *historical {
+		cfg.MetricsOutput = *historicalMetricsFile
 	}
 	logger.Infof("Processing log file: '%s' output to '%s' SDP instance '%s'\n",
 		cfg.LogPath, cfg.MetricsOutput, cfg.SDPInstance)
