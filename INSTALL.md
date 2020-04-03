@@ -185,9 +185,15 @@ that this script is running.
 
 Look in the log file /p4/1/logs/monitor_metrics.log for output.
 
-e.g.
+e.g. the following will find all info messages
 
-  grep 2020/ /p4/1/logs/monitor_metrics.log | grep -v "no blocked commands" | less
+    grep -E "\t2020" /p4/1/logs/monitor_metrics.log | grep -v "no blocked commands" | less
+
+Output might be something like:
+
+    2020-04-03 14:40:01 pid 3657, user fred, cmd reconcile, table /p4/1/db1/server.locks/clients/79,d/FRED_LAPTOP, blocked by pid 326259, user fred, cmd reconcile, args -f -m -n c:\dev\ext\...
+
+Please note that metrics are written to `/p4/metrics/locks.prom` and will be available to Prometheus/Grafana.
 
 ## Install node exporter
 
