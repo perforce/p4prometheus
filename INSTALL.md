@@ -6,6 +6,8 @@
 - [Configure prometheus components](#configure-prometheus-components)
   - [Run installation](#run-installation)
 - [Manual Installation](#manual-installation)
+  - [Install monitor_metrics cron jobs](#install-monitormetrics-cron-jobs)
+    - [Checking for blocked commands](#checking-for-blocked-commands)
   - [Install node_exporter](#install-nodeexporter)
   - [Install p4prometheus - details](#install-p4prometheus---details)
 - [Install prometheus](#install-prometheus)
@@ -15,7 +17,6 @@
   - [Grafana Dashboard](#grafana-dashboard)
   - [Alerting rules](#alerting-rules)
   - [Alertmanager config](#alertmanager-config)
-  - [Install monitor_metrics cron job](#install-monitormetrics-cron-job)
 - [Troubleshooting](#troubleshooting)
   - [p4prometheus](#p4prometheus)
   - [monitor_metrics](#monitormetrics)
@@ -137,7 +138,6 @@ You may need to adjust the `metrics_dir` variable. Note the script also copies o
 
     ansible-playbook -i hosts -v install_p4prometheus.yml
 
-
 # Manual Installation
 
 Alternatively do the manual installation steps below, suitably customised for your environment.
@@ -150,7 +150,44 @@ Alternatively do the manual installation steps below, suitably customised for yo
 - On your commit/master or any perforce replica servers, install:
   - p4prometheus
   - monitor_metrics.sh
+  - monitor_wrapper.sh and monitor_metrics.py
   - node_exporter
+
+## Install monitor_metrics cron jobs
+
+Download:
+* [monitor_metrics.sh](demo/monitor_metrics.sh)
+* [monitor_wrapper.sh](demo/monitor_wrapper.sh)
+* [monitor_metrics.py](demo/monitor_metrics.py)
+
+Configure them for your metrics directory (e.g. /hxlogs/metrics)
+
+Please note that `monitor_metrics.py` (which is called by `monitor_wrapper.sh`) runs `lslocks` and 
+cross references locsk found with `p4 monitor show` output. This is incredibly useful for
+determining processes which are blocked by other processes. It is hard to discover this information
+if you are not collecting the data at the time!
+
+Warning: make sure that `lslocks` is installed on your Linux distribution.
+
+Install in crontab to run every minute:
+
+    INSTANCE=1
+    */1 * * * * /p4/common/site/bin/monitor_metrics.sh $INSTANCE > /dev/null 2>&1 ||:
+    */1 * * * * /p4/common/site/bin/monitor_wrapper.sh $INSTANCE > /dev/null 2>&1 ||:
+
+For non-SDP installation:
+    */1 * * * * /path/to/monitor_metrics.sh -p $P4PORT -u $P4USER -nosdp > /dev/null 2>&1 ||:
+
+If not using SDP then please ensure that appropriate LONG TERM TICKET is setup in the environment
+that this script is running.
+
+### Checking for blocked commands
+
+Look in the log file /p4/1/logs/monitor_metrics.log for output.
+
+e.g.
+
+  grep 2020/ /p4/1/logs/monitor_metrics.log | grep -v "no blocked commands" | less
 
 ## Install node_exporter
 
@@ -544,23 +581,6 @@ receivers:
   email_configs:
   - to: p4-group@example.com
 ```
-
-## Install monitor_metrics cron job
-
-Download [monitor_metrics.sh](demo/monitor_metrics.sh)
-
-Configure it for your metrics directory (e.g. /hxlogs/metrics)
-
-Install in crontab to run every minute:
-
-    INSTANCE=1
-    */1 * * * * /p4/common/site/bin/monitor_metrics.sh $INSTANCE > /dev/null 2>&1 ||:
-
-For non-SDP installation:
-    */1 * * * * /path/to/monitor_metrics.sh -p $P4PORT -u $P4USER -nosdp > /dev/null 2>&1 ||:
-
-If not using SDP then please ensure that appropriate LONG TERM TICKET is setup in the environment
-that this script is running.
 
 # Troubleshooting
 
