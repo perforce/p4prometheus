@@ -47,6 +47,7 @@ class TestMonitorMetrics(unittest.TestCase):
         self.assertEqual(0, m.clientEntityLocks)
         self.assertEqual(0, m.metaLocks)
         self.assertEqual(0, m.blockedCommands)
+        self.assertEqual(0, len(m.msgs))
 
         m = obj.findLocks(lockdata, mondata)
         self.assertEqual(1, m.dbReadLocks)
@@ -54,6 +55,32 @@ class TestMonitorMetrics(unittest.TestCase):
         self.assertEqual(1, m.clientEntityLocks)
         self.assertEqual(1, m.metaLocks)
         self.assertEqual(0, m.blockedCommands)
+        self.assertEqual(0, len(m.msgs))
+
+    def testFindBlockers(self):
+        """Check parsing of lockdata"""
+        lockdata = """{ "locks": [
+                {"command": "p4d", "pid": "2502", "type": "FLOCK", "size": "17B", "mode": "READ", "m": "0", "start": "0", "end": "0", "path": "/p4/1/root/db.have", "blocker": "166"},
+                {"command": "p4d", "pid": "2503", "type": "FLOCK", "size": "17B", "mode": "READ", "m": "0", "start": "0", "end": "0", "path": "/p4/1/root/db.have", "blocker": "166"},
+                {"command": "p4d", "pid": "2502", "type": "FLOCK", "size": "17B", "mode": "READ", "m": "0", "start": "0", "end": "0", "path": "/p4/1/root/db.have", "blocker": null}
+            ]}
+            """
+        mondata = """     562 I perforce 00:01:01 monitor
+          2502 I fred 00:01:01 sync //...
+          2503 I susan 00:01:01 sync //...
+          166 I jim 00:01:01 sync -f //...
+        """
+        obj = P4Monitor()
+        m = obj.findLocks(lockdata, mondata)
+        self.assertEqual(3, m.dbReadLocks)
+        self.assertEqual(0, m.dbWriteLocks)
+        self.assertEqual(0, m.clientEntityLocks)
+        self.assertEqual(0, m.metaLocks)
+        self.assertEqual(2, m.blockedCommands)
+        self.assertEqual(2, len(m.msgs))
+        self.assertEqual("pid 2502, user fred, cmd sync, table /p4/1/root/db.have, blocked by pid 166, user jim, cmd sync, args -f //...", m.msgs[0])
+        self.assertEqual("pid 2503, user susan, cmd sync, table /p4/1/root/db.have, blocked by pid 166, user jim, cmd sync, args -f //...", m.msgs[1])
+
 
 if __name__ == '__main__':
     unittest.main()

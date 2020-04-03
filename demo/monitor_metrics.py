@@ -14,6 +14,10 @@ NAME:
 DESCRIPTION:
     This script monitors locks and other Perforce server metrics for use with Prometheus.
 
+    Assumes it is wrapped by a simple bash script monitor_wrapper.sh
+
+    That configures SDP env or equivalent env vars.
+
 """
 
 # Python 2.7/3.3 compatibility.
@@ -26,13 +30,14 @@ import argparse
 import logging
 import re
 import subprocess
+import datetime
 import json
 
 LOGGER_NAME = 'monitor_metrics'
 logger = logging.getLogger(LOGGER_NAME)
 
-metrics_root = "/hxlogs/metrics"
-default_logfile = "locks.log"
+metrics_root = "/p4/metrics"
+metrics_file = "locks.prom"
 
 script_name = os.path.basename(os.path.splitext(__file__)[0])
 LOGDIR = os.getenv('LOGS', '/p4/1/logs')
@@ -45,17 +50,32 @@ LOGGER_NAME = 'monitor_metrics'
 
 class MonitorMetrics:
     """Metric counts"""
-    dbReadLocks = 0
-    dbWriteLocks = 0
-    clientEntityLocks = 0
-    metaLocks = 0
-    blockedCommands = 0
+
+    def __init__(self):
+        super().__init__()
+        self.dbReadLocks = 0
+        self.dbWriteLocks = 0
+        self.clientEntityReadLocks = 0
+        self.clientEntityWriteLocks = 0
+        self.metaReadLocks = 0
+        self.metaWriteLocks = 0
+        self.replicaReadLocks = 0
+        self.replicaWriteLocks = 0
+        self.blockedCommands = 0
+        self.msgs = []
 
 class P4Monitor(object):
     """See module doc string for details"""
 
     def __init__(self, *args, **kwargs):
         self.parse_args(__doc__, args)
+        self.now = datetime.datetime.now()
+        self.sdpinst_label = ""
+        self.serverid_label = ""
+        if self.options.sdp_instance:
+            self.sdpinst_label = ',sdpinst="%s"' % self.options.sdp_instance
+            with open("/p4/%s/root/server.id" % self.options.sdp_instance, "r") as f:
+                self.serverid_label = 'serverid="%s"' % f.read().rstrip()
 
     def parse_args(self, doc, args):
         """Common parsing and setting up of args"""
@@ -86,6 +106,7 @@ class P4Monitor(object):
         parser.add_argument('-L', '--log', default=default_log_file, help="Default: " + default_log_file)
         parser.add_argument('--no-sdp', action='store_true', default=False, help="Whether this is SDP instance or not")
         parser.add_argument('-i', '--sdp-instance', help="SDP instance")
+        parser.add_argument('-m', '--metrics-root', default=metrics_root, help="Metrics directory to use. Default: " + metrics_root)
         parser.add_argument('-v', '--verbosity',
                             nargs='?',
                             const="INFO",
@@ -148,10 +169,11 @@ class P4Monitor(object):
                 pids[pid] = (user, cmd, args)
         return pids
 
-    # {"command": "p4d", "pid": "2502", "type": "FLOCK", "size": "17B", 
-    # "mode": "READ", "m": "0", "start": "0", "end": "0", 
-    # "path": "/p4/1/root/server.locks/clientEntity/10,d/robomerge-main-ts", 
-    # "blocker": null}
+    # lslocks output in JSON format:
+    # {"command": "p4d", "pid": "2502", "type": "FLOCK", "size": "17B",
+    #   "mode": "READ", "m": "0", "start": "0", "end": "0",
+    #   "path": "/p4/1/root/server.locks/clientEntity/10,d/robomerge-main-ts",
+    #   "blocker": null}
     def findLocks(self, lockdata, mondata):
         "Finds appropriate locks by parsing data"
         pids = self.parseMonitorData(mondata)
@@ -169,6 +191,12 @@ class P4Monitor(object):
                 continue
             if "clientEntity" in j["path"]:
                 metrics.clientEntityLocks += 1
+            cmd = user = args = ""
+            pid = j["pid"]
+            mode = j["mode"]
+            path = j["path"]
+            if j["pid"] in pids:
+                user, cmd, args = pids[j["pid"]]
             if "server.locks/meta" in j["path"]:
                 metrics.metaLocks += 1
             if "/db." in j["path"]:
@@ -178,25 +206,84 @@ class P4Monitor(object):
                     metrics.dbWriteLocks += 1
             if j["blocker"]:
                 metrics.blockedCommands += 1
-                if j["blocker"] in pids:
-                    user, cmd, blocker, buser, bcmd = ""
-                    if j["pid"] in pids:
-                        user, cmd, blocker = pids[j["pid"]]
-                    msg = "Cmd %s pid %s blocked by cmd %s pid %s user %s" % (
-                    )
+                buser, bcmd, bargs = "unknown", "unknown", "unknown"
+                bpid = j["blocker"]
+                if bpid in pids:
+                    buser, bcmd, bargs = pids[bpid]
+                msg = "pid %s, user %s, cmd %s, table %s, blocked by pid %s, user %s, cmd %s, args %s" % (
+                    pid, user, cmd, path, bpid, buser, bcmd, bargs)
+                metrics.msgs.append(msg)
         return metrics
+
+    def metricsHeader(self, name, help, type):
+        lines = []
+        lines.append("# HELP %s %s" % (name, help))
+        lines.append("# TYPE %s %s" % (name, type))
+        return lines
+
+    def formatMetrics(self, metrics):
+        lines = []
+        name = "p4_locks_db_read"
+        lines.extend(self.metricsHeader(name, "Database read locks", "gauge"))
+        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.dbReadLocks))
+        name = "p4_locks_db_write"
+        lines.extend(self.metricsHeader(name, "Database write locks", "gauge"))
+        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.dbWriteLocks))
+        name = "p4_locks_cliententity_read"
+        lines.extend(self.metricsHeader(name, "clientEntity read locks", "gauge"))
+        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.clientEntityReadLocks))
+        name = "p4_locks_cliententity_write"
+        lines.extend(self.metricsHeader(name, "clientEntity write locks", "gauge"))
+        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.clientEntityWriteLocks))
+        name = "p4_locks_meta_read"
+        lines.extend(self.metricsHeader(name, "meta db read locks", "gauge"))
+        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.metaReadLocks))
+        name = "p4_locks_meta_write"
+        lines.extend(self.metricsHeader(name, "meta db write locks", "gauge"))
+        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.metaWriteLocks))
+        name = "p4_locks_replica_read"
+        lines.extend(self.metricsHeader(name, "replica read locks", "gauge"))
+        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.replicaReadLocks))
+        name = "p4_locks_replica_write"
+        lines.extend(self.metricsHeader(name, "replica write locks", "gauge"))
+        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.replicaWriteLocks))
+        return lines
+
+    def writeMetrics(self, lines):
+        fname = os.path.join(self.options.metrics_root, metrics_file)
+        self.logger.debug("Writing to metrics file: %s", fname)
+        self.logger.debug("Metrics: %s\n", "\n".join(lines))
+        tmpfname = fname + ".tmp"
+        with open(tmpfname, "w") as f:
+            f.write("\n".join(lines))
+            f.write("\n")
+        os.rename(tmpfname, fname)
+
+    def formatLog(self, metrics):
+        prefix = self.now.strftime("%Y-%m-%d %H:%M:%S")
+        lines = []
+        if not metrics.msgs:
+            lines.append("%s no blocked commands" % prefix)
+        else:
+            for m in metrics.msgs:
+                lines.append("%s %s" % (prefix, m))
+        return lines
+
+    def writeLog(self, lines):
+        with open(self.options.log, "a") as f:
+            f.write("\n".join(lines))
+            f.write("\n")
 
     def run(self):
         """Runs script"""
         p4cmd = "%s -u %s -p %s" % (os.environ["P4BIN"], os.environ["P4USER"], os.environ["P4PORT"])
         lockdata = self.run_cmd("lslocks -o +BLOCKER -J")
-        mondata = self.run_cmd('%s -F "%id% %runstate% %user% %elapsed% %function% %args%" monitor show -al' % p4cmd)
-        self.findLocks(lockdata, mondata)
-        self.logLocks()
-        self.logMetrics()
+        mondata = self.run_cmd('{0} -F "%id% %runstate% %user% %elapsed% %function% %args%" monitor show -al'.format(p4cmd))
+        metrics = self.findLocks(lockdata, mondata)
+        self.writeLog(self.formatLog(metrics))
+        self.writeMetrics(self.formatMetrics(metrics))
 
 if __name__ == '__main__':
     """ Main Program"""
     obj = P4Monitor(*sys.argv[1:])
     obj.run()
-

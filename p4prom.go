@@ -50,6 +50,7 @@ type P4Prometheus struct {
 	config              *config.Config
 	historical          bool
 	timeLatestStartCmd  time.Time
+	latestStartCmdBuf   []byte
 	logger              *logrus.Logger
 	fp                  *p4dlog.P4dFileParser
 	metricWriter        io.Writer
@@ -151,7 +152,7 @@ func (p4p *P4Prometheus) getCumulativeMetrics() string {
 	fixedLabels := []labelStruct{{name: "serverid", value: p4p.config.ServerID},
 		{name: "sdpinst", value: p4p.config.SDPInstance}}
 	metrics := new(bytes.Buffer)
-	p4p.logger.Infof("Writing stats\n")
+	p4p.logger.Infof("Writing stats")
 	p4p.lastOutputTime = time.Now()
 
 	var mname string
@@ -319,16 +320,33 @@ const p4timeformat = "2006/01/02 15:04:05"
 
 var reDate = regexp.MustCompile(`^\t(\d\d\d\d/\d\d/\d\d \d\d:\d\d:\d\d)`)
 
-// Searches for log lines starting with a date - assumes increasing
+// Searches for log lines starting with a date - assumes increasing dates in log
 func (p4p *P4Prometheus) historicalUpdateRequired(line []byte) bool {
 	if !p4p.historical {
 		return false
 	}
-	m := reDate.FindSubmatch(line)
-	if len(m) == 0 {
+	// This next section is much more efficient than regex parsing - we return ASAP
+	lenPrefix := len("\t2020/03/04 12:13:14")
+	if len(line) < lenPrefix {
 		return false
 	}
-	dt, _ := time.Parse(p4timeformat, string(m[1]))
+	if line[0] != '\t' || line[5] != '/' || line[8] != '/' ||
+		line[11] != ' ' || line[14] != ':' || line[17] != ':' {
+		return false
+	}
+	for _, i := range []int{1, 2, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16, 18, 19} {
+		if line[i] < byte('0') || line[i] > byte('9') {
+			return false
+		}
+	}
+	if len(p4p.latestStartCmdBuf) > 0 && bytes.Equal(p4p.latestStartCmdBuf, line[:lenPrefix]) {
+		return false
+	}
+	// Update only if greater (due to log format we do see out of sequence dates with track records)
+	if bytes.Compare(line[:lenPrefix], p4p.latestStartCmdBuf) > 0 {
+		p4p.latestStartCmdBuf = line[:lenPrefix]
+	}
+	dt, _ := time.Parse(p4timeformat, string(p4p.latestStartCmdBuf[1:]))
 	if p4p.timeLatestStartCmd.IsZero() {
 		p4p.timeLatestStartCmd = dt
 		return false
@@ -356,19 +374,11 @@ func (p4p *P4Prometheus) ProcessEvents(ctx context.Context,
 			if !p4p.historical {
 				metrics <- p4p.getCumulativeMetrics()
 			}
-			// else {
-			// 	if p4p.historicalUpdateRequired() {
-			// 		metrics <- p4p.getCumulativeMetrics()
-			// 	}
-			// }
 		case cmd, ok := <-p4p.cmdchan:
 			if ok {
 				p4p.logger.Debugf("Publishing cmd: %s", cmd.String())
 				p4p.cmdsProcessed++
 				p4p.publishEvent(cmd)
-				// if p4p.historicalUpdateRequired() {
-				// 	metrics <- p4p.getCumulativeMetrics()
-				// }
 			} else {
 				metrics <- p4p.getCumulativeMetrics()
 				close(metrics)
@@ -580,6 +590,9 @@ func processHistoricalLog(logger *logrus.Logger, cfg *config.Config, logfile str
 		os.Exit(-1)
 	}()
 
+	startTime := time.Now()
+	logger.Infof("Starting %s", startTime)
+
 	var file *os.File
 	if logfile == "-" {
 		file = os.Stdin
@@ -639,6 +652,7 @@ func processHistoricalLog(logger *logrus.Logger, cfg *config.Config, logfile str
 		}
 		close(linesIn)
 		fmt.Fprintln(os.Stderr, "\nprocessing completed")
+		logger.Infof("Completed %s, elapsed %s", time.Now(), time.Since(startTime))
 	}()
 
 	for {
@@ -739,7 +753,7 @@ func main() {
 	if *historical {
 		cfg.MetricsOutput = *historicalMetricsFile
 	}
-	logger.Infof("Processing log file: '%s' output to '%s' SDP instance '%s'\n",
+	logger.Infof("Processing log file: '%s' output to '%s' SDP instance '%s'",
 		cfg.LogPath, cfg.MetricsOutput, cfg.SDPInstance)
 	if cfg.SDPInstance == "" && len(cfg.ServerID) == 0 {
 		logger.Errorf("error loading config file - if no sdp_instance then please specifiy server_id!")
@@ -748,7 +762,7 @@ func main() {
 	if len(cfg.ServerID) == 0 && cfg.SDPInstance != "" {
 		cfg.ServerID = readServerID(logger, cfg.SDPInstance)
 	}
-	logger.Infof("Server id: '%s'\n", cfg.ServerID)
+	logger.Infof("Server id: '%s'", cfg.ServerID)
 
 	var logcfg *logConfig
 
