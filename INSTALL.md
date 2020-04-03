@@ -187,7 +187,7 @@ Look in the log file /p4/1/logs/monitor_metrics.log for output.
 
 e.g. the following will find all info messages
 
-    grep -E "\t2020" /p4/1/logs/monitor_metrics.log | grep -v "no blocked commands" | less
+    grep ^2020 /p4/1/logs/monitor_metrics.log | grep -v "no blocked commands" | less
 
 Output might be something like:
 
