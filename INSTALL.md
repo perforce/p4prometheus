@@ -6,9 +6,9 @@
 - [Configure prometheus components](#configure-prometheus-components)
   - [Run installation](#run-installation)
 - [Manual Installation](#manual-installation)
-  - [Install monitor_metrics cron jobs](#install-monitormetrics-cron-jobs)
+  - [Install monitor metrics cron jobs](#install-monitor-metrics-cron-jobs)
     - [Checking for blocked commands](#checking-for-blocked-commands)
-  - [Install node_exporter](#install-nodeexporter)
+  - [Install node exporter](#install-node-exporter)
   - [Install p4prometheus - details](#install-p4prometheus---details)
 - [Install prometheus](#install-prometheus)
   - [Prometheus config](#prometheus-config)
@@ -19,8 +19,8 @@
   - [Alertmanager config](#alertmanager-config)
 - [Troubleshooting](#troubleshooting)
   - [p4prometheus](#p4prometheus)
-  - [monitor_metrics](#monitormetrics)
-  - [node_exporter](#nodeexporter)
+  - [monitor metrics](#monitor-metrics)
+  - [node exporter](#node-exporter)
   - [prometheus](#prometheus)
   - [Grafana](#grafana)
 - [Advanced config options](#advanced-config-options)
@@ -153,7 +153,7 @@ Alternatively do the manual installation steps below, suitably customised for yo
   - monitor_wrapper.sh and monitor_metrics.py
   - node_exporter
 
-## Install monitor_metrics cron jobs
+## Install monitor metrics cron jobs
 
 Download:
 * [monitor_metrics.sh](demo/monitor_metrics.sh)
@@ -189,7 +189,7 @@ e.g.
 
   grep 2020/ /p4/1/logs/monitor_metrics.log | grep -v "no blocked commands" | less
 
-## Install node_exporter
+## Install node exporter
 
 This must be done on the Perforce (Helix Core) server machine (ditto for any other servers such as replicas which are being monitored).
 
@@ -602,7 +602,7 @@ You can just grep for the most basic metric a couple of times (make sure it is i
     # TYPE p4_prom_log_lines_read counter
     p4_prom_log_lines_read{serverid="master.1",sdpinst="1"} 7143
 
-## monitor_metrics
+## monitor metrics
 
 Make sure monitor_metrics.sh is working:
 
@@ -616,7 +616,7 @@ Check that appropriate files are listed in your metrics dir (and are being updat
 
     ls -l /hxlogs/metrics
 
-## node_exporter
+## node exporter
 
 Make sure node_exporter is working (it is easy for there to be permissions access problems to the metrics dir).
 
