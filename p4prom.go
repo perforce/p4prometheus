@@ -22,12 +22,12 @@ import (
 	"time"
 
 	"github.com/machinebox/progress"
+	"github.com/perforce/p4prometheus/config"
+	"github.com/perforce/p4prometheus/version"
 	p4dlog "github.com/rcowham/go-libp4dlog"
 	"github.com/rcowham/go-libtail/tailer"
 	"github.com/rcowham/go-libtail/tailer/fswatcher"
 	"github.com/rcowham/go-libtail/tailer/glob"
-	"github.com/rcowham/p4prometheus/config"
-	"github.com/rcowham/p4prometheus/version"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
