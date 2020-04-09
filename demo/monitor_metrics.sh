@@ -25,6 +25,7 @@ fi
 
 # This might also be /hxlogs/metrics or passed as a parameter (with -m flag)
 metrics_root=/p4/metrics
+data_file=/p4/monitor_metrics.dat
 # ============================================================
 
 function msg () { echo -e "$*"; }
@@ -41,7 +42,7 @@ function usage
  
    echo "USAGE for monitor_metrics.sh:
  
-monitor_metrics.sh [<instance> | -nosdp] [-p <port>] | [-u <user>] | [-m <metrics_dir>]
+monitor_metrics.sh [<instance> | -nosdp] [-p <port>] | [-u <user>] | [-m <metrics_dir>] [-d <data_file>]
  
    or
  
@@ -61,7 +62,8 @@ while [[ $# -gt 0 ]]; do
         # (-man) usage -man;;
         (-p) Port=$2; shiftArgs=1;;
         (-u) User=$2; shiftArgs=1;;
-        (-m) metrics_root=$2; shiftArgs=1;; 
+        (-m) metrics_root=$2; shiftArgs=1;;
+        (-d) data_file=$2; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
@@ -107,13 +109,48 @@ else
     sdpinst_suffix=""
     p4logfile=$($p4 configure show | grep P4LOG | sed -e 's/P4LOG=//' -e 's/ .*//')
     errors_file=$($p4 configure show | egrep "serverlog.file.*errors.csv" | cut -d= -f2 | sed -e 's/ (.*//')
-
+    check_for_replica=$($p4 info | grep -c 'Replica of:')
+    if [[ "$check_for_replica" -eq "0" ]]; then
+        P4REPLICA="FALSE"
+    else
+        P4REPLICA="TRUE"
+    fi
 fi
 
 # Get server id
 SERVER_ID=$($p4 serverid | awk '{print $3}')
 SERVER_ID=${SERVER_ID:-noserverid}
 serverid_label="serverid=\"$SERVER_ID\""
+
+# Set data vars
+tmpdatafile="${data_file}.tmp"
+p4log_ts_last=0
+p4log_lc_last=0
+p4err_ts_last=0
+p4err_lc_last=0 
+
+load_data_file () {
+    # Loads the data from the data file if it exists, otherwise sets all vars to 0
+    [[ -f "$data_file" ]] || { echo "data_file not found"; return ; } 
+    
+    # Read in the data file information
+    while read filetype mod_time line_count
+    do
+        case "$filetype" in
+        'p4log')
+            p4log_ts_last=$mod_time
+            p4log_lc_last=$line_count
+        ;;
+        'p4err')
+            p4err_ts_last=$mod_time
+            p4err_lc_last=$line_count
+        ;;
+        esac
+    done < $data_file
+    echo "data file loaded:"
+    echo "[p4log][last timestamp: ${p4log_ts_last}][last linecount: ${p4log_lc_last}]"
+    echo "[p4err][last timestamp: ${p4err_ts_last}][last linecount: ${p4err_lc_last}]"
+}
 
 monitor_uptime () {
     # Server uptime as a simple seconds parameter - parsed from p4 info:
@@ -184,14 +221,34 @@ monitor_processes () {
 }
 
 monitor_completed_cmds () {
-    # Metric for completed commands by parsing log file - might be considered expensive to compute as log grows.
+    # Metric for completed commands by parsing log file
+    local num_cmds=0
     fname="$metrics_root/p4_completed_cmds${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-    [[ -f "$p4logfile" ]] || return
-    num_cmds=$(grep -c ' completed ' "$p4logfile")
-    echo "#HELP p4_completed_cmds_per_day Completed p4 commands" > "$tmpfname"
-    echo "#TYPE p4_completed_cmds_per_day counter" >> "$tmpfname"
-    echo "p4_completed_cmds_per_day{${serverid_label}${sdpinst_label}} $num_cmds" >> "$tmpfname"
+
+    # If the logfile doesnt exist delete prom and return
+    [[ -f "$p4logfile" ]] || { rm -f "$fname"; return ; }
+
+    # Get the current timestamp and linecount
+    p4log_ts_curr=$(stat -c %Y $p4logfile)
+    p4log_lc_curr=$(wc -l $p4logfile | awk '{print $1}')
+    # Update the data file
+    echo "Updating data file:"
+    echo "[p4log][curr timestamp: ${p4log_ts_curr}][curr linecount: ${p4log_lc_curr}]"
+    echo "p4log $p4log_ts_curr $p4log_lc_curr" >> $tmpdatafile
+
+    # If the logfile current timestamp is less then the last timestamp delete prom and return
+    [[ $p4log_ts_curr -gt $p4log_ts_last ]] || { rm -f "$fname"; return ; }
+
+    # If the linecount current is greater then the last, then set the lines to read in
+    if [[ $p4log_lc_curr -gt $p4log_lc_last ]]; then
+        num_cmds=$(sed -n "$p4log_lc_last,$p4log_lc_curr"p "$p4logfile" | grep -c ' completed ')
+    else
+        num_cmds=$(grep -c ' completed ' "$p4logfile")
+    fi
+    echo "#HELP p4_completed_cmds Completed p4 commands" > "$tmpfname"
+    echo "#TYPE p4_completed_cmds counter" >> "$tmpfname"
+    echo "p4_completed_cmds{${serverid_label}${sdpinst_label}} $num_cmds" >> "$tmpfname"
     mv "$tmpfname" "$fname"
 }
 
@@ -213,10 +270,12 @@ monitor_checkpoint () {
 
     # Look for latest checkpoint log which has Start/End (avoids run in progress and rotate_journal logs)
     ckp_log=""
-    for f in $(ls -tr /p4/$SDP_INSTANCE/logs/checkpoint.log*);
+#    for f in $(ls -t /p4/$SDP_INSTANCE/logs/checkpoint.log*);
+    for f in $(find -L /p4/$SDP_INSTANCE/logs -type f -name checkpoint.log* -exec ls -t {} +)
     do
         if [[ `grep -cE "Start p4_$SDP_INSTANCE Checkpoint|End p4_$SDP_INSTANCE Checkpoint" $f` -eq 2 ]]; then
             ckp_log="$f"
+            break
         fi;
     done
     ckp_time=0
@@ -285,15 +344,37 @@ monitor_replicas () {
 
 monitor_errors () {
     # Metric for error counts - but only if structured error log exists
-    [[ -f "$errors_file" ]] || return
     fname="$metrics_root/p4_errors${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-    echo "" > "$tmpfname"
+    tmperrfile="${errors_file}.tmp"
+    
+    [[ -f "$errors_file" ]] || { rm -f "$fname"; return; }
 
     declare -A subsystems=([0]=OS [1]=SUPP [2]=LBR [3]=RPC [4]=DB [5]=DBSUPP [6]=DM [7]=SERVER [8]=CLIENT \
     [9]=INFO [10]=HELP [11]=SPEC [12]=FTPD [13]=BROKER [14]=P4QT [15]=X3SERVER [16]=GRAPH [17]=SCRIPT \
     [18]=SERVER2 [19]=DM2)
 
+    # Get the current timestamp and linecount
+    p4err_ts_curr=$(stat -c %Y $errors_file)
+    p4err_lc_curr=$(wc -l $errors_file | awk '{print $1}')
+    # Update the data file
+    echo "Updating data file:"
+    echo "[p4err][curr timestamp: ${p4err_ts_curr}][curr linecount: ${p4err_lc_curr}]"
+    echo "p4err $p4err_ts_curr $p4err_lc_curr" >> $tmpdatafile
+
+    # If the logfile current timestamp is less then the last timestamp delete prom and return
+    [[ $p4err_ts_curr -gt $p4err_ts_last ]] || { rm -f "$fname"; return; }
+    # If the logfile current linecount equals the last linecount delete prom and return
+    [[ $p4err_lc_curr -ne $p4err_lc_last ]] || { rm -f "$fname" ; return ; }
+
+    # Create a new error file if the current line count is greater then the last line count
+    # the new file is mapped to the original var
+    if [[ $p4err_lc_curr -gt $p4err_lc_last ]]; then
+        sed -n "$p4err_lc_last,$p4err_lc_curr"p "$errors_file" >> "$tmperrfile"
+        errors_file="$tmperrfile"
+    fi
+
+    echo "" > "$tmpfname"
     echo "#HELP p4_error_count Server errors by id" >> "$tmpfname"
     echo "#TYPE p4_error_count counter" >> "$tmpfname"
     while read count ss_id error_id level
@@ -304,11 +385,14 @@ monitor_errors () {
     done < <(awk -F, '{printf "%s %s %s\n", $15,$16,$14}' "$errors_file" | sort | uniq -c)
 
     mv "$tmpfname" "$fname"
+
+    # Delete the tmp file
+    rm -f "$tmperrfile"
 }
 
 monitor_pull () {
     # p4 pull metrics - only valid for replica servers
-    $p4 pull -lj || return
+    [[ "${P4REPLICA}" == "TRUE" ]] || return
 
     fname="$metrics_root/p4_pull${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
@@ -318,16 +402,23 @@ monitor_pull () {
     echo "# TYPE p4_pull_errors counter" >> "$tmpfname"
     count=$(grep -cEa "failed\.$" "$pullfile")
     echo "p4_pull_errors{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
- 
+
     echo "# HELP p4_pull_queue P4 pull files in queue count" >> "$tmpfname"
     echo "# TYPE p4_pull_queue counter" >> "$tmpfname"
     count=$(grep -cvEa "failed\.$" "$pullfile")
     echo "p4_pull_queue{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
- 
+
     mv "$tmpfname" "$fname"
 }
 
+update_data_file () {
+    echo "Updating data file:"
+    cat $tmpdatafile
+    rm -f $data_file
+    mv $tmpdatafile $data_file
+}
 
+load_data_file
 monitor_uptime
 monitor_change
 monitor_processes
@@ -336,6 +427,7 @@ monitor_checkpoint
 monitor_replicas
 monitor_errors
 monitor_pull
+update_data_file
 
 # Make sure all readable by node_exporter or other user
 chmod 755 $metrics_root/*.prom
