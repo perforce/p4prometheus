@@ -154,6 +154,7 @@ monitor_processes () {
     fname="$metrics_root/p4_monitor${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
     monfile="/tmp/mon.out"
+
     $p4 monitor show > "$monfile" 2> /dev/null
     echo "# HELP p4_monitor_by_cmd P4 running processes" > "$tmpfname"
     echo "# TYPE p4_monitor_by_cmd counter" >> "$tmpfname"
@@ -168,6 +169,16 @@ monitor_processes () {
     do
         echo "p4_monitor_by_user{${serverid_label}${sdpinst_label},user=\"$user\"} $count" >> "$tmpfname"
     done
+
+    if [[ $UseSDP -eq 1 ]]; then
+        proc="p4d_${SDP_INSTANCE}"
+    else
+        proc="p4d"
+    fi
+    echo "# HELP p4_process_count P4 ps running processes" >> "$tmpfname"
+    echo "# TYPE p4_process_count counter" >> "$tmpfname"
+    pcount=$(ps ax | grep "$proc " | grep -v "grep $proc" | wc -l)
+    echo "p4_process_count{serverid=\"$SERVER_ID\",sdpinst=\"$SDP_INSTANCE\"} $pcount" >> "$tmpfname"
 
     mv "$tmpfname" "$fname"
 }
