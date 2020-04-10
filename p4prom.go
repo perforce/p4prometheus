@@ -388,7 +388,10 @@ func (p4p *P4Prometheus) ProcessEvents(ctx context.Context,
 			if ok {
 				p4p.logger.Debugf("Line: %s", line)
 				p4p.linesRead++
-				p4p.lines <- []byte(line)
+				// Need to copy original line to avoid overwrites
+				newLine := make([]byte, len(line))
+				copy(newLine, line)
+				p4p.lines <- newLine
 				if p4p.historical && p4p.historicalUpdateRequired(line) {
 					metrics <- p4p.getCumulativeMetrics()
 				}
