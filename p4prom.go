@@ -15,8 +15,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"reflect"
-	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -25,6 +23,7 @@ import (
 	"github.com/perforce/p4prometheus/config"
 	"github.com/perforce/p4prometheus/version"
 	p4dlog "github.com/rcowham/go-libp4dlog"
+	metrics "github.com/rcowham/go-libp4dlog/metrics"
 	"github.com/rcowham/go-libtail/tailer"
 	"github.com/rcowham/go-libtail/tailer/fswatcher"
 	"github.com/rcowham/go-libtail/tailer/glob"
@@ -71,23 +70,15 @@ type P4Prometheus struct {
 	lastOutputTime      time.Time
 }
 
+// GO standard reference value/format: Mon Jan 2 15:04:05 -0700 MST 2006
+const p4timeformat = "2006/01/02 15:04:05"
+
 func newP4Prometheus(config *config.Config, logger *logrus.Logger, historical bool) (p4p *P4Prometheus) {
 	return &P4Prometheus{
-		config:              config,
-		logger:              logger,
-		historical:          historical,
-		lines:               make(chan []byte, 10000),
-		metrics:             make(chan string, 100),
-		cmdchan:             make(chan p4dlog.Command, 10000),
-		cmdCounter:          make(map[string]int32),
-		cmdCumulative:       make(map[string]float64),
-		cmdByUserCounter:    make(map[string]int32),
-		cmdByUserCumulative: make(map[string]float64),
-		totalReadWait:       make(map[string]float64),
-		totalReadHeld:       make(map[string]float64),
-		totalWriteWait:      make(map[string]float64),
-		totalWriteHeld:      make(map[string]float64),
-		totalTriggerLapse:   make(map[string]float64),
+		config:     config,
+		logger:     logger,
+		historical: historical,
+		lines:      make(chan []byte, 10000),
 	}
 }
 
@@ -102,311 +93,6 @@ func byteCountDecimal(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
-}
-
-func (p4p *P4Prometheus) printMetricHeader(f io.Writer, name string, help string, metricType string) {
-	if !p4p.historical {
-		fmt.Fprintf(f, "# HELP %s %s\n# TYPE %s %s\n", name, help, name, metricType)
-	}
-}
-
-type labelStruct struct {
-	name  string
-	value string
-}
-
-// Prometheus format: 	metric_name{label1="val1",label2="val2"}
-// Graphite format:  	metric_name;label1=val1;label2=val2
-func (p4p *P4Prometheus) formatLabels(mname string, labels []labelStruct) string {
-	nonBlankLabels := make([]labelStruct, 0)
-	for _, l := range labels {
-		if l.value != "" {
-			if !p4p.historical {
-				l.value = fmt.Sprintf("\"%s\"", l.value)
-			}
-			nonBlankLabels = append(nonBlankLabels, l)
-		}
-	}
-	vals := make([]string, 0)
-	for _, l := range nonBlankLabels {
-		vals = append(vals, fmt.Sprintf("%s=%s", l.name, l.value))
-	}
-	if p4p.historical {
-		labelStr := strings.Join(vals, ";")
-		return fmt.Sprintf("%s;%s", mname, labelStr)
-	}
-	labelStr := strings.Join(vals, ",")
-	return fmt.Sprintf("%s{%s}", mname, labelStr)
-}
-
-func (p4p *P4Prometheus) formatMetric(mname string, labels []labelStruct, metricVal string) string {
-	if p4p.historical {
-		return fmt.Sprintf("%s %s %d\n", p4p.formatLabels(mname, labels),
-			metricVal, p4p.timeLatestStartCmd.Unix())
-	}
-	return fmt.Sprintf("%s %s\n", p4p.formatLabels(mname, labels), metricVal)
-}
-
-// Publish cumulative results - called on a ticker or in historical mode
-func (p4p *P4Prometheus) getCumulativeMetrics() string {
-	fixedLabels := []labelStruct{{name: "serverid", value: p4p.config.ServerID},
-		{name: "sdpinst", value: p4p.config.SDPInstance}}
-	metrics := new(bytes.Buffer)
-	p4p.logger.Infof("Writing stats")
-	p4p.lastOutputTime = time.Now()
-
-	var mname string
-	var buf string
-	var metricVal string
-	mname = "p4_prom_log_lines_read"
-	p4p.printMetricHeader(metrics, mname, "A count of log lines read", "counter")
-	metricVal = fmt.Sprintf("%d", p4p.linesRead)
-	buf = p4p.formatMetric(mname, fixedLabels, metricVal)
-	p4p.logger.Debugf(buf)
-	fmt.Fprint(metrics, buf)
-
-	mname = "p4_prom_cmds_processed"
-	p4p.printMetricHeader(metrics, mname, "A count of all cmds processed", "counter")
-	metricVal = fmt.Sprintf("%d", p4p.cmdsProcessed)
-	buf = p4p.formatMetric(mname, fixedLabels, metricVal)
-	p4p.logger.Debugf(buf)
-	fmt.Fprint(metrics, buf)
-
-	mname = "p4_prom_cmds_pending"
-	p4p.printMetricHeader(metrics, mname, "A count of all current cmds (not completed)", "gauge")
-	metricVal = fmt.Sprintf("%d", p4p.fp.CmdsPendingCount())
-	buf = p4p.formatMetric(mname, fixedLabels, metricVal)
-	p4p.logger.Debugf(buf)
-	fmt.Fprint(metrics, buf)
-
-	mname = "p4_cmd_counter"
-	p4p.printMetricHeader(metrics, mname, "A count of completed p4 cmds (by cmd)", "counter")
-	for cmd, count := range p4p.cmdCounter {
-		metricVal = fmt.Sprintf("%d", count)
-		labels := append(fixedLabels, labelStruct{"cmd", cmd})
-		buf = p4p.formatMetric(mname, labels, metricVal)
-		p4p.logger.Debugf(buf)
-		fmt.Fprint(metrics, buf)
-	}
-	mname = "p4_cmd_cumulative_seconds"
-	p4p.printMetricHeader(metrics, mname, "The total in seconds (by cmd)", "counter")
-	for cmd, lapse := range p4p.cmdCumulative {
-		metricVal = fmt.Sprintf("%0.3f", lapse)
-		labels := append(fixedLabels, labelStruct{"cmd", cmd})
-		buf = p4p.formatMetric(mname, labels, metricVal)
-		p4p.logger.Debugf(buf)
-		fmt.Fprint(metrics, buf)
-	}
-	// For large sites this might not be sensible - so they can turn it off
-	if p4p.config.OutputCmdsByUser {
-		mname = "p4_cmd_user_counter"
-		p4p.printMetricHeader(metrics, mname, "A count of completed p4 cmds (by user)", "counter")
-		for user, count := range p4p.cmdByUserCounter {
-			metricVal = fmt.Sprintf("%d", count)
-			labels := append(fixedLabels, labelStruct{"user", user})
-			buf = p4p.formatMetric(mname, labels, metricVal)
-			p4p.logger.Debugf(buf)
-			fmt.Fprint(metrics, buf)
-		}
-		mname = "p4_cmd_user_cumulative_seconds"
-		p4p.printMetricHeader(metrics, mname, "The total in seconds (by user)", "counter")
-		for user, lapse := range p4p.cmdByUserCumulative {
-			metricVal = fmt.Sprintf("%0.3f", lapse)
-			labels := append(fixedLabels, labelStruct{"user", user})
-			buf = p4p.formatMetric(mname, labels, metricVal)
-			p4p.logger.Debugf(buf)
-			fmt.Fprint(metrics, buf)
-		}
-	}
-	mname = "p4_total_read_wait_seconds"
-	p4p.printMetricHeader(metrics, mname,
-		"The total waiting for read locks in seconds (by table)", "counter")
-	for table, total := range p4p.totalReadWait {
-		metricVal = fmt.Sprintf("%0.3f", total)
-		labels := append(fixedLabels, labelStruct{"table", table})
-		buf = p4p.formatMetric(mname, labels, metricVal)
-		p4p.logger.Debugf(buf)
-		fmt.Fprint(metrics, buf)
-	}
-	mname = "p4_total_read_held_seconds"
-	p4p.printMetricHeader(metrics, mname,
-		"The total read locks held in seconds (by table)", "counter")
-	for table, total := range p4p.totalReadHeld {
-		metricVal = fmt.Sprintf("%0.3f", total)
-		labels := append(fixedLabels, labelStruct{"table", table})
-		buf = p4p.formatMetric(mname, labels, metricVal)
-		p4p.logger.Debugf(buf)
-		fmt.Fprint(metrics, buf)
-	}
-	mname = "p4_total_write_wait_seconds"
-	p4p.printMetricHeader(metrics, mname,
-		"The total waiting for write locks in seconds (by table)", "counter")
-	for table, total := range p4p.totalWriteWait {
-		metricVal = fmt.Sprintf("%0.3f", total)
-		labels := append(fixedLabels, labelStruct{"table", table})
-		buf = p4p.formatMetric(mname, labels, metricVal)
-		p4p.logger.Debugf(buf)
-		fmt.Fprint(metrics, buf)
-	}
-	mname = "p4_total_write_held_seconds"
-	p4p.printMetricHeader(metrics, mname,
-		"The total write locks held in seconds (by table)", "counter")
-	for table, total := range p4p.totalWriteHeld {
-		metricVal = fmt.Sprintf("%0.3f", total)
-		labels := append(fixedLabels, labelStruct{"table", table})
-		buf = p4p.formatMetric(mname, labels, metricVal)
-		p4p.logger.Debugf(buf)
-		fmt.Fprint(metrics, buf)
-	}
-	if len(p4p.totalTriggerLapse) > 0 {
-		mname = "p4_total_trigger_lapse_seconds"
-		p4p.printMetricHeader(metrics, mname,
-			"The total lapse time for triggers in seconds (by trigger)", "counter")
-		for table, total := range p4p.totalTriggerLapse {
-			metricVal = fmt.Sprintf("%0.3f", total)
-			labels := append(fixedLabels, labelStruct{"trigger", table})
-			buf = p4p.formatMetric(mname, labels, metricVal)
-			p4p.logger.Debugf(buf)
-			fmt.Fprint(metrics, buf)
-		}
-	}
-	return metrics.String()
-}
-
-func (p4p *P4Prometheus) getSeconds(tmap map[string]interface{}, fieldName string) float64 {
-	p4p.logger.Debugf("field %s %v, %v\n", fieldName, reflect.TypeOf(tmap[fieldName]), tmap[fieldName])
-	if total, ok := tmap[fieldName].(float64); ok {
-		return (total)
-	}
-	return 0
-}
-
-func (p4p *P4Prometheus) getMilliseconds(tmap map[string]interface{}, fieldName string) float64 {
-	p4p.logger.Debugf("field %s %v, %v\n", fieldName, reflect.TypeOf(tmap[fieldName]), tmap[fieldName])
-	if total, ok := tmap[fieldName].(float64); ok {
-		return (total / 1000)
-	}
-	return 0
-}
-
-func (p4p *P4Prometheus) publishEvent(cmd p4dlog.Command) {
-	// p4p.logger.Debugf("publish cmd: %s\n", cmd.String())
-
-	p4p.cmdCounter[string(cmd.Cmd)]++
-	p4p.cmdCumulative[string(cmd.Cmd)] += float64(cmd.CompletedLapse)
-	user := string(cmd.User)
-	if !p4p.config.CaseSensitiveServer {
-		user = strings.ToLower(user)
-	}
-	p4p.cmdByUserCounter[user]++
-	p4p.cmdByUserCumulative[user] += float64(cmd.CompletedLapse)
-	const triggerPrefix = "trigger_"
-
-	for _, t := range cmd.Tables {
-		if len(t.TableName) > len(triggerPrefix) && t.TableName[:len(triggerPrefix)] == triggerPrefix {
-			triggerName := t.TableName[len(triggerPrefix):]
-			p4p.totalTriggerLapse[triggerName] += float64(t.TriggerLapse)
-		} else {
-			p4p.totalReadHeld[t.TableName] += float64(t.TotalReadHeld) / 1000
-			p4p.totalReadWait[t.TableName] += float64(t.TotalReadWait) / 1000
-			p4p.totalWriteHeld[t.TableName] += float64(t.TotalWriteHeld) / 1000
-			p4p.totalWriteWait[t.TableName] += float64(t.TotalWriteWait) / 1000
-		}
-	}
-}
-
-// GO standard reference value/format: Mon Jan 2 15:04:05 -0700 MST 2006
-const p4timeformat = "2006/01/02 15:04:05"
-
-var reDate = regexp.MustCompile(`^\t(\d\d\d\d/\d\d/\d\d \d\d:\d\d:\d\d)`)
-
-// Searches for log lines starting with a date - assumes increasing dates in log
-func (p4p *P4Prometheus) historicalUpdateRequired(line []byte) bool {
-	if !p4p.historical {
-		return false
-	}
-	// This next section is much more efficient than regex parsing - we return ASAP
-	lenPrefix := len("\t2020/03/04 12:13:14")
-	if len(line) < lenPrefix {
-		return false
-	}
-	if line[0] != '\t' || line[5] != '/' || line[8] != '/' ||
-		line[11] != ' ' || line[14] != ':' || line[17] != ':' {
-		return false
-	}
-	for _, i := range []int{1, 2, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16, 18, 19} {
-		if line[i] < byte('0') || line[i] > byte('9') {
-			return false
-		}
-	}
-	if len(p4p.latestStartCmdBuf) > 0 && bytes.Equal(p4p.latestStartCmdBuf, line[:lenPrefix]) {
-		return false
-	}
-	// Update only if greater (due to log format we do see out of sequence dates with track records)
-	if bytes.Compare(line[:lenPrefix], p4p.latestStartCmdBuf) > 0 {
-		p4p.latestStartCmdBuf = line[:lenPrefix]
-	}
-	dt, _ := time.Parse(p4timeformat, string(p4p.latestStartCmdBuf[1:]))
-	if p4p.timeLatestStartCmd.IsZero() {
-		p4p.timeLatestStartCmd = dt
-		return false
-	}
-	if dt.Sub(p4p.timeLatestStartCmd) >= p4p.config.UpdateInterval {
-		p4p.timeLatestStartCmd = dt
-		return true
-	}
-	return false
-}
-
-// ProcessEvents - main event loop for P4Prometheus - reads lines and outputs metrics
-func (p4p *P4Prometheus) ProcessEvents(ctx context.Context,
-	lines <-chan []byte, metrics chan<- string) int {
-	ticker := time.NewTicker(p4p.config.UpdateInterval)
-	for {
-		select {
-		case <-ctx.Done():
-			p4p.logger.Debugf("Done received")
-			close(metrics)
-			return -1
-		case <-ticker.C:
-			// Ticker only relevant for live log processing
-			p4p.logger.Debugf("publishCumulative")
-			if !p4p.historical {
-				metrics <- p4p.getCumulativeMetrics()
-			}
-		case cmd, ok := <-p4p.cmdchan:
-			if ok {
-				p4p.logger.Debugf("Publishing cmd: %s", cmd.String())
-				p4p.cmdsProcessed++
-				p4p.publishEvent(cmd)
-			} else {
-				metrics <- p4p.getCumulativeMetrics()
-				close(metrics)
-				return 0
-			}
-		case line, ok := <-lines:
-			if ok {
-				p4p.logger.Debugf("Line: %s", line)
-				p4p.linesRead++
-				// Need to copy original line to avoid overwrites
-				newLine := make([]byte, len(line))
-				copy(newLine, line)
-				p4p.lines <- newLine
-				if p4p.historical && p4p.historicalUpdateRequired(line) {
-					metrics <- p4p.getCumulativeMetrics()
-				}
-			} else {
-				p4p.logger.Debugf("Tailer closed")
-				if p4p.lines != nil {
-					close(p4p.lines)
-					p4p.lines = nil
-				} else {
-					time.Sleep(100 * time.Millisecond)
-				}
-				// We wait for the parser to close cmdchan before returning
-			}
-		}
-	}
 }
 
 // Reads server id for SDP instance
@@ -495,10 +181,18 @@ func runLogTailer(logger *logrus.Logger, logcfg *logConfig, cfg *config.Config, 
 		fp.SetDebugMode()
 	}
 
-	metrics := make(chan string, 100)
-	linesIn := make(chan []byte, 100)
-	go fp.LogParser(ctx, p4p.lines, p4p.cmdchan)
-	go p4p.ProcessEvents(ctx, linesIn, metrics)
+	mconfig := &metrics.Config{
+		Debug:               debug,
+		ServerID:            cfg.ServerID,
+		SDPInstance:         cfg.SDPInstance,
+		UpdateInterval:      cfg.UpdateInterval,
+		OutputCmdsByUser:    cfg.OutputCmdsByUser,
+		CaseSensitiveServer: cfg.CaseSensitiveServer,
+	}
+	mp := metrics.NewP4DMetricsLogParser(mconfig, logger, false)
+
+	linesChan := make(chan string, 10000)
+	cmdChan, metricsChan := mp.ProcessEvents(ctx, linesChan)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -509,10 +203,17 @@ func runLogTailer(logger *logrus.Logger, logcfg *logConfig, cfg *config.Config, 
 		cancel()
 	}()
 
+	// Process all commands - need to consume them even if we ignore them (overhead is minimal)
+	go func() {
+		for range cmdChan {
+		}
+		logger.Debug("Main: metrics closed")
+	}()
+
 	p4p.linesRead = 0
 	for {
 		select {
-		case metric, ok := <-metrics:
+		case metric, ok := <-metricsChan:
 			if ok {
 				p4p.writeMetricsFile([]byte(metric))
 			} else {
@@ -580,10 +281,18 @@ func processHistoricalLog(logger *logrus.Logger, cfg *config.Config, logfile str
 		fp.SetDebugMode()
 	}
 
-	metrics := make(chan string, 100)
-	linesIn := make(chan []byte, 100)
-	go fp.LogParser(ctx, p4p.lines, p4p.cmdchan)
-	go p4p.ProcessEvents(ctx, linesIn, metrics)
+	mconfig := &metrics.Config{
+		Debug:               debug,
+		ServerID:            cfg.ServerID,
+		SDPInstance:         cfg.SDPInstance,
+		UpdateInterval:      cfg.UpdateInterval,
+		OutputCmdsByUser:    cfg.OutputCmdsByUser,
+		CaseSensitiveServer: cfg.CaseSensitiveServer,
+	}
+	mp := metrics.NewP4DMetricsLogParser(mconfig, logger, false)
+
+	linesChan := make(chan string, 10000)
+	cmdChan, metricsChan := mp.ProcessEvents(ctx, linesChan)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -644,6 +353,13 @@ func processHistoricalLog(logger *logrus.Logger, cfg *config.Config, logfile str
 
 	p4p.linesRead = 0
 
+	// Process all commands - need to consume them even if we ignore them (overhead is minimal)
+	go func() {
+		for range cmdChan {
+		}
+		logger.Debug("Main: metrics closed")
+	}()
+
 	// Start a goroutine processing all lines in file
 	go func() {
 		for scanner.Scan() {
@@ -651,16 +367,16 @@ func processHistoricalLog(logger *logrus.Logger, cfg *config.Config, logfile str
 			if p4p.linesRead%100 == 0 {
 				logger.Debugf("Lines read %d", p4p.linesRead)
 			}
-			linesIn <- scanner.Bytes()
+			linesChan <- scanner.Text()
 		}
-		close(linesIn)
+		close(linesChan)
 		fmt.Fprintln(os.Stderr, "\nprocessing completed")
 		logger.Infof("Completed %s, elapsed %s", time.Now(), time.Since(startTime))
 	}()
 
 	for {
 		select {
-		case metric, ok := <-metrics:
+		case metric, ok := <-metricsChan:
 			if ok {
 				p4p.writeMetricsFile([]byte(metric))
 			} else {
