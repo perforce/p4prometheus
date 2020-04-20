@@ -14,12 +14,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fstab/grok_exporter/tailer"
-	"github.com/fstab/grok_exporter/tailer/fswatcher"
-	"github.com/fstab/grok_exporter/tailer/glob"
 	"github.com/perforce/p4prometheus/config"
 	"github.com/perforce/p4prometheus/version"
 	metrics "github.com/rcowham/go-libp4dlog/metrics"
+	"github.com/rcowham/go-libtail/tailer"
+	"github.com/rcowham/go-libtail/tailer/fswatcher"
+	"github.com/rcowham/go-libtail/tailer/glob"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
