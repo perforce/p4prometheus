@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/perforce/p4prometheus/config"
-	p4dlog "github.com/rcowham/go-libp4dlog"
 	metrics "github.com/rcowham/go-libp4dlog/metrics"
 	"github.com/sirupsen/logrus"
 )
@@ -79,17 +78,12 @@ func getOutput(testchan chan string, historical bool) []string {
 func basicTest(t *testing.T, cfg *config.Config, input string, historical bool) []string {
 	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
 	logger.SetReportCaller(true)
-	logger.Infof("Function: %s", funcName())
+	logger.Debugf("Function: %s", funcName())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fp := p4dlog.NewP4dFileParser(logger)
-	fp.SetDebugMode()
-	fp.SetDurations(10*time.Millisecond, 20*time.Millisecond)
 	linesChan := make(chan string, 100)
-	p4p := newP4Prometheus(cfg, logger, historical)
-	p4p.fp = fp
 
 	mconfig := &metrics.Config{
 		ServerID:         "myserverid",
@@ -97,7 +91,7 @@ func basicTest(t *testing.T, cfg *config.Config, input string, historical bool) 
 		OutputCmdsByUser: true}
 	p4m := metrics.NewP4DMetricsLogParser(mconfig, logger, historical)
 
-	_, metricsChan := p4m.ProcessEvents(ctx, linesChan)
+	_, metricsChan := p4m.ProcessEvents(ctx, linesChan, false)
 
 	var wg sync.WaitGroup
 
@@ -143,7 +137,7 @@ Perforce server info:
 	assert.Equal(t, 10, len(output))
 	expected := eol.Split(`p4_cmd_counter{serverid="myserverid",cmd="user-sync"} 1
 p4_cmd_cumulative_seconds{serverid="myserverid",cmd="user-sync"} 0.031
-p4_cmd_running{serverid="myserverid"} 0
+p4_cmd_running{serverid="myserverid"} 1
 p4_cmd_system_cpu_cumulative_seconds{serverid="myserverid",cmd="user-sync"} 0.000
 p4_cmd_user_counter{serverid="myserverid",user="robert"} 1
 p4_cmd_user_cpu_cumulative_seconds{serverid="myserverid",cmd="user-sync"} 0.000
@@ -161,7 +155,7 @@ p4_prom_log_lines_read{serverid="myserverid"} 8`, -1)
 	assert.Contains(t, output[0], fmt.Sprintf("%d", cmdTime.Unix()))
 	expected = eol.Split(`p4_cmd_counter;serverid=myserverid;cmd=user-sync 1 1441207389
 p4_cmd_cumulative_seconds;serverid=myserverid;cmd=user-sync 0.031 1441207389
-p4_cmd_running;serverid=myserverid 0 1441207389
+p4_cmd_running;serverid=myserverid 1 1441207389
 p4_cmd_system_cpu_cumulative_seconds;serverid=myserverid;cmd=user-sync 0.000 1441207389
 p4_cmd_user_counter;serverid=myserverid;user=robert 1 1441207389
 p4_cmd_user_cpu_cumulative_seconds;serverid=myserverid;cmd=user-sync 0.000 1441207389
