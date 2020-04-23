@@ -52,7 +52,6 @@ class MonitorMetrics:
     """Metric counts"""
 
     def __init__(self):
-        super().__init__()
         self.dbReadLocks = 0
         self.dbWriteLocks = 0
         self.clientEntityReadLocks = 0
