@@ -215,7 +215,7 @@ monitor_processes () {
     echo "# HELP p4_process_count P4 ps running processes" >> "$tmpfname"
     echo "# TYPE p4_process_count counter" >> "$tmpfname"
     pcount=$(ps ax | grep "$proc " | grep -v "grep $proc" | wc -l)
-    echo "p4_process_count{serverid=\"$SERVER_ID\",sdpinst=\"$SDP_INSTANCE\"} $pcount" >> "$tmpfname"
+    echo "p4_process_count{${serverid_label}${sdpinst_label}} $pcount" >> "$tmpfname"
 
     mv "$tmpfname" "$fname"
 }
