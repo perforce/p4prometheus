@@ -37,4 +37,4 @@ p4="$P4BIN -u $P4USER -p $P4PORT"
 SERVER_ID=$($p4 serverid | awk '{print $3}')
 SERVER_ID=${SERVER_ID:-unset}
 
-/p4/common/site/bin/monitor_metrics.py  -i 1
+/p4/common/site/bin/monitor_metrics.py  -i "$SDP_INSTANCE"
