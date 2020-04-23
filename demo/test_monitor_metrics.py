@@ -7,6 +7,7 @@ import sys
 import unittest
 import os
 import re
+import json
 
 import P4
 curr_dir = os.path.dirname(os.path.abspath(__file__))
@@ -87,7 +88,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
                     "blocker": None},
             ]}
         self.maxDiff = None
-        self.assertDictEqual(expected, jlock)
+        self.assertDictEqual(expected, json.loads(jlock))
 
     def testFindBlockers(self):
         """Check parsing of lockdata"""

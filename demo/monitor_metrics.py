@@ -33,6 +33,8 @@ import subprocess
 import datetime
 import json
 
+python3 = (sys.version_info[0] >= 3)
+
 LOGGER_NAME = 'monitor_metrics'
 logger = logging.getLogger(LOGGER_NAME)
 
@@ -133,11 +135,17 @@ class P4Monitor(object):
             self.logger.debug("Running: %s" % cmd)
             if get_output:
                 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, shell=True)
-                output, err = p.communicate(timeout=timeout)
+                if python3:
+                    output, err = p.communicate(timeout=timeout)
+                else:
+                    output, err = p.communicate()
                 rc = p.returncode
                 self.logger.debug("Output:\n%s" % output)
             else:
-                result = subprocess.check_call(cmd, stderr=subprocess.STDOUT, shell=True, timeout=timeout)
+                if python3:
+                    result = subprocess.check_call(cmd, stderr=subprocess.STDOUT, shell=True, timeout=timeout)
+                else:
+                    result = subprocess.check_call(cmd, stderr=subprocess.STDOUT, shell=True)
                 self.logger.debug('Result: %d' % result)
         except subprocess.CalledProcessError as e:
             self.logger.debug("Output: %s" % e.output)
@@ -184,7 +192,7 @@ class P4Monitor(object):
                 if line != "":
                     self.logger.warning("Failed to parse: %s" % line)
                 continue
-            if parts[0] == "COMMAND":
+            if parts[0] == "COMMAND" or parts[3] == "START":
                 continue
             lockinfo = {"command": parts[0], "pid": parts[1],
                     "type": parts[2], "size": parts[3],
@@ -194,7 +202,8 @@ class P4Monitor(object):
             if len(parts) == 10:
                 lockinfo["blocker"] = parts[9]
             jlock['locks'].append(lockinfo)
-        return jlock
+        self.logger.debug("parsed TextLockInfo: %s" % str(jlock))
+        return json.dumps(jlock)
             
     # lslocks output in JSON format:
     # {"command": "p4d", "pid": "2502", "type": "FLOCK", "size": "17B",
@@ -307,23 +316,25 @@ class P4Monitor(object):
             f.write("\n".join(lines))
             f.write("\n")
 
-    def getLslocksVer(self, msg):
+    def getLslocksVer(self, ver):
         # lslocks from util-linux 2.23.2
         try:
-            return msg.split(" ")[-1]
+            return ver.split()[-1]
         except:
             return "1.0"
 
     def run(self):
         """Runs script"""
         p4cmd = "%s -u %s -p %s" % (os.environ["P4BIN"], os.environ["P4USER"], os.environ["P4PORT"])
-        locksver = self.getLsLocksVer(self.run_cmd("lslocks -V"))
+        verdata = self.run_cmd("lslocks -V")
+        locksver = self.getLslocksVer(verdata)
         lockcmd = "lslocks -o +BLOCKER"
-        if locksver <= "2.26":
+        # If lslocks can't return JSON we parse it into JSON ourselves
+        if locksver > "2.26":
             lockcmd += " +J"
-            lockdata = self.run_cmd("lslocks -o +BLOCKER")
+            lockdata = self.run_cmd(lockcmd)
         else:
-            lockdata = self.run_cmd("lslocks -o +BLOCKER")
+            lockdata = self.run_cmd(lockcmd)
             lockdata = self.parseTextLockInfo(lockdata)
         mondata = self.run_cmd('{0} -F "%id% %runstate% %user% %elapsed% %function% %args%" monitor show -al'.format(p4cmd))
         metrics = self.findLocks(lockdata, mondata)
