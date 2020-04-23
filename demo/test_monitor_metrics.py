@@ -44,18 +44,50 @@ class TestMonitorMetrics(unittest.TestCase):
         m = obj.findLocks("", "")
         self.assertEqual(0, m.dbReadLocks)
         self.assertEqual(0, m.dbWriteLocks)
-        self.assertEqual(0, m.clientEntityLocks)
-        self.assertEqual(0, m.metaLocks)
+        self.assertEqual(0, m.clientEntityReadLocks)
+        self.assertEqual(0, m.clientEntityWriteLocks)
+        self.assertEqual(0, m.metaReadLocks)
+        self.assertEqual(0, m.metaWriteLocks)
         self.assertEqual(0, m.blockedCommands)
         self.assertEqual(0, len(m.msgs))
 
         m = obj.findLocks(lockdata, mondata)
         self.assertEqual(1, m.dbReadLocks)
         self.assertEqual(0, m.dbWriteLocks)
-        self.assertEqual(1, m.clientEntityLocks)
-        self.assertEqual(1, m.metaLocks)
+        self.assertEqual(1, m.clientEntityReadLocks)
+        self.assertEqual(0, m.clientEntityWriteLocks)
+        self.assertEqual(1, m.metaReadLocks)
+        self.assertEqual(0, m.metaWriteLocks)
         self.assertEqual(0, m.blockedCommands)
         self.assertEqual(0, len(m.msgs))
+
+    def testTextLslocksParse(self):
+        """Check parsing of textual form"""
+        lockdata = """COMMAND           PID   TYPE SIZE MODE  M START END PATH                       BLOCKER
+(unknown)          -1 OFDLCK   0B WRITE 0     0   0 /etc/hosts                 
+(unknown)          -1 OFDLCK   0B READ  0     0   0                            
+p4d               107  FLOCK  16K READ* 0     0   0 /path/db.config            105
+p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.config            
+p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh            
+"""
+        obj = P4Monitor()
+        jlock = obj.parseTextLockInfo(lockdata)
+        expected = {"locks": [
+                {"command": "(unknown)", "pid": "-1", "type": "OFDLCK", "size": "0B", 
+                    "mode": "WRITE", "m": "0", "start": "0", "end": "0", "path": "/etc/hosts", 
+                    "blocker": None},
+                {"command": "p4d", "pid": "107", "type": "FLOCK", "size": "16K", 
+                    "mode": "READ*", "m": "0", "start": "0", "end": "0", "path": "/path/db.config", 
+                    "blocker": "105"},
+                {"command": "p4d", "pid": "105", "type": "FLOCK", "size": "16K", 
+                    "mode": "WRITE", "m": "0", "start": "0", "end": "0", "path": "/path/db.config", 
+                    "blocker": None},
+                {"command": "p4d", "pid": "105", "type": "FLOCK", "size": "16K", 
+                    "mode": "WRITE", "m": "0", "start": "0", "end": "0", "path": "/path/db.configh", 
+                    "blocker": None},
+            ]}
+        self.maxDiff = None
+        self.assertDictEqual(expected, jlock)
 
     def testFindBlockers(self):
         """Check parsing of lockdata"""
@@ -74,8 +106,10 @@ class TestMonitorMetrics(unittest.TestCase):
         m = obj.findLocks(lockdata, mondata)
         self.assertEqual(3, m.dbReadLocks)
         self.assertEqual(0, m.dbWriteLocks)
-        self.assertEqual(0, m.clientEntityLocks)
-        self.assertEqual(0, m.metaLocks)
+        self.assertEqual(0, m.clientEntityReadLocks)
+        self.assertEqual(0, m.clientEntityWriteLocks)
+        self.assertEqual(0, m.metaReadLocks)
+        self.assertEqual(0, m.metaWriteLocks)
         self.assertEqual(2, m.blockedCommands)
         self.assertEqual(2, len(m.msgs))
         self.assertEqual("pid 2502, user fred, cmd sync, table /p4/1/root/db.have, blocked by pid 166, user jim, cmd sync, args -f //...", m.msgs[0])

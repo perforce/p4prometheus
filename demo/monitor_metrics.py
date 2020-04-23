@@ -169,6 +169,34 @@ class P4Monitor(object):
                 pids[pid] = (user, cmd, args)
         return pids
 
+    # Old versions of lslocks can't return json so we parse text
+    # For now assume no spaces in file paths or this won't work!
+    # COMMAND           PID   TYPE SIZE MODE  M START END PATH                       BLOCKER
+    # (unknown)          -1 OFDLCK   0B WRITE 0     0   0 /etc/hosts                 
+    # (unknown)          -1 OFDLCK   0B READ  0     0   0                            
+    # p4d               107  FLOCK  16K READ* 0     0   0 /path/db.config            105
+    # p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.config            
+    # p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh     
+    def parseTextLockInfo(self, lockdata):
+        jlock = {'locks': []}
+        for line in lockdata.split("\n"):
+            parts = line.split()
+            if len(parts) < 9:
+                if line != "":
+                    self.logger.warning("Failed to parse: %s" % line)
+                continue
+            if parts[0] == "COMMAND":
+                continue
+            lockinfo = {"command": parts[0], "pid": parts[1],
+                    "type": parts[2], "size": parts[3],
+                    "mode": parts[4], "m": parts[5],
+                    "start": parts[6], "end": parts[7],
+                    "path": parts[8], "blocker": None}
+            if len(parts) == 10:
+                lockinfo["blocker"] = parts[9]
+            jlock['locks'].append(lockinfo)
+        return jlock
+            
     # lslocks output in JSON format:
     # {"command": "p4d", "pid": "2502", "type": "FLOCK", "size": "17B",
     #   "mode": "READ", "m": "0", "start": "0", "end": "0",
@@ -190,7 +218,10 @@ class P4Monitor(object):
             if "p4d" not in j["command"]:
                 continue
             if "clientEntity" in j["path"]:
-                metrics.clientEntityLocks += 1
+                if j["mode"] == "READ":
+                    metrics.clientEntityReadLocks += 1
+                elif j["mode"] == "WRITE":
+                    metrics.clientEntityWriteLocks += 1
             cmd = user = args = ""
             pid = j["pid"]
             mode = j["mode"]
@@ -198,7 +229,10 @@ class P4Monitor(object):
             if j["pid"] in pids:
                 user, cmd, args = pids[j["pid"]]
             if "server.locks/meta" in j["path"]:
-                metrics.metaLocks += 1
+                if j["mode"] == "READ":
+                    metrics.metaReadLocks += 1
+                elif j["mode"] == "WRITE":
+                    metrics.metaWriteLocks += 1
             if "/db." in j["path"]:
                 if j["mode"] == "READ":
                     metrics.dbReadLocks += 1
@@ -274,10 +308,24 @@ class P4Monitor(object):
             f.write("\n".join(lines))
             f.write("\n")
 
+    def getLslocksVer(self, msg):
+        # lslocks from util-linux 2.23.2
+        try:
+            return msg.split(" ")[-1]
+        except:
+            return "1.0"
+
     def run(self):
         """Runs script"""
         p4cmd = "%s -u %s -p %s" % (os.environ["P4BIN"], os.environ["P4USER"], os.environ["P4PORT"])
-        lockdata = self.run_cmd("lslocks -o +BLOCKER -J")
+        locksver = self.getLsLocksVer(self.run_cmd("lslocks -V"))
+        lockcmd = "lslocks -o +BLOCKER"
+        if locksver <= "2.26":
+            lockcmd += " +J"
+            lockdata = self.run_cmd("lslocks -o +BLOCKER")
+        else:
+            lockdata = self.run_cmd("lslocks -o +BLOCKER")
+            lockdata = self.parseTextLockInfo(lockdata)
         mondata = self.run_cmd('{0} -F "%id% %runstate% %user% %elapsed% %function% %args%" monitor show -al'.format(p4cmd))
         metrics = self.findLocks(lockdata, mondata)
         self.writeLog(self.formatLog(metrics))
