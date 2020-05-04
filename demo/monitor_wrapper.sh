@@ -2,7 +2,7 @@
 # Generate monitoring metrics for use with Prometheus (collected via node_explorer)
 # If required, put this job into perforce user crontab:
 #
-#   */1 * * * * /p4/common/site/bin/monitor_metrics.sh $INSTANCE > /dev/null 2>&1 ||:
+#   */1 * * * * /p4/common/site/bin/monitor_wrapper.sh $INSTANCE > /dev/null 2>&1 ||:
 #
 # Please note you need to make sure that the specified directory below (which may be linked)
 # can be read by the node_exporter user (and is setup via --collector.textfile.directory parameter)
