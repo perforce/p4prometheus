@@ -350,29 +350,29 @@ This must be done on the monitoring machine only.
 
 Run the following as root:
 
-  sudo useradd --no-create-home --shell /bin/false prometheus
-  sudo mkdir /etc/prometheus
-  sudo mkdir /var/lib/prometheus
-  sudo chown prometheus:prometheus /etc/prometheus
-  sudo chown prometheus:prometheus /var/lib/prometheus
+    sudo useradd --no-create-home --shell /bin/false prometheus
+    sudo mkdir /etc/prometheus
+    sudo mkdir /var/lib/prometheus
+    sudo chown prometheus:prometheus /etc/prometheus
+    sudo chown prometheus:prometheus /var/lib/prometheus
 
-  export PVER="2.15.2"
-  wget https://github.com/prometheus/prometheus/releases/download/v$PVER/prometheus-$PVER.linux-amd64.tar.gz
+    export PVER="2.15.2"
+    wget https://github.com/prometheus/prometheus/releases/download/v$PVER/prometheus-$PVER.linux-amd64.tar.gz
 
-  tar xvf prometheus-$PVER.linux-amd64.tar.gz 
-  mv prometheus-$PVER.linux-amd64 prometheus-files
+    tar xvf prometheus-$PVER.linux-amd64.tar.gz 
+    mv prometheus-$PVER.linux-amd64 prometheus-files
 
-  sudo cp prometheus-files/prometheus /usr/local/bin/
-  sudo cp prometheus-files/promtool /usr/local/bin/
-  sudo chown prometheus:prometheus /usr/local/bin/prometheus
-  sudo chown prometheus:prometheus /usr/local/bin/promtool
-  sudo chmod 755 /usr/local/bin/prometheus
-  sudo chmod 755 /usr/local/bin/promtool
+    sudo cp prometheus-files/prometheus /usr/local/bin/
+    sudo cp prometheus-files/promtool /usr/local/bin/
+    sudo chown prometheus:prometheus /usr/local/bin/prometheus
+    sudo chown prometheus:prometheus /usr/local/bin/promtool
+    sudo chmod 755 /usr/local/bin/prometheus
+    sudo chmod 755 /usr/local/bin/promtool
 
-  sudo cp -r prometheus-files/consoles /etc/prometheus
-  sudo cp -r prometheus-files/console_libraries /etc/prometheus
-  sudo chown -R prometheus:prometheus /etc/prometheus/consoles
-  sudo chown -R prometheus:prometheus /etc/prometheus/console_libraries
+    sudo cp -r prometheus-files/consoles /etc/prometheus
+    sudo cp -r prometheus-files/console_libraries /etc/prometheus
+    sudo chown -R prometheus:prometheus /etc/prometheus/consoles
+    sudo chown -R prometheus:prometheus /etc/prometheus/console_libraries
 
 Create service file:
 
