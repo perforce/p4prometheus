@@ -1,17 +1,32 @@
 # Installation Details for P4Prometheus and Other Components
 
+Decide if you want to install via packages/manually or using [Ansible Installation](#ansible-installation).
+
+Note it is possible to perform [Windows Installation](#windows-installation).
+
+On monitoring server, install:
+  - grafana
+  - prometheus
+  - node_exporter
+  - alertmanager (optional)
+
+On your commit/master or any perforce edge/replica servers, install:
+  - node_exporter
+  - p4prometheus
+  - monitor_metrics.sh
+  - monitor_wrapper.sh and monitor_metrics.py
+
+*Table of Contents:*
+
 - [Installation Details for P4Prometheus and Other Components](#installation-details-for-p4prometheus-and-other-components)
-  - [Package Install of Grafana](#package-install-of-grafana)
-  - [Ansible Installation](#ansible-installation)
-- [Configure prometheus components](#configure-prometheus-components)
-  - [Run installation](#run-installation)
-- [Manual Installation](#manual-installation)
-  - [Install monitor metrics cron jobs](#install-monitor-metrics-cron-jobs)
-    - [Checking for blocked commands](#checking-for-blocked-commands)
+- [Package Install of Grafana](#package-install-of-grafana)
+  - [Setup of dashboards](#setup-of-dashboards)
+- [Install Prometheus](#install-prometheus)
+  - [Prometheus config](#prometheus-config)
   - [Install node exporter](#install-node-exporter)
   - [Install p4prometheus - details](#install-p4prometheus---details)
-- [Install prometheus](#install-prometheus)
-  - [Prometheus config](#prometheus-config)
+  - [Install monitor metrics cron jobs](#install-monitor-metrics-cron-jobs)
+    - [Checking for blocked commands](#checking-for-blocked-commands)
   - [Start and enable service](#start-and-enable-service)
 - [Alerting](#alerting)
   - [Grafana Dashboard](#grafana-dashboard)
@@ -25,175 +40,129 @@
   - [Grafana](#grafana)
 - [Advanced config options](#advanced-config-options)
 - [Windows Installation](#windows-installation)
+  - [WMI Exporter on Windows](#wmi-exporter-on-windows)
+  - [P4prometheus on Windows](#p4prometheus-on-windows)
+  - [Installing as Services](#installing-as-services)
+- [Ansible Installation](#ansible-installation)
+  - [Configure prometheus components](#configure-prometheus-components)
+  - [Run installation](#run-installation)
 
-## Package Install of Grafana
+# Package Install of Grafana
+
+This should be done on the monitoring server only.
 
 Use the appropriate link below depending if you using `apt` or `yum`:
 
 * https://grafana.com/docs/grafana/latest/installation/debian/
 * https://grafana.com/docs/grafana/latest/installation/rpm/
 
-## Ansible Installation
+## Setup of dashboards
 
-This is the quickest way to install with a little bit of configuration for your setup.
+Once Grafana is installed the following 2 dashboards are recommended:
 
-Example files are in the `demo` folder of this project.
+* https://grafana.com/grafana/dashboards/12278 - P4 Stats
+* https://grafana.com/grafana/dashboards/405 - Node Exporter Server Info
 
-Assumptions:
-* ansible installed (e.g. `pip install ansible`) - see [installation](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#intro-installation-guide)
-* appropriate use ssh access to various machines referenced
-* appropriate sudo access for current account on the various machines (to install services)
+They can be imported from Grafana dashboard management page.
 
-Configure the `hosts` file for your env with the 3 `groups`:
-* master - the main p4d instance (node_exporter and p4prometheus)
-* replicas - any replica machines to be monitored (as for master)
-* monitor - the server where we will install Prometheus/Grafana and node_exporter
+For Windows see [Windows Installation](#windows-installation) since WMI Exporter is used instead of Node Exporter.
+
+If first time with Grafana, the default user/pwd: `admin`/`admin`
+
+# Install Prometheus
+
+This must be done on the monitoring server only.
+
+Run the following as root:
+
+    sudo useradd --no-create-home --shell /bin/false prometheus
+    sudo mkdir /etc/prometheus
+    sudo mkdir /var/lib/prometheus
+    sudo chown prometheus:prometheus /etc/prometheus
+    sudo chown prometheus:prometheus /var/lib/prometheus
+
+    export PVER="2.15.2"
+    wget https://github.com/prometheus/prometheus/releases/download/v$PVER/prometheus-$PVER.linux-amd64.tar.gz
+
+    tar xvf prometheus-$PVER.linux-amd64.tar.gz 
+    mv prometheus-$PVER.linux-amd64 prometheus-files
+
+    sudo cp prometheus-files/prometheus /usr/local/bin/
+    sudo cp prometheus-files/promtool /usr/local/bin/
+    sudo chown prometheus:prometheus /usr/local/bin/prometheus
+    sudo chown prometheus:prometheus /usr/local/bin/promtool
+    sudo chmod 755 /usr/local/bin/prometheus
+    sudo chmod 755 /usr/local/bin/promtool
+
+    sudo cp -r prometheus-files/consoles /etc/prometheus
+    sudo cp -r prometheus-files/console_libraries /etc/prometheus
+    sudo chown -R prometheus:prometheus /etc/prometheus/consoles
+    sudo chown -R prometheus:prometheus /etc/prometheus/console_libraries
+
+Create service file:
 
 ```ini
-[master]
-perforce01
-
-[replicas]
-replica_1
-edge_1
-
-[monitor]
-monitor_1
+cat << EOF > /etc/systemd/system/prometheus.service
+[Unit]
+Description=Prometheus
+Wants=network-online.target
+After=network-online.target
+ 
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+ExecStart=/usr/local/bin/prometheus \
+    --config.file /etc/prometheus/prometheus.yml \
+    --storage.tsdb.path /var/lib/prometheus/ \
+    --web.console.templates=/etc/prometheus/consoles \
+    --web.console.libraries=/etc/prometheus/console_libraries
+ 
+[Install]
+WantedBy=multi-user.target
+EOF
 ```
 
-# Configure prometheus components
+## Prometheus config
 
-    ansible-galaxy install william-yeh.prometheus
-
-Create playbook, e.g. `install_prometheus.yml`:
+It is important you edit and adjust the `targets` value appropriately to scrape from your commit/edge/replica servers (and localhost).
 
 ```yaml
-- hosts: monitor
-  become: True
-  roles:
-    - william-yeh.prometheus
-
-  vars:
-    prometheus_components: [ "prometheus", "alertmanager", "node_exporter" ]
-    prometheus_alertmanager_hostport: "localhost:9093"
-    prometheus_use_systemd: True
-    prometheus_use_service: False
-    prometheus_conf_main: prometheus.yml
-    # Review the following for latest releases - e.g. https://github.com/prometheus/alertmanager/releases
-    prometheus_version:                 2.5.1
-    prometheus_node_exporter_version:   0.18.1
-    prometheus_alertmanager_version:    0.20.0
-
-- hosts:
-    - master
-    - replicas
-  become: True
-  roles:
-    - william-yeh.prometheus
-
-  vars:
-    prometheus_components: [ "node_exporter" ]
-    prometheus_use_systemd: True
-    prometheus_use_service: False
-    prometheus_node_exporter_version:   0.18.1
-```
-
-Create `prometheus.yml` config file (installed by above) - pay particular attention to final list of `targets`
-
-```yaml
+cat << EOF > /etc/prometheus/prometheus.yml
 global:
   scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
   evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
   # scrape_timeout is set to the global default (10s).
 
-# Alertmanager configuration
-alerting:
-  alertmanagers:
-  - static_configs:
-    - targets:
-        - localhost:9093
+# Alertmanager configuration - optional
+# alerting:
+#   alertmanagers:
+#   - static_configs:
+#     - targets:
+#         - localhost:9093
 
 # Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
-rule_files:
+# rule_files:
   # - "perforce_rules.yml"
 
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
 scrape_configs:
-  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
   - job_name: 'prometheus'
     static_configs:
     - targets: ['localhost:9090']
 
   - job_name: 'node_exporter'
     static_configs:
-    - targets: ['localhost:9100', 'perforce01:9100', 'replica_1:9100', 'edge_1:9100']
+    # CONFIGURE THESE VALUES FOR YOUR SERVERS!!!!
+    - targets: ['p4hms:9100', 'p4main:9100', 'p4_ha:9100']
+
+EOF
 ```
 
-Create `install_p4prometheus.yml` using example [install_p4prometheus.yml](demo/install_p4prometheus.yml)
+Make sure user has access:
 
-You may need to adjust the `metrics_dir` variable. Note the script also copies over a p4prometheus config file: `p4prometheus.yml` (review this file and check it is correct).
-
-## Run installation
-
-    ansible-playbook -i hosts -v install_prometheus.yml
-
-    ansible-playbook -i hosts -v install_p4prometheus.yml
-
-# Manual Installation
-
-Alternatively do the manual installation steps below, suitably customised for your environment.
-
-- On monitoring server, install:
-  - grafana
-  - prometheus
-  - node_exporter
-  - alertmanager
-- On your commit/master or any perforce replica servers, install:
-  - p4prometheus
-  - monitor_metrics.sh
-  - monitor_wrapper.sh and monitor_metrics.py
-  - node_exporter
-
-## Install monitor metrics cron jobs
-
-Download:
-* [monitor_metrics.sh](demo/monitor_metrics.sh)
-* [monitor_wrapper.sh](demo/monitor_wrapper.sh)
-* [monitor_metrics.py](demo/monitor_metrics.py)
-
-Configure them for your metrics directory (e.g. /hxlogs/metrics)
-
-Please note that `monitor_metrics.py` (which is called by `monitor_wrapper.sh`) runs `lslocks` and 
-cross references locsk found with `p4 monitor show` output. This is incredibly useful for
-determining processes which are blocked by other processes. It is hard to discover this information
-if you are not collecting the data at the time!
-
-Warning: make sure that `lslocks` is installed on your Linux distribution.
-
-Install in crontab to run every minute:
-
-    INSTANCE=1
-    */1 * * * * /p4/common/site/bin/monitor_metrics.sh $INSTANCE > /dev/null 2>&1 ||:
-    */1 * * * * /p4/common/site/bin/monitor_wrapper.sh $INSTANCE > /dev/null 2>&1 ||:
-
-For non-SDP installation:
-    */1 * * * * /path/to/monitor_metrics.sh -p $P4PORT -u $P4USER -nosdp > /dev/null 2>&1 ||:
-
-If not using SDP then please ensure that appropriate LONG TERM TICKET is setup in the environment
-that this script is running.
-
-### Checking for blocked commands
-
-Look in the log file /p4/1/logs/monitor_metrics.log for output.
-
-e.g. the following will find all info messages
-
-    grep ^2020 /p4/1/logs/monitor_metrics.log | grep -v "no blocked commands" | less
-
-Output might be something like:
-
-    2020-04-03 14:40:01 pid 3657, user fred, cmd reconcile, table /p4/1/db1/server.locks/clients/79,d/FRED_LAPTOP, blocked by pid 326259, user fred, cmd reconcile, args -f -m -n c:\dev\ext\...
-
-Please note that metrics are written to `/p4/metrics/locks.prom` and will be available to Prometheus/Grafana.
+  sudo chown prometheus:prometheus /etc/prometheus/prometheus.yml
 
 ## Install node exporter
 
@@ -260,12 +229,12 @@ This must be done on the Perforce (Helix Core) server machine (and any replica m
 
 This assumes SDP structure is in use on the server, and thus that user `perforce` exists.
 
-Get latest release download link: https://github.com/rcowham/p4prometheus/releases
+Get latest release download link: https://github.com/perforce/p4prometheus/releases
 
 Run the following as `root` (using link copied from above page):
 
     export PVER=0.6.0
-    wget https://github.com/rcowham/p4prometheus/releases/download/v$PVER/p4prometheus.linux-amd64.gz
+    wget https://github.com/perforce/p4prometheus/releases/download/v$PVER/p4prometheus.linux-amd64.gz
 
     gunzip p4prometheus.linux-amd64.gz
     
@@ -273,7 +242,9 @@ Run the following as `root` (using link copied from above page):
 
     mv p4prometheus.linux-amd64 /usr/local/bin/p4prometheus
 
-As user `perforce`:
+As user `perforce` run as below.
+
+Important to check configuration values, e.g. `log_path`, `metrics_output` etc.
 
 ```bash
 cat << EOF > /p4/common/config/p4prometheus.yaml
@@ -307,9 +278,9 @@ As user `root`:
 
 Create service file as below - parameters you may need to customise:
 
-* User
-* Group
-* ExecStart
+* `User`
+* `Group`
+* `ExecStart`
 
 ```ini
 cat << EOF > /etc/systemd/system/p4prometheus.service
@@ -344,98 +315,48 @@ Check that metrics are being written:
 
     grep lines /hxlogs/metrics/p4_cmds.prom
 
-# Install prometheus
 
-This must be done on the monitoring machine only.
+## Install monitor metrics cron jobs
 
-Run the following as root:
+Download the following files:
+* [monitor_metrics.sh](demo/monitor_metrics.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/monitor_metrics.sh)
+* [monitor_wrapper.sh](demo/monitor_wrapper.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/monitor_wrapper.sh)
+* [monitor_metrics.py](demo/monitor_metrics.py) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/monitor_metrics.py)
 
-    sudo useradd --no-create-home --shell /bin/false prometheus
-    sudo mkdir /etc/prometheus
-    sudo mkdir /var/lib/prometheus
-    sudo chown prometheus:prometheus /etc/prometheus
-    sudo chown prometheus:prometheus /var/lib/prometheus
+Configure them for your metrics directory (e.g. `/hxlogs/metrics`)
 
-    export PVER="2.15.2"
-    wget https://github.com/prometheus/prometheus/releases/download/v$PVER/prometheus-$PVER.linux-amd64.tar.gz
+Please note that `monitor_metrics.py` (which is called by `monitor_wrapper.sh`) runs `lslocks` and 
+cross references locsk found with `p4 monitor show` output. This is incredibly useful for
+determining processes which are blocked by other processes. It is hard to discover this information
+if you are not collecting the data at the time!
 
-    tar xvf prometheus-$PVER.linux-amd64.tar.gz 
-    mv prometheus-$PVER.linux-amd64 prometheus-files
+Warning: make sure that `lslocks` is installed on your Linux distribution!
 
-    sudo cp prometheus-files/prometheus /usr/local/bin/
-    sudo cp prometheus-files/promtool /usr/local/bin/
-    sudo chown prometheus:prometheus /usr/local/bin/prometheus
-    sudo chown prometheus:prometheus /usr/local/bin/promtool
-    sudo chmod 755 /usr/local/bin/prometheus
-    sudo chmod 755 /usr/local/bin/promtool
+Install in crontab to run every minute:
 
-    sudo cp -r prometheus-files/consoles /etc/prometheus
-    sudo cp -r prometheus-files/console_libraries /etc/prometheus
-    sudo chown -R prometheus:prometheus /etc/prometheus/consoles
-    sudo chown -R prometheus:prometheus /etc/prometheus/console_libraries
+    INSTANCE=1
+    */1 * * * * /p4/common/site/bin/monitor_metrics.sh $INSTANCE > /dev/null 2>&1 ||:
+    */1 * * * * /p4/common/site/bin/monitor_wrapper.sh $INSTANCE > /dev/null 2>&1 ||:
 
-Create service file:
+For non-SDP installation:
+    */1 * * * * /path/to/monitor_metrics.sh -p $P4PORT -u $P4USER -nosdp > /dev/null 2>&1 ||:
 
-```ini
-cat << EOF > /etc/systemd/system/prometheus.service
-[Unit]
-Description=Prometheus
-Wants=network-online.target
-After=network-online.target
- 
-[Service]
-User=prometheus
-Group=prometheus
-Type=simple
-ExecStart=/usr/local/bin/prometheus \
-    --config.file /etc/prometheus/prometheus.yml \
-    --storage.tsdb.path /var/lib/prometheus/ \
-    --web.console.templates=/etc/prometheus/consoles \
-    --web.console.libraries=/etc/prometheus/console_libraries
- 
-[Install]
-WantedBy=multi-user.target
-EOF
-```
+If not using SDP then please ensure that appropriate LONG TERM TICKET is setup in the environment
+that this script is running.
 
-## Prometheus config
+### Checking for blocked commands
 
-```yaml
-cat << EOF > /etc/prometheus/prometheus.yml
-global:
-  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
-  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
-  # scrape_timeout is set to the global default (10s).
+Look in the log file /p4/1/logs/monitor_metrics.log for output.
 
-# Alertmanager configuration - optional
-# alerting:
-#   alertmanagers:
-#   - static_configs:
-#     - targets:
-#         - localhost:9093
+e.g. the following will find all info messages
 
-# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
-# rule_files:
-  # - "perforce_rules.yml"
+    grep ^2020 /p4/1/logs/monitor_metrics.log | grep -v "no blocked commands" | less
 
-# A scrape configuration containing exactly one endpoint to scrape:
-# Here it's Prometheus itself.
-scrape_configs:
-  - job_name: 'prometheus'
-    static_configs:
-    - targets: ['localhost:9090']
+Output might be something like:
 
-  - job_name: 'node_exporter'
-    static_configs:
-    # CONFIGURE THESE VALUES FOR YOUR SERVERS!!!!
-    - targets: ['p4hms:9100', 'p4main:9100', 'p4_ha:9100']
+    2020-04-03 14:40:01 pid 3657, user fred, cmd reconcile, table /p4/1/db1/server.locks/clients/79,d/FRED_LAPTOP, blocked by pid 326259, user fred, cmd reconcile, args -f -m -n c:\dev\ext\...
 
-EOF
-```
-
-Make sure user has access:
-
-  sudo chown prometheus:prometheus /etc/prometheus/prometheus.yml
+Please note that metrics are written to `/p4/metrics/locks.prom` and will be available to Prometheus/Grafana.
 
 ## Start and enable service
 
@@ -456,7 +377,7 @@ Or open URL in a browser.
 
 # Alerting
 
-Done via alertmanager
+Done via alertmanager. Optional component 
 
 Setup is very similar to the above.
 
@@ -597,6 +518,8 @@ Port defaults are:
 * Prometheus: 9090
 * Node_exporter: 9100
 
+Use curl on the monitoring server to pull metrics from the other servers (from Node Exporter port).
+
 ## p4prometheus
 
 If this is running correctly, it should write into the designated log file, e.g. `/hxlogs/metrics/p4_cmds.prom`
@@ -604,6 +527,7 @@ If this is running correctly, it should write into the designated log file, e.g.
 You can just grep for the most basic metric a couple of times (make sure it is increasing every minute or so):
 
     $ grep lines /p4/metrics/p4_cmds.prom 
+
     # HELP p4_prom_log_lines_read A count of log lines read
     # TYPE p4_prom_log_lines_read counter
     p4_prom_log_lines_read{serverid="master.1",sdpinst="1"} 7143
@@ -652,6 +576,128 @@ For improved security:
 # Windows Installation
 
 The above instructions are all for Linux. However, all the components have Windows binaries, with the exception of
-monitor_metrics.sh. A version in Powershell is on the TODO list!
+monitor_metrics.sh. A version in Powershell/Go is on the TODO list!
 
-For p4prometheus you need to install as a service using for example [NSSM - Non Sucking Service Manager!](https://nssm.cc/)
+Details:
+
+* Grafana has a Windows Installer: [Grafana Installer](https://grafana.com/grafana/download)
+* Prometheus has a Windows executable: [Prometheus Executable](https://github.com/prometheus/prometheus/releases)
+* Instead of Node Exporter use: [WMI Exporter](https://github.com/martinlindhe/wmi_exporter/releases)
+* P4Prometheus has a Windows executable: [P4prometheus Executable](https://github.com/perforce/p4prometheus/releases)
+
+For testing it is recommended just to run the various executables from command line first and test with Prometheus and Grafana.
+
+## WMI Exporter on Windows
+
+This takes a similar parameter to node_exporter: `--collector.textfile.directory` which must be correctly set and agree with the value used by P4prometheus.
+
+## P4prometheus on Windows
+
+This takes the `--config` parameter and the yaml file is same format as for Linux version. You can specify paths with forward slashes if desired, e.g. `c:/p4/metrics`
+
+## Installing as Services
+
+To install as a service using for example [NSSM - Non Sucking Service Manager!](https://nssm.cc/) to wrap the Prometheus/WMI Exporter/P4Prometheus binaries downloaded above.
+
+# Ansible Installation
+
+This is the quickest way to install with a little bit of configuration for your setup. Example files are in the `demo` folder of this project.
+
+Assumptions:
+* ansible installed (e.g. `pip install ansible`) - see [installation](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#intro-installation-guide)
+* appropriate use ssh access to various machines referenced
+* appropriate sudo access for current account on the various machines (to install services)
+
+Configure the `hosts` file for your env with the 3 `groups`:
+* master - the main p4d instance (node_exporter and p4prometheus)
+* replicas - any replica machines to be monitored (as for master)
+* monitor - the server where we will install Prometheus/Grafana and node_exporter
+
+```ini
+[master]
+perforce01
+
+[replicas]
+replica_1
+edge_1
+
+[monitor]
+monitor_1
+```
+
+## Configure prometheus components
+
+    ansible-galaxy install william-yeh.prometheus
+
+Create playbook, e.g. `install_prometheus.yml`:
+
+```yaml
+- hosts: monitor
+  become: True
+  roles:
+    - william-yeh.prometheus
+
+  vars:
+    prometheus_components: [ "prometheus", "alertmanager", "node_exporter" ]
+    prometheus_alertmanager_hostport: "localhost:9093"
+    prometheus_use_systemd: True
+    prometheus_use_service: False
+    prometheus_conf_main: prometheus.yml
+    # Review the following for latest releases - e.g. https://github.com/prometheus/alertmanager/releases
+    prometheus_version:                 2.5.1
+    prometheus_node_exporter_version:   0.18.1
+    prometheus_alertmanager_version:    0.20.0
+
+- hosts:
+    - master
+    - replicas
+  become: True
+  roles:
+    - william-yeh.prometheus
+
+  vars:
+    prometheus_components: [ "node_exporter" ]
+    prometheus_use_systemd: True
+    prometheus_use_service: False
+    prometheus_node_exporter_version:   0.18.1
+```
+
+Create `prometheus.yml` config file (installed by above) - pay particular attention to final list of `targets`
+
+```yaml
+global:
+  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
+  # scrape_timeout is set to the global default (10s).
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+        - localhost:9093
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+  # - "perforce_rules.yml"
+
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'prometheus'
+    static_configs:
+    - targets: ['localhost:9090']
+
+  - job_name: 'node_exporter'
+    static_configs:
+    - targets: ['localhost:9100', 'perforce01:9100', 'replica_1:9100', 'edge_1:9100']
+```
+
+Create `install_p4prometheus.yml` using example [install_p4prometheus.yml](demo/install_p4prometheus.yml)
+
+You may need to adjust the `metrics_dir` variable. Note the script also copies over a p4prometheus config file: `p4prometheus.yml` (review this file and check it is correct).
+
+## Run installation
+
+    ansible-playbook -i hosts -v install_prometheus.yml
+
+    ansible-playbook -i hosts -v install_p4prometheus.yml
