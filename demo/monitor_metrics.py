@@ -289,6 +289,9 @@ class P4Monitor(object):
         name = "p4_locks_replica_write"
         lines.extend(self.metricsHeader(name, "replica write locks", "gauge"))
         lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.replicaWriteLocks))
+        name = "p4_locks_cmds_blocked"
+        lines.extend(self.metricsHeader(name, "cmds blocked by locks", "gauge"))
+        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.blockedCommands))
         return lines
 
     def writeMetrics(self, lines):
