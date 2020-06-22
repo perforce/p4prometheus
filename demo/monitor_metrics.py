@@ -334,7 +334,7 @@ class P4Monitor(object):
         lockcmd = "lslocks -o +BLOCKER"
         # If lslocks can't return JSON we parse it into JSON ourselves
         if locksver > "2.26":
-            lockcmd += " +J"
+            lockcmd += " -J"
             lockdata = self.run_cmd(lockcmd)
         else:
             lockdata = self.run_cmd(lockcmd)
