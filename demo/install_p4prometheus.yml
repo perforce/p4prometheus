@@ -1,11 +1,12 @@
 
-- name: Setup node_exporter
+- name: Configure node_exporter
   hosts:
     - master
     - replicas
   vars:
     - metrics_dir: /hxlogs/metrics
-    - p4prometheus_version: v0.4.0
+    # See for latest release: https://github.com/perforce/p4prometheus/releases
+    - p4prometheus_version: v0.6.0
 
   tasks:
     - name: Create metrics dir and give everyone read access
@@ -42,7 +43,7 @@
   tasks:
     - name: Download published p4prometheus
       get_url:
-        url: "https://github.com/rcowham/p4prometheus/releases/download/{{ p4prometheus_version }}/p4prometheus.linux-amd64.gz"
+        url: "https://github.com/perforce/p4prometheus/releases/download/{{ p4prometheus_version }}/p4prometheus.linux-amd64.gz"
         dest: /usr/local/bin
       become: True
 
@@ -61,13 +62,13 @@
 
     - name: Copy service file
       copy:
-        src: /p4/p4prometheus.service
+        src: p4prometheus.service
         dest: /etc/systemd/system
       become: True
 
     - name: Copy config file
       copy:
-        src: /p4/p4prometheus.yml
+        src: p4prometheus.yml
         dest: /p4/common/config
 
     - name: reload service p4prometheus

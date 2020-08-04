@@ -643,10 +643,13 @@ Create playbook, e.g. `install_prometheus.yml`:
     prometheus_use_systemd: True
     prometheus_use_service: False
     prometheus_conf_main: prometheus.yml
-    # Review the following for latest releases - e.g. https://github.com/prometheus/alertmanager/releases
-    prometheus_version:                 2.5.1
-    prometheus_node_exporter_version:   0.18.1
-    prometheus_alertmanager_version:    0.20.0
+    # Review the following for latest releases - e.g. 
+    # https://github.com/prometheus/alertmanager/releases
+    # https://github.com/prometheus/prometheus/releases
+    # https://github.com/prometheus/node_exporter/releases
+    prometheus_version:                 2.19.3
+    prometheus_node_exporter_version:   1.0.1
+    prometheus_alertmanager_version:    0.21.0
 
 - hosts:
     - master
@@ -659,7 +662,7 @@ Create playbook, e.g. `install_prometheus.yml`:
     prometheus_components: [ "node_exporter" ]
     prometheus_use_systemd: True
     prometheus_use_service: False
-    prometheus_node_exporter_version:   0.18.1
+    prometheus_node_exporter_version:   1.0.1
 ```
 
 Create `prometheus.yml` config file (installed by above) - pay particular attention to final list of `targets`
@@ -692,12 +695,20 @@ scrape_configs:
     - targets: ['localhost:9100', 'perforce01:9100', 'replica_1:9100', 'edge_1:9100']
 ```
 
-Create `install_p4prometheus.yml` using example [install_p4prometheus.yml](demo/install_p4prometheus.yml)
+Create `install_p4prometheus.yml` using example [demo/install_p4prometheus.yml](demo/install_p4prometheus.yml)
 
-You may need to adjust the `metrics_dir` variable. Note the script also copies over a p4prometheus config file: `p4prometheus.yml` (review this file and check it is correct).
+You may need to adjust the `metrics_dir` variable. 
+
+Note the script also copies over a p4prometheus config file: `p4prometheus.yml` (review this file and check it is correct).
+
+Copy `demo/p4prometheus.service` into the current directory and review it (it will also be copied to all machines).
 
 ## Run installation
 
+This installs node_exporter on all servers, and prometheus/grafana on the monitoring box:
+
     ansible-playbook -i hosts -v install_prometheus.yml
+
+This installs p4prometheus on the respective p4d commit and replica servers, and starts node_exporter:
 
     ansible-playbook -i hosts -v install_p4prometheus.yml
