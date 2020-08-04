@@ -1,3 +1,5 @@
+![Support](https://img.shields.io/badge/Support-Community-yellow.svg)
+
 # p4prometheus
 
 Utility which integrates Perforce (Helix Core) with Prometheus. If performs real-time analysis of p4d log files feeding to a dashboard and for system alerting.
