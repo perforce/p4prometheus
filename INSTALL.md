@@ -42,7 +42,8 @@ On your commit/master or any perforce edge/replica servers, install:
 - [Windows Installation](#windows-installation)
   - [WMI Exporter on Windows](#wmi-exporter-on-windows)
   - [P4prometheus on Windows](#p4prometheus-on-windows)
-  - [Installing as Services](#installing-as-services)
+  - [Running monitor_metrics.sh](#running-monitor_metricssh)
+  - [Installing Programs as Services](#installing-programs-as-services)
 - [Ansible Installation](#ansible-installation)
   - [Configure prometheus components](#configure-prometheus-components)
   - [Run installation](#run-installation)
@@ -576,7 +577,8 @@ For improved security:
 # Windows Installation
 
 The above instructions are all for Linux. However, all the components have Windows binaries, with the exception of
-monitor_metrics.sh. A version in Powershell/Go is on the TODO list!
+monitor_metrics.sh. A version in Powershell/Go is on the TODO list - but the current version has
+been tested with git-bash and basically works.
 
 Details:
 
@@ -585,7 +587,8 @@ Details:
 * Instead of Node Exporter use: [WMI Exporter](https://github.com/martinlindhe/wmi_exporter/releases)
 * P4Prometheus has a Windows executable: [P4prometheus Executable](https://github.com/perforce/p4prometheus/releases)
 
-For testing it is recommended just to run the various executables from command line first and test with Prometheus and Grafana.
+For testing it is recommended just to run the various executables from command line first and test with Prometheus and Grafana. This allows you to test with firewalls/ports/access rights etc.
+When it is all working, you can wrap up and install each binary as a Service as noted below.
 
 ## WMI Exporter on Windows
 
@@ -593,15 +596,35 @@ This takes a similar parameter to node_exporter: `--collector.textfile.directory
 
 ## P4prometheus on Windows
 
-This takes the `--config` parameter and the yaml file is same format as for Linux version. You can specify paths with forward slashes if desired, e.g. `c:/p4/metrics`
+The executable takes the `--config` parameter and the yaml file is same format as for Linux version. You can specify paths with forward slashes if desired, e.g. `c:/p4/metrics`
 
-## Installing as Services
+## Running monitor_metrics.sh
+
+Download [Git Bash](https://gitforwindows.org/) and install.
+
+Edit `monitor_metrics.sh` and adjust path settings, e.g. `/p4/metrics` -> `/c/p4/metrics`
+
+Test the script with your installation (analyse it's settings). First make sure your admin user is logged in.
+
+   bash -xv ./monitor_metrics.sh -p $P4PORT -u $P4USER -nosdp 
+
+When it is working and writing metric files to your defined metrics directory, then create a .BAT wrapper, e.g. `run_monitor_metrics.bat` with something like the following contents (adjusted for your local settings):
+
+    cmd /c ""C:\Program Files (x86)\Git\bin\bash.exe" --login -i -- C:\p4\monitor\monitor_metrics.sh -p localhost:1666 -u perforce -nosdp"
+
+Then you can create a Task Scheduler entry which runs `run_monitor_metrics.bat` every minute, for example.
+
+It is important that the user account used has a long login ticket specified.
+
+## Installing Programs as Services
 
 To install as a service using for example [NSSM - Non Sucking Service Manager!](https://nssm.cc/) to wrap the Prometheus/WMI Exporter/P4Prometheus binaries downloaded above.
 
+Note recommendation above regarding getting things working on command line first (e.g. with debug options).
+
 # Ansible Installation
 
-This is the quickest way to install with a little bit of configuration for your setup. Example files are in the `demo` folder of this project.
+This is a good way to install with a little bit of configuration for your setup. Example files are in the `demo` folder of this project.
 
 Assumptions:
 * ansible installed (e.g. `pip install ansible`) - see [installation](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#intro-installation-guide)
