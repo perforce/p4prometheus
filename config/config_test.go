@@ -7,13 +7,15 @@ import (
 )
 
 const defaultConfig = `
-log_path:			/p4/1/logs/log
-metrics_output:		/hxlogs/metrics/cmds.prom
-server_id:			myserverid
-sdp_instance: 		1
-update_interval: 	15s
-output_cmds_by_user: true
-case_sensitive_server: true
+log_path:					/p4/1/logs/log
+metrics_output:				/hxlogs/metrics/cmds.prom
+server_id:					myserverid
+sdp_instance: 				1
+update_interval: 			15s
+output_cmds_by_user: 		true
+output_cmds_by_user_regex: 	".*"
+output_cmds_by_ip: 			true
+case_sensitive_server: 		true
 `
 
 const nonSDPConfig1 = `
@@ -61,6 +63,8 @@ func TestValidConfig(t *testing.T) {
 	checkValue(t, "SDPInstance", cfg.SDPInstance, "1")
 	checkValueDuration(t, "UpdateInterval", cfg.UpdateInterval, 15*time.Second)
 	checkValueBool(t, "OutputCmdsByUser", cfg.OutputCmdsByUser, true)
+	checkValue(t, "OutputCmdsByUserRegex", cfg.OutputCmdsByUserRegex, ".*")
+	checkValueBool(t, "OutputCmdsByIp", cfg.OutputCmdsByIP, true)
 }
 
 func TestNoSDP(t *testing.T) {

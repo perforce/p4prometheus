@@ -127,17 +127,26 @@ func runLogTailer(logger *logrus.Logger, logcfg *logConfig, cfg *config.Config, 
 	// Setup P4Prometheus object and a file parser
 	p4p := newP4Prometheus(cfg, logger)
 
-	mconfig := &metrics.Config{
-		Debug:               debug,
-		ServerID:            cfg.ServerID,
-		SDPInstance:         cfg.SDPInstance,
-		UpdateInterval:      cfg.UpdateInterval,
-		OutputCmdsByUser:    cfg.OutputCmdsByUser,
-		CaseSensitiveServer: cfg.CaseSensitiveServer,
+	debugInt := 0
+	if debug {
+		debugInt = 1
 	}
-	logger.Infof("P4Prometheus config: debug %v, serverID %s, SDPInstance %s, UpdateInterval %s, OutputCmdsByUser %v, CaseSenstiveServer %v",
-		mconfig.Debug, mconfig.ServerID, mconfig.SDPInstance, mconfig.UpdateInterval, mconfig.OutputCmdsByUser, mconfig.CaseSensitiveServer)
-	mp := metrics.NewP4DMetricsLogParser(mconfig, logger, false)
+	mcfg := &metrics.Config{
+		Debug:                 debugInt,
+		ServerID:              cfg.ServerID,
+		SDPInstance:           cfg.SDPInstance,
+		UpdateInterval:        cfg.UpdateInterval,
+		OutputCmdsByUser:      cfg.OutputCmdsByUser,
+		OutputCmdsByUserRegex: cfg.OutputCmdsByUserRegex,
+		OutputCmdsByIP:        cfg.OutputCmdsByIP,
+		CaseSensitiveServer:   cfg.CaseSensitiveServer,
+	}
+	logger.Infof("P4Prometheus config: debug %v, serverID %s, SDPInstance %s, UpdateInterval %s, OutputCmdsByUser %v, OutputCmdsByUserRegex '%s', OutputCmdsByIP %v, CaseSenstiveServer %v",
+		mcfg.Debug, mcfg.ServerID, mcfg.SDPInstance, mcfg.UpdateInterval,
+		mcfg.OutputCmdsByUser, mcfg.OutputCmdsByUserRegex, mcfg.OutputCmdsByIP,
+		mcfg.CaseSensitiveServer)
+	logger.Infof("P4Prometheus config2: %v", mcfg)
+	mp := metrics.NewP4DMetricsLogParser(mcfg, logger, false)
 
 	linesChan := make(chan string, 10000)
 	_, metricsChan := mp.ProcessEvents(ctx, linesChan, false)
@@ -209,7 +218,15 @@ func main() {
 		).Default("10s").Duration()
 		noOutputCmdsByUser = kingpin.Flag(
 			"no.output.cmds.by.user",
-			"Update interval for metrics.",
+			"Set (for large servers) to not output cmds by user.",
+		).Default("false").Bool()
+		outputCmdsByUserRegex = kingpin.Flag(
+			"output.cmds.by.user.regex",
+			"Set to output cmds by user in detail for users matching this value as a regexp.",
+		).String()
+		noOutputCmdsByIP = kingpin.Flag(
+			"no.output.cmds.by.ip",
+			"Set (for large servers) to not output cmds by IP.",
 		).Default("false").Bool()
 		caseInsensitiveServer = kingpin.Flag(
 			"case.insensitive.server",
@@ -247,9 +264,16 @@ func main() {
 	if !*noOutputCmdsByUser {
 		cfg.OutputCmdsByUser = !*noOutputCmdsByUser
 	}
+	if *outputCmdsByUserRegex != "" {
+		cfg.OutputCmdsByUserRegex = *outputCmdsByUserRegex
+	}
+	if !*noOutputCmdsByIP {
+		cfg.OutputCmdsByIP = !*noOutputCmdsByUser
+	}
 	if *caseInsensitiveServer {
 		cfg.CaseSensitiveServer = !*caseInsensitiveServer
 	}
+	logger.Infof("%v", version.Print("p4prometheus"))
 	logger.Infof("Processing log file: '%s' output to '%s' SDP instance '%s'",
 		cfg.LogPath, cfg.MetricsOutput, cfg.SDPInstance)
 	if cfg.SDPInstance == "" && len(cfg.ServerID) == 0 {
