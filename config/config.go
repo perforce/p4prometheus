@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"io/ioutil"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -73,6 +74,12 @@ func (c *Config) validate() error {
 	}
 	if !strings.HasSuffix(c.MetricsOutput, ".prom") {
 		return fmt.Errorf("Invalid metrics_output: Prometheus metric file must end in '.prom'")
+	}
+	// Validate regex
+	if c.OutputCmdsByUserRegex != "" {
+		if _, err := regexp.Compile(c.OutputCmdsByUserRegex); err != nil {
+			return fmt.Errorf("Failed to parse '%s' as a regex", c.OutputCmdsByUserRegex)
+		}
 	}
 	return nil
 }

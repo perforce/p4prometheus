@@ -85,9 +85,10 @@ func TestNoSDP(t *testing.T) {
 }
 
 func TestWrongValues(t *testing.T) {
-	ensureFail(t, `update_interval: 	'not duration'`)
-	ensureFail(t, `update_interval: 	-1`)
-	ensureFail(t, `output_cmds_by_user: yes`)
+	start := `log_path:			/p4/1/logs/log
+metrics_output:				/hxlogs/metrics/cmds.prom
+`
+	ensureFail(t, start+`update_interval: 	'not duration'`, "duration")
 }
 
 func TestDefaultInterval(t *testing.T) {
@@ -105,20 +106,33 @@ sdp_instance: 		1
 	}
 	if runtime.GOOS == "windows" {
 		if cfg.CaseSensitiveServer {
-			t.Errorf("Failed default case_senstive_server on Windows")
+			t.Errorf("Failed default case_sensitive_server on Windows")
 		}
 	} else {
 		if !cfg.CaseSensitiveServer {
-			t.Errorf("Failed default case_senstive_server on Linux/Mac")
+			t.Errorf("Failed default case_sensitive_server on Linux/Mac")
 		}
 	}
-
 }
 
-func ensureFail(t *testing.T, cfgString string) {
+func TestRegex(t *testing.T) {
+	// Invalid regex should cause error
+	cfgString := `
+log_path:					/p4/1/logs/log
+metrics_output:				/hxlogs/metrics/cmds.prom
+server_id:					myserverid
+output_cmds_by_user_regex: 	"[.*"
+`
 	_, err := Unmarshal([]byte(cfgString))
 	if err == nil {
-		t.Fatalf("Expected config err: %v", err.Error())
+		t.Fatalf("Expected regex error not seen")
+	}
+}
+
+func ensureFail(t *testing.T, cfgString string, desc string) {
+	_, err := Unmarshal([]byte(cfgString))
+	if err == nil {
+		t.Fatalf("Expected config err not found: %s", desc)
 	}
 	t.Logf("Config err: %v", err.Error())
 }
