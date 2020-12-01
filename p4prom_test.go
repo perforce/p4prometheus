@@ -123,9 +123,9 @@ func TestP4PromBasic(t *testing.T) {
 	cfg := &config.Config{
 		ServerID:              "myserverid",
 		UpdateInterval:        10 * time.Millisecond,
-		OutputCmdsByUser:      true,
-		OutputCmdsByUserRegex: ".*",
-		OutputCmdsByIP:        true,
+		OutputCmdsByUser:      false,
+		OutputCmdsByUserRegex: "", // No match so don't output
+		OutputCmdsByIP:        false,
 	}
 	input := `
 Perforce server info:
@@ -138,21 +138,13 @@ Perforce server info:
 	cmdTime, _ := time.Parse(p4timeformat, "2015/09/02 15:23:09")
 	historical := false
 	output := basicTest(t, cfg, input, historical)
-
-	assert.Equal(t, 21, len(output))
-	expected := eol.Split(`p4_cmd_counter{serverid="myserverid",cmd="user-sync"} 1
+	baseExpected := eol.Split(`p4_cmd_counter{serverid="myserverid",cmd="user-sync"} 1
 p4_cmd_cumulative_seconds{serverid="myserverid",cmd="user-sync"} 0.031
-p4_cmd_ip_counter{serverid="myserverid",ip="127.0.0.1"} 1
-p4_cmd_ip_cumulative_seconds{serverid="myserverid",ip="127.0.0.1"} 0.031
 p4_cmd_program_counter{serverid="myserverid",program="p4/2016.2/LINUX26X86_64/1598668"} 1
 p4_cmd_program_cumulative_seconds{serverid="myserverid",program="p4/2016.2/LINUX26X86_64/1598668"} 0.031
 p4_cmd_running{serverid="myserverid"} 1
-p4_cmd_system_cpu_cumulative_seconds{serverid="myserverid",cmd="user-sync"} 0.000
-p4_cmd_user_counter{serverid="myserverid",user="robert"} 1
 p4_cmd_user_cpu_cumulative_seconds{serverid="myserverid",cmd="user-sync"} 0.000
-p4_cmd_user_cumulative_seconds{serverid="myserverid",user="robert"} 0.031
-p4_cmd_user_detail_counter{serverid="myserverid",user="robert",cmd="user-sync"} 1
-p4_cmd_user_detail_cumulative_seconds{serverid="myserverid",user="robert",cmd="user-sync"} 0.031
+p4_cmd_system_cpu_cumulative_seconds{serverid="myserverid",cmd="user-sync"} 0.000
 p4_prom_cmds_pending{serverid="myserverid"} 0
 p4_prom_cmds_processed{serverid="myserverid"} 1
 p4_prom_log_lines_read{serverid="myserverid"} 8
@@ -161,27 +153,21 @@ p4_sync_bytes_updated{serverid="myserverid"} 0
 p4_sync_files_added{serverid="myserverid"} 0
 p4_sync_files_deleted{serverid="myserverid"} 0
 p4_sync_files_updated{serverid="myserverid"} 0`, -1)
-	assert.Equal(t, expected, output)
+	sort.Strings(baseExpected)
+	assert.Equal(t, len(baseExpected), len(output))
+	assert.Equal(t, baseExpected, output)
 
 	historical = true
 	output = basicTest(t, cfg, input, historical)
-
-	assert.Equal(t, 21, len(output))
 	// Cross check appropriate time is being produced for historical runs
 	assert.Contains(t, output[0], fmt.Sprintf("%d", cmdTime.Unix()))
-	expected = eol.Split(`p4_cmd_counter;serverid=myserverid;cmd=user-sync 1 1441207389
+	baseExpectedHistorical := eol.Split(`p4_cmd_counter;serverid=myserverid;cmd=user-sync 1 1441207389
 p4_cmd_cumulative_seconds;serverid=myserverid;cmd=user-sync 0.031 1441207389
-p4_cmd_ip_counter;serverid=myserverid;ip=127.0.0.1 1 1441207389
-p4_cmd_ip_cumulative_seconds;serverid=myserverid;ip=127.0.0.1 0.031 1441207389
 p4_cmd_program_counter;serverid=myserverid;program=p4/2016.2/LINUX26X86_64/1598668 1 1441207389
 p4_cmd_program_cumulative_seconds;serverid=myserverid;program=p4/2016.2/LINUX26X86_64/1598668 0.031 1441207389
 p4_cmd_running;serverid=myserverid 1 1441207389
 p4_cmd_system_cpu_cumulative_seconds;serverid=myserverid;cmd=user-sync 0.000 1441207389
-p4_cmd_user_counter;serverid=myserverid;user=robert 1 1441207389
 p4_cmd_user_cpu_cumulative_seconds;serverid=myserverid;cmd=user-sync 0.000 1441207389
-p4_cmd_user_cumulative_seconds;serverid=myserverid;user=robert 0.031 1441207389
-p4_cmd_user_detail_counter;serverid=myserverid;user=robert;cmd=user-sync 1 1441207389
-p4_cmd_user_detail_cumulative_seconds;serverid=myserverid;user=robert;cmd=user-sync 0.031 1441207389
 p4_prom_cmds_pending;serverid=myserverid 0 1441207389
 p4_prom_cmds_processed;serverid=myserverid 1 1441207389
 p4_prom_log_lines_read;serverid=myserverid 8 1441207389
@@ -190,6 +176,47 @@ p4_sync_bytes_updated;serverid=myserverid 0 1441207389
 p4_sync_files_added;serverid=myserverid 0 1441207389
 p4_sync_files_deleted;serverid=myserverid 0 1441207389
 p4_sync_files_updated;serverid=myserverid 0 1441207389`, -1)
+	sort.Strings(baseExpectedHistorical)
+	assert.Equal(t, len(baseExpectedHistorical), len(output))
+	assert.Equal(t, baseExpectedHistorical, output)
+
+	// Now change config and expect some extra metrics to be output
+	cfg = &config.Config{
+		ServerID:              "myserverid",
+		UpdateInterval:        10 * time.Millisecond,
+		OutputCmdsByUser:      true,
+		OutputCmdsByUserRegex: ".*", // all users
+		OutputCmdsByIP:        true,
+	}
+
+	expected := eol.Split(`p4_cmd_ip_counter{serverid="myserverid",ip="127.0.0.1"} 1
+p4_cmd_ip_cumulative_seconds{serverid="myserverid",ip="127.0.0.1"} 0.031
+p4_cmd_user_counter{serverid="myserverid",user="robert"} 1
+p4_cmd_user_cumulative_seconds{serverid="myserverid",user="robert"} 0.031
+p4_cmd_user_detail_counter{serverid="myserverid",user="robert",cmd="user-sync"} 1
+p4_cmd_user_detail_cumulative_seconds{serverid="myserverid",user="robert",cmd="user-sync"} 0.031`, -1)
+	for _, l := range baseExpected {
+		expected = append(expected, l)
+	}
+	sort.Strings(expected)
+	historical = false
+	output = basicTest(t, cfg, input, historical)
+	assert.Equal(t, len(expected), len(output))
+	assert.Equal(t, expected, output)
+
+	expected = eol.Split(`p4_cmd_ip_counter;serverid=myserverid;ip=127.0.0.1 1 1441207389
+p4_cmd_ip_cumulative_seconds;serverid=myserverid;ip=127.0.0.1 0.031 1441207389
+p4_cmd_user_counter;serverid=myserverid;user=robert 1 1441207389
+p4_cmd_user_cumulative_seconds;serverid=myserverid;user=robert 0.031 1441207389
+p4_cmd_user_detail_counter;serverid=myserverid;user=robert;cmd=user-sync 1 1441207389
+p4_cmd_user_detail_cumulative_seconds;serverid=myserverid;user=robert;cmd=user-sync 0.031 1441207389`, -1)
+	for _, l := range baseExpectedHistorical {
+		expected = append(expected, l)
+	}
+	sort.Strings(expected)
+	historical = true
+	output = basicTest(t, cfg, input, historical)
+	assert.Equal(t, len(expected), len(output))
 	assert.Equal(t, expected, output)
 
 }
