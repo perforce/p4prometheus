@@ -1,7 +1,0 @@
-# Configuration file for p4prometheus
-# Normally stored in /p4/common/config
-
-log_path:       /p4/1/logs/log
-metrics_output: /hxlogs/metrics/p4_cmds.prom
-server_id:      
-sdp_instance:   1

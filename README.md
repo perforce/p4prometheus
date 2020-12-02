@@ -61,16 +61,12 @@ Read/write locks held/waiting status:
 
 ![Commands](images/p4stats_table_read_locks.png)
 
-Dashboard alerts can be defined, as well as alert rules which are actioned by [alertmanager](https://prometheus.io/docs/alerting/alertmanager/) - see installation below for link to examples.
+Dashboard alerts can be defined, as well as alert rules which are actioned by [alertmanager](https://prometheus.io/docs/alerting/alertmanager/) - see installation link below for examples.
 
 # Detailed Installation
 
 You need to install Prometheus and Grafana using standard methods. This is typically done on a seperate VM/machine to the Perforce server itself (for security and HA reasons).
 
-The easiest way is to use Ansible with a Galaxy module.
-
-Example files are to be found in the [demo folder](demo/) for this project which is an (as yet incomplete) Docker Compose demonstrator.
-
 Note that all the components do run on Windows but you will need an appropriate Service wrapper.
 
-See [Detailed Instatallation Instructions (INSTALL.md)](INSTALL.md) in this project.
+See [Detailed Installation Instructions (INSTALL.md)](INSTALL.md) in this project.
