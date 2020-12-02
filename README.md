@@ -25,6 +25,7 @@ This is currently a Community Supported Perforce tool.
 This is part of a solution consisting of the following components:
 
 * Prometheus - time series metrics management system: https://prometheus.io/
+* VictoriaMetrics - (optional) high performing storage management which is Prometheus compatible: https://github.com/VictoriaMetrics/VictoriaMetrics
 * Grafana - The leading open source software for time series analytics - https://grafana.com/
 * node_exporter - Prometheus collector for basic Linux metrics - https://github.com/prometheus/node_exporter
 

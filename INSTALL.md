@@ -7,6 +7,7 @@ Note it is possible to perform [Windows Installation](#windows-installation).
 On monitoring server, install:
   - grafana
   - prometheus
+  - victoria metrics (optional but recommended due to performance and more efficient data storage)
   - node_exporter
   - alertmanager (optional)
 
@@ -23,6 +24,8 @@ On your commit/master or any perforce edge/replica servers, install:
   - [Setup of dashboards](#setup-of-dashboards)
 - [Install Prometheus](#install-prometheus)
   - [Prometheus config](#prometheus-config)
+  - [Install victoria metrics (optional but recommended)](#install-victoria-metrics-optional-but-recommended)
+    - [Importing Prometheus data into Victoria Metrics](#importing-prometheus-data-into-victoria-metrics)
   - [Install node exporter](#install-node-exporter)
   - [Install p4prometheus - details](#install-p4prometheus---details)
   - [Install monitor metrics cron jobs](#install-monitor-metrics-cron-jobs)
@@ -164,6 +167,88 @@ EOF
 Make sure user has access:
 
   sudo chown prometheus:prometheus /etc/prometheus/prometheus.yml
+
+## Install victoria metrics (optional but recommended)
+
+This is a high performing component (up to 20x faster) and good for long term storage (data compression is up to 70x)
+so that much more data can be stored in the same space.
+
+It is API compatible and thus a drop in for querying. It is configured as a Prometheus writer so is continually kept up-to-date.
+
+Run the following as root:
+
+    export PVER="1.48.0"
+    wget https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v$PVER/victoria-metrics-v$PVER.tar.gz
+    wget https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v$PVER/vmutils-v$PVER.tar.gz
+
+    tar zxvf victoria-metrics-v$PVER.tar.gz
+    tar zxvf vmutils-v$PVER.tar.gz
+
+    mv victoria-metrics-prod /usr/local/bin/
+    mv vmagent-prod /usr/local/bin/
+    mv vmalert-prod /usr/local/bin/
+    mv vmauth-prod /usr/local/bin/
+    mv vmbackup-prod /usr/local/bin/
+    mv vmrestore-prod /usr/local/bin/
+
+Create service file:
+
+```ini
+cat << EOF > /etc/systemd/system/victoria-metrics.service
+[Unit]
+Description=Victoria Metrics
+Wants=network-online.target
+After=network-online.target
+ 
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+ExecStart=/usr/local/bin/victoria-metrics-prod \
+    -storageDataPath /var/lib/victoria-metrics/ \
+    -retentionPeriod=3
+ 
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+Ensure data directory exists and is properly owned:
+
+    sudo mkdir /var/lib/victoria-metrics
+    sudo chown prometheus:prometheus /var/lib/victoria-metrics
+
+Start and enable service:
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable victoria-metrics
+    sudo systemctl start victoria-metrics
+    sudo systemctl status victoria-metrics
+
+Check logs for service in case of errors:
+
+    journalctl -u victoria-metrics --no-pager | tail
+
+Update the Prometheus config file `/etc/prometheus/prometheus.yml`, by adding the following section to the end of the file (it starts in the first column):
+
+```.yaml
+remote_write:
+  - url: http://localhost:8428/api/v1/write
+```
+
+Note in the above it is possible to customize the port.
+
+Either start or restart Prometheus:
+
+    sudo systemctl restart prometheus
+
+### Importing Prometheus data into Victoria Metrics
+
+This can be fairly easily done, and will allow you to save the space used by Prometheus.
+
+See [taking a snapshot via web api](https://www.robustperception.io/taking-snapshots-of-prometheus-data)
+
+Then import it [using vmctl](https://github.com/VictoriaMetrics/vmctl#migrating-data-from-prometheus)
 
 ## Install node exporter
 
