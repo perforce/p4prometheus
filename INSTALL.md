@@ -82,7 +82,7 @@ Run the following as root:
     sudo chown prometheus:prometheus /etc/prometheus
     sudo chown prometheus:prometheus /var/lib/prometheus
 
-    export PVER="2.15.2"
+    export PVER="2.23.0"
     wget https://github.com/prometheus/prometheus/releases/download/v$PVER/prometheus-$PVER.linux-amd64.tar.gz
 
     tar xvf prometheus-$PVER.linux-amd64.tar.gz 
@@ -213,7 +213,7 @@ EOF
 Ensure data directory exists and is properly owned:
 
     sudo mkdir /var/lib/victoria-metrics
-    sudo chown prometheus:prometheus /var/lib/victoria-metrics
+    sudo chown -R prometheus:prometheus /var/lib/victoria-metrics
 
 Start and enable service:
 
@@ -255,7 +255,7 @@ Run the following as root:
 
     sudo useradd --no-create-home --shell /bin/false node_exporter
 
-    export PVER="0.18.1"
+    export PVER="1.0.1"
     wget https://github.com/prometheus/node_exporter/releases/download/v$PVER/node_exporter-$PVER.linux-amd64.tar.gz
 
     tar xvf node_exporter-$PVER.linux-amd64.tar.gz 

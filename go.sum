@@ -242,6 +242,10 @@ github.com/rcowham/go-libp4dlog v0.9.0 h1:ec/x+JQhO7Jc9gzkebvJehbxkxycJbDwncsnMq
 github.com/rcowham/go-libp4dlog v0.9.0/go.mod h1:un2Mss+FGxti6HfAgZqiH7qPo2iMLwwDDP+1ZvvkqZA=
 github.com/rcowham/go-libp4dlog v0.9.1 h1:aiU01DZi1AyscxaP5D2iB/XDa7xxdTRPbDddzXgcE0Q=
 github.com/rcowham/go-libp4dlog v0.9.1/go.mod h1:un2Mss+FGxti6HfAgZqiH7qPo2iMLwwDDP+1ZvvkqZA=
+github.com/rcowham/go-libp4dlog v0.9.2 h1:0OwtLqMY+qL4wyLg4G+1AH0xilo2YJRPFopjIELdIAA=
+github.com/rcowham/go-libp4dlog v0.9.2/go.mod h1:un2Mss+FGxti6HfAgZqiH7qPo2iMLwwDDP+1ZvvkqZA=
+github.com/rcowham/go-libp4dlog v0.9.3 h1:T8ZnYdTtZFgHaAhhKHj6DaM95pJyIdU0zIs8+F01RMQ=
+github.com/rcowham/go-libp4dlog v0.9.3/go.mod h1:un2Mss+FGxti6HfAgZqiH7qPo2iMLwwDDP+1ZvvkqZA=
 github.com/rcowham/go-libtail v0.1.0 h1:VdN2YbVUXNMKoORZ3u/vVW0iUY07tzrrdZTOpyhEr54=
 github.com/rcowham/go-libtail v0.1.0/go.mod h1:+DkaEGPlgLKzIv26Br8l1Xd36GK52ENBZ8DIDTS/2HQ=
 github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=
