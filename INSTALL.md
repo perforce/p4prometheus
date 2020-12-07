@@ -1,7 +1,5 @@
 # Installation Details for P4Prometheus and Other Components
 
-Decide if you want to install via packages/manually or using [Ansible Installation](#ansible-installation).
-
 Note it is possible to perform [Windows Installation](#windows-installation).
 
 On monitoring server, install:
@@ -25,6 +23,7 @@ On your commit/master or any perforce edge/replica servers, install:
 - [Install Prometheus](#install-prometheus)
   - [Prometheus config](#prometheus-config)
   - [Install victoria metrics (optional but recommended)](#install-victoria-metrics-optional-but-recommended)
+      - [Substituting VictoriMetrics for Prometheus in Grafana](#substituting-victorimetrics-for-prometheus-in-grafana)
     - [Importing Prometheus data into Victoria Metrics](#importing-prometheus-data-into-victoria-metrics)
   - [Install node exporter](#install-node-exporter)
   - [Install p4prometheus - details](#install-p4prometheus---details)
@@ -155,8 +154,11 @@ scrape_configs:
 
   - job_name: 'node_exporter'
     static_configs:
-    # CONFIGURE THESE VALUES FOR YOUR SERVERS!!!!
-    - targets: ['p4hms:9100', 'p4main:9100', 'p4_ha:9100']
+    # CONFIGURE THESE VALUES AS APPROPRIATE FOR YOUR SERVERS!!!!
+    - targets: 
+        - p4hms:9100
+        - p4main:9100
+        - p4_ha:9100
 
 EOF
 ```
@@ -203,12 +205,14 @@ Group=prometheus
 Type=simple
 ExecStart=/usr/local/bin/victoria-metrics-prod \
     -storageDataPath /var/lib/victoria-metrics/ \
-    -retentionPeriod=3
+    -retentionPeriod=6
  
 [Install]
 WantedBy=multi-user.target
 EOF
 ```
+
+Consider adjusting the `retentionPeriod` vale in the config file.
 
 Ensure data directory exists and is properly owned:
 
@@ -238,6 +242,13 @@ Note in the above it is possible to customize the port.
 Either start or restart Prometheus:
 
     sudo systemctl restart prometheus
+
+#### Substituting VictoriMetrics for Prometheus in Grafana
+
+If using VictoriaMetrics, then you should:
+
+* Create a suitable data source in Grafana (e.g. `http://localhost:8428`)
+* Change existing dashboards to use it instead of Prometheus (it is API compatible)
 
 ### Importing Prometheus data into Victoria Metrics
 
@@ -316,7 +327,7 @@ Get latest release download link: https://github.com/perforce/p4prometheus/relea
 
 Run the following as `root` (using link copied from above page):
 
-    export PVER=0.6.0
+    export PVER=0.7.0
     wget https://github.com/perforce/p4prometheus/releases/download/v$PVER/p4prometheus.linux-amd64.gz
 
     gunzip p4prometheus.linux-amd64.gz
@@ -331,27 +342,54 @@ Important to check configuration values, e.g. `log_path`, `metrics_output` etc.
 
 ```bash
 cat << EOF > /p4/common/config/p4prometheus.yaml
+# ----------------------
 # sdp_instance: SDP instance - typically integer, but can be
 # See: https://swarm.workshop.perforce.com/projects/perforce-software-sdp for more
 # If this value is blank then it is assumed to be a non-SDP instance.
 sdp_instance:   1
-# log_path: Path to p4d server log
+
+# ----------------------
+# log_path: Path to p4d server log - REQUIRED!
 log_path:       /p4/1/logs/log
+
+# ----------------------
 # metrics_output: Name of output file to write for processing by node_exporter.
 # Ensure that node_exporter user has read access to this folder.
 metrics_output: /hxlogs/metrics/p4_cmds.prom
+
+# ----------------------
 # server_id: Optional - serverid for metrics - typically read from /p4/<sdp_instance>/root/server.id for 
 # SDP installations - please specify a value if non-SDP install
 server_id:      
-# output_cmds_by_user: Whether to output metrics p4_cmd_user_counter/p4_cmd_user_cumulative_seconds
+
+# ----------------------
+# output_cmds_by_user: true/false - Whether to output metrics p4_cmd_user_counter/p4_cmd_user_cumulative_seconds
 # Normally this should be set to true as the metrics are useful.
 # If you have a p4d instance with thousands of users you may find the number
 # of metrics labels is too great (one per distinct user), so set this to false.
 output_cmds_by_user: true
-# case_sensitive_server: if output_cmds_by_user=true then if this value is set to false
+
+# ----------------------
+# case_sensitive_server: true/false - if output_cmds_by_user=true then if this value is set to false
 # all userids will be written in lowercase - otherwise as they occur in the log file
 # If not present, this value will default to true on Windows and false otherwise.
 case_sensitive_server: true
+
+# ----------------------
+# output_cmds_by_ip: true/false - Whether to output metrics p4_cmd_ip_counter/p4_cmd_ip_cumulative_seconds
+# Like output_cmds_by_user this can be an issue for larger sites so defaults to false.
+output_cmds_by_ip: true
+
+# ----------------------
+# output_cmds_by_user_regex: Specifies a Go regex for users for whom to output
+# metrics p4_cmd_user_detail_counter (tracks cmd counts per user/per cmd) and
+# p4_cmd_user_detail_cumulative_seconds
+# 
+# This can be set to values such as: "" (no users), ".*" (all users), or "swarm|jenkins"
+# for just those 2 users. The latter is likely to be appropriate in many sites (keep an eye
+# on automation users only, without generating thousands of labels for all users)
+output_cmds_by_user_regex: ""
+
 EOF
 ```
 

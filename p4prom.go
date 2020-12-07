@@ -141,11 +141,7 @@ func runLogTailer(logger *logrus.Logger, logcfg *logConfig, cfg *config.Config, 
 		OutputCmdsByIP:        cfg.OutputCmdsByIP,
 		CaseSensitiveServer:   cfg.CaseSensitiveServer,
 	}
-	logger.Infof("P4Prometheus config: debug %v, serverID %s, SDPInstance %s, UpdateInterval %s, OutputCmdsByUser %v, OutputCmdsByUserRegex '%s', OutputCmdsByIP %v, CaseSenstiveServer %v",
-		mcfg.Debug, mcfg.ServerID, mcfg.SDPInstance, mcfg.UpdateInterval,
-		mcfg.OutputCmdsByUser, mcfg.OutputCmdsByUserRegex, mcfg.OutputCmdsByIP,
-		mcfg.CaseSensitiveServer)
-	logger.Infof("P4Prometheus config2: %v", mcfg)
+	logger.Infof("P4Prometheus config: %+v", mcfg)
 	mp := metrics.NewP4DMetricsLogParser(mcfg, logger, false)
 
 	linesChan := make(chan string, 10000)
