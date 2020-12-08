@@ -76,7 +76,7 @@ func (p4p *P4Prometheus) writeMetricsFile(metrics []byte) {
 		p4p.logger.Errorf("Error opening %s: %v", p4p.config.MetricsOutput, err)
 		return
 	}
-	f.Write(metrics)
+	f.Write(bytes.ToValidUTF8(metrics, []byte{'?'}))
 	err = f.Close()
 	if err != nil {
 		p4p.logger.Errorf("Error closing file: %v", err)
