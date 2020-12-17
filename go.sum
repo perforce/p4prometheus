@@ -248,6 +248,8 @@ github.com/rcowham/go-libp4dlog v0.9.3 h1:T8ZnYdTtZFgHaAhhKHj6DaM95pJyIdU0zIs8+F
 github.com/rcowham/go-libp4dlog v0.9.3/go.mod h1:un2Mss+FGxti6HfAgZqiH7qPo2iMLwwDDP+1ZvvkqZA=
 github.com/rcowham/go-libp4dlog v0.9.4 h1:s7HeTsTlUGgQu8KnGrJz3HZ6YNtcpWNs66Jlt+UlG2Q=
 github.com/rcowham/go-libp4dlog v0.9.4/go.mod h1:un2Mss+FGxti6HfAgZqiH7qPo2iMLwwDDP+1ZvvkqZA=
+github.com/rcowham/go-libp4dlog v0.9.5 h1:0t7rWS9WB/Ef2qXv3zWb3TGOSGMDohTsVdK5ms2eFPg=
+github.com/rcowham/go-libp4dlog v0.9.5/go.mod h1:un2Mss+FGxti6HfAgZqiH7qPo2iMLwwDDP+1ZvvkqZA=
 github.com/rcowham/go-libtail v0.1.0 h1:VdN2YbVUXNMKoORZ3u/vVW0iUY07tzrrdZTOpyhEr54=
 github.com/rcowham/go-libtail v0.1.0/go.mod h1:+DkaEGPlgLKzIv26Br8l1Xd36GK52ENBZ8DIDTS/2HQ=
 github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=
