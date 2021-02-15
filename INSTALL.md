@@ -23,7 +23,7 @@ On your commit/master or any perforce edge/replica servers, install:
 - [Install Prometheus](#install-prometheus)
   - [Prometheus config](#prometheus-config)
   - [Install victoria metrics (optional but recommended)](#install-victoria-metrics-optional-but-recommended)
-      - [Substituting VictoriMetrics for Prometheus in Grafana](#substituting-victorimetrics-for-prometheus-in-grafana)
+      - [Substituting Victoria Metrics for Prometheus in Grafana](#substituting-victoria-metrics-for-prometheus-in-grafana)
     - [Importing Prometheus data into Victoria Metrics](#importing-prometheus-data-into-victoria-metrics)
   - [Install node exporter](#install-node-exporter)
   - [Install p4prometheus - details](#install-p4prometheus---details)
@@ -243,9 +243,9 @@ Either start or restart Prometheus:
 
     sudo systemctl restart prometheus
 
-#### Substituting VictoriMetrics for Prometheus in Grafana
+#### Substituting Victoria Metrics for Prometheus in Grafana
 
-If using VictoriaMetrics, then you should:
+If using Victoria Metrics, then you should:
 
 * Create a suitable data source in Grafana (e.g. `http://localhost:8428`)
 * Change existing dashboards to use it instead of Prometheus (it is API compatible)
@@ -264,9 +264,9 @@ This must be done on the Perforce (Helix Core) server machine (ditto for any oth
 
 Run the following as root:
 
-    sudo useradd --no-create-home --shell /bin/false node_exporter
+    useradd --no-create-home --shell /bin/false node_exporter
 
-    export PVER="1.0.1"
+    export PVER="1.1.1"
     wget https://github.com/prometheus/node_exporter/releases/download/v$PVER/node_exporter-$PVER.linux-amd64.tar.gz
 
     tar xvf node_exporter-$PVER.linux-amd64.tar.gz 
@@ -279,6 +279,11 @@ If you are installing on a Helix Core commit or replica server, then create a me
     ls -al /hxlogs/metrics
 
 Ensure the above has global read access (e.g. user `perforce` will write files, user `node_exporter` will read them).
+
+If using SDP, then suggest this:
+
+    ln -s /hxlogs/metrics /p4/
+    chown -h perforce:perforce /p4/metrics
 
 Create service file (note value for directory - may need to be adjusted).
 
