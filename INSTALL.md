@@ -19,7 +19,7 @@ On your commit/master or any perforce edge/replica servers, install:
 
 - [Installation Details for P4Prometheus and Other Components](#installation-details-for-p4prometheus-and-other-components)
 - [Package Install of Grafana](#package-install-of-grafana)
-  - [Setup of dashboards](#setup-of-dashboards)
+  - [Setup of Grafana dashboards](#setup-of-grafana-dashboards)
 - [Install Prometheus](#install-prometheus)
   - [Prometheus config](#prometheus-config)
   - [Install victoria metrics (optional but recommended)](#install-victoria-metrics-optional-but-recommended)
@@ -31,9 +31,9 @@ On your commit/master or any perforce edge/replica servers, install:
     - [Checking for blocked commands](#checking-for-blocked-commands)
   - [Start and enable service](#start-and-enable-service)
 - [Alerting](#alerting)
-  - [Grafana Dashboard](#grafana-dashboard)
+    - [Alertmanager config](#alertmanager-config)
   - [Alerting rules](#alerting-rules)
-  - [Alertmanager config](#alertmanager-config)
+  - [Alertmanager config](#alertmanager-config-1)
 - [Troubleshooting](#troubleshooting)
   - [p4prometheus](#p4prometheus)
   - [monitor metrics](#monitor-metrics)
@@ -56,12 +56,13 @@ Use the appropriate link below depending if you using `apt` or `yum`:
 * https://grafana.com/docs/grafana/latest/installation/debian/
 * https://grafana.com/docs/grafana/latest/installation/rpm/
 
-## Setup of dashboards
+## Setup of Grafana dashboards
 
 Once Grafana is installed the following 2 dashboards are recommended:
 
 * https://grafana.com/grafana/dashboards/12278 - P4 Stats
 * https://grafana.com/grafana/dashboards/405 - Node Exporter Server Info
+* https://grafana.com/grafana/dashboards?search=node%20exporter
 
 They can be imported from Grafana dashboard management page.
 
@@ -126,6 +127,8 @@ EOF
 ## Prometheus config
 
 It is important you edit and adjust the `targets` value appropriately to scrape from your commit/edge/replica servers (and localhost).
+
+See later section on enabling Alertmanager if required.
 
 ```yaml
 cat << EOF > /etc/prometheus/prometheus.yml
@@ -306,6 +309,16 @@ ExecStart=/usr/local/bin/node_exporter --collector.textfile.directory=/hxlogs/me
 WantedBy=multi-user.target
 EOF
 ```
+
+*If using Alertmanager* and wanting to check on the status of systemd services, the `ExecStart` line above should be:
+
+```ini
+ExecStart=/usr/local/bin/node_exporter --collector.systemd \
+        --collector.systemd.unit-include="(p4.*|node_exporter)\.service" \
+        --collector.textfile.directory=/hxlogs/metrics
+```
+
+Check the `node_exporter` help, but the above will collect info on the specified services only.
 
 Start and enable service:
 
@@ -507,9 +520,27 @@ Done via alertmanager. Optional component
 
 Setup is very similar to the above.
 
-Sample `/etc/systemd/system/alertmanager.service`:
+    sudo useradd --no-create-home --shell /bin/false alertmanager
+    sudo mkdir /etc/alertmanager
+    sudo mkdir /var/lib/alertmanager
+    sudo chown alertmanager:alertmanager /etc/alertmanager
+    sudo chown alertmanager:alertmanager /var/lib/alertmanager
+
+    export PVER="0.21.0"
+    wget https://github.com/prometheus/alertmanager/releases/download/v$PVER/alertmanager-$PVER.linux-amd64.tar.gz
+
+    tar xvf alertmanager-$PVER.linux-amd64.tar.gz 
+    mv alertmanager-$PVER.linux-amd64 alertmanager-files
+
+    sudo cp alertmanager-files/alertmanager /usr/local/bin/
+    sudo cp alertmanager-files/amtool /usr/local/bin/
+    sudo chown alertmanager:alertmanager /usr/local/bin/alertmanager
+    sudo chown alertmanager:alertmanager /usr/local/bin/amtool
+    sudo chmod 755 /usr/local/bin/alertmanager
+    sudo chmod 755 /usr/local/bin/amtool
 
 ```ini
+cat << EOF > /etc/systemd/system/alertmanager.service
 [Unit]
 Description=Alertmanager
 Wants=network-online.target
@@ -519,32 +550,72 @@ After=network-online.target
 User=alertmanager
 Group=alertmanager
 Type=simple
-ExecStart=/usr/local/bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/var/lib/alertmanager --log.level=debug
+ExecStart=/usr/local/bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml \
+    --storage.path=/var/lib/alertmanager --log.level=debug
 
 [Install]
 WantedBy=multi-user.target
+EOF
 ```
 
-* create alertmanager user
-* create /etc/alertmanager directory
+Start and enable service:
 
-## Grafana Dashboard
+    sudo systemctl daemon-reload
+    sudo systemctl enable alertmanager
+    sudo systemctl start alertmanager
+    sudo systemctl status alertmanager
 
-See the [Sample dashboard](demo/p4_stats_dashboard.json) which is easy to import as a Grafana dashboard.
+Check logs for service in case of errors:
 
-In addition we recommend one or more of the node_exporter dashboards for server stats, e.g.:
+    journalctl -u alertmanager --no-pager | tail
 
-* https://grafana.com/grafana/dashboards/405
-* https://grafana.com/grafana/dashboards/1860
-* https://grafana.com/grafana/dashboards?search=node%20exporter
+### Alertmanager config
+
 
 ## Alerting rules
 
 This is an example, assuming simple email and local postfix or equivalent have been setup.
 
-It would be setup as /etc/prometheus/perforce_rules.yml
+It would be setup as `/etc/prometheus/perforce_rules.yml`
 
-Then uncomment the relevant section in prometheus.yml
+Then uncomment the relevant section in `prometheus.yml`:
+
+```
+# Alertmanager configuration - optional
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+        - localhost:9093
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+  - "perforce_rules.yml"
+```
+
+*Strongly recommend*: set up a simple `Makefile` in `/etc/prometheus` which validates config and rules file:
+
+Note that Makefile format requires a `<tab>` char (not spaces) at the start of 'action' lines.
+
+```
+validate:
+        promtool check config prometheus.yml
+
+restart:
+        systemctl restart prometheus
+```
+
+Then you can validate your config:
+
+```
+# make validate
+promtool check config prometheus.yml
+Checking prometheus.yml
+  SUCCESS: 1 rule files found
+
+Checking perforce_rules.yml
+  SUCCESS: 8 rules found
+```
 
 Please customize the below for things like `serverid` values and replica host names.
 
@@ -620,7 +691,7 @@ global:
   smtp_smarthost: localhost:25
   smtp_require_tls: false
   # Hello is the local machine name
-  smtp_hello: p4hms
+  smtp_hello: localhost
 
 route:
   group_by: ['alertname']
@@ -635,14 +706,42 @@ receivers:
   - to: p4-group@example.com
 ```
 
+
+*Strongly recommend*: set up a simple `Makefile` in `/etc/alertmanager` which validates config file:
+
+Note that Makefile format requires a `<tab>` char (not spaces) at the start of 'action' lines.
+
+```
+validate:
+        amtool check-config alertmanager.yml
+
+restart:
+        systemctl restart alertmanager
+```
+
+Then you can validate your config:
+
+```
+# make validate
+amtool check-config alertmanager.yml
+Checking 'alertmanager.yml'  SUCCESS
+Found:
+ - global config
+ - route
+ - 0 inhibit rules
+ - 1 receivers
+ - 0 templates
+```
+
 # Troubleshooting
 
-Make sure all firewalls are appropriate and the various components on each machine can see each other!
+Make sure all *firewalls* are appropriately configured and the various components on each machine can see each other!
 
 Port defaults are:
 * Grafana: 3000
 * Prometheus: 9090
 * Node_exporter: 9100
+* Alertmanager: 9093
 
 Use curl on the monitoring server to pull metrics from the other servers (from Node Exporter port).
 
