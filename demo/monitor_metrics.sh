@@ -221,13 +221,19 @@ monitor_processes () {
 }
 
 monitor_completed_cmds () {
-    # Metric for completed commands by parsing log file
+    # Metric for completed commands by parsing log file - auto-skipped for large log files
     local num_cmds=0
     fname="$metrics_root/p4_completed_cmds${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
 
     # If the logfile doesnt exist delete prom and return
     [[ -f "$p4logfile" ]] || { rm -f "$fname"; return ; }
+
+    # This test is skipped if the log file is bigger than 1GB for performance reasons
+    fsize=$(du -k "$p4logfile" | cut -f 1)
+    if [[ "$fsize" -gt 1000000 ]]; then
+        return
+    fi
 
     # Get the current timestamp and linecount
     p4log_ts_curr=$(stat -c %Y $p4logfile)
