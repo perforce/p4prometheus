@@ -117,6 +117,8 @@ The basic metrics are those implemented in [P4D Log Parsing library](https://git
 
 ## Monitor_metrics.sh
 
+| Metric Name | Description |
+| --- | ----------- |
 | p4_server_uptime | P4D Server uptime (seconds) |
 | p4_change_counter | P4D change counter - monitor normal activity for submits etc |
 | p4_monitor_by_cmd | P4 running processes - counted by cmd |
