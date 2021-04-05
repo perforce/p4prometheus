@@ -352,7 +352,6 @@ monitor_errors () {
     # Metric for error counts - but only if structured error log exists
     fname="$metrics_root/p4_errors${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-    tmperrfile="${errors_file}.tmp"
     
     [[ -f "$errors_file" ]] || { rm -f "$fname"; return; }
 
@@ -360,25 +359,15 @@ monitor_errors () {
     [9]=INFO [10]=HELP [11]=SPEC [12]=FTPD [13]=BROKER [14]=P4QT [15]=X3SERVER [16]=GRAPH [17]=SCRIPT \
     [18]=SERVER2 [19]=DM2)
 
-    # Get the current timestamp and linecount
-    p4err_ts_curr=$(stat -c %Y $errors_file)
-    p4err_lc_curr=$(wc -l $errors_file | awk '{print $1}')
-    # Update the data file
-    echo "Updating data file:"
-    echo "[p4err][curr timestamp: ${p4err_ts_curr}][curr linecount: ${p4err_lc_curr}]"
-    echo "p4err $p4err_ts_curr $p4err_lc_curr" >> $tmpdatafile
-
-    # If the logfile current timestamp is less then the last timestamp delete prom and return
-    [[ $p4err_ts_curr -gt $p4err_ts_last ]] || { rm -f "$fname"; return; }
-    # If the logfile current linecount equals the last linecount delete prom and return
-    [[ $p4err_lc_curr -ne $p4err_lc_last ]] || { rm -f "$fname" ; return ; }
-
-    # Create a new error file if the current line count is greater then the last line count
-    # the new file is mapped to the original var
-    if [[ $p4err_lc_curr -gt $p4err_lc_last ]]; then
-        sed -n "$p4err_lc_last,$p4err_lc_curr"p "$errors_file" >> "$tmperrfile"
-        errors_file="$tmperrfile"
+    # Log format differs according to p4d versions - first column
+    ver=$(head -1 "$errors_file" | awk -F, '{print $1}')
+    if [[ "$ver" == "4" ]]; then
+        indID=15
+    elif [[ "$ver" == "4.50" ]]; then
+        indID=17
     fi
+    indSS=$((indID+1))
+    indError=$((indID-1))
 
     echo "" > "$tmpfname"
     echo "#HELP p4_error_count Server errors by id" >> "$tmpfname"
@@ -388,12 +377,9 @@ monitor_errors () {
         subsystem=${subsystems[$ss_id]}
         [[ -z "$subsystem" ]] && subsystem=$ss_id
         echo "p4_error_count{${serverid_label}${sdpinst_label},subsystem=\"$subsystem\",error_id=\"$error_id\",level=\"$level\"} $count" >> "$tmpfname"
-    done < <(awk -F, '{printf "%s %s %s\n", $15,$16,$14}' "$errors_file" | sort | uniq -c)
+    done < <(awk -F, -v indID="$indID" -v indSS="$indSS" -v indError="$indError" '{printf "%s %s %s\n", $indID, $indSS, $indError}' "$errors_file" | sort | uniq -c)
 
     mv "$tmpfname" "$fname"
-
-    # Delete the tmp file
-    rm -f "$tmperrfile"
 }
 
 monitor_pull () {
@@ -417,6 +403,90 @@ monitor_pull () {
     mv "$tmpfname" "$fname"
 }
 
+monitor_realtime () {
+    # p4d --show-realtime - only for 2021.1 or greater
+    # Intially only available for SDP
+    [[ $UseSDP -eq 1 ]] || return
+    p4dver=$($P4DBIN -V |grep Rev.|awk -F / '{print $3}' )
+    [[ "$p4dver" > "2020.0" ]] || return
+
+    realtimefile="/tmp/show-realtime.out"
+    $P4DBIN --show-realtime > "$realtimefile" 2> /dev/null || return
+
+    # File format:
+    # rtv.db.lockwait (flags 0) 0 max 382
+    # rtv.db.ckp.active (flags 0) 0
+    # rtv.db.ckp.records (flags 0) 34 max 34
+    # rtv.db.io.records (flags 0) 126389592854
+    # rtv.rpl.behind.bytes (flags 0) 0 max -1
+    # rtv.rpl.behind.journals (flags 0) 0 max -1
+    # rtv.svr.sessions.active (flags 0) 110 max 585
+    # rtv.svr.sessions.total (flags 0) 5997080
+
+    fname="$metrics_root/p4_realtime${sdpinst_suffix}-${SERVER_ID}.prom"
+    tmpfname="$fname.$$"
+
+    echo "" > "$tmpfname"
+
+    origname="rtv.db.lockwait"
+    mname="p4_${origname//./_}"
+    echo "# HELP $mname P4 realtime lockwait counter" >> "$tmpfname"
+    echo "# TYPE $mname gauge" >> "$tmpfname"
+    count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
+    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+
+    origname="rtv.db.ckp.active"
+    mname="p4_${origname//./_}"
+    echo "# HELP $mname P4 realtime checkpoint active indicator" >> "$tmpfname"
+    echo "# TYPE $mname gauge" >> "$tmpfname"
+    count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
+    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+
+    origname="rtv.db.ckp.records"
+    mname="p4_${origname//./_}"
+    echo "# HELP $mname P4 realtime checkpoint records counter" >> "$tmpfname"
+    echo "# TYPE $mname gauge" >> "$tmpfname"
+    count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
+    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+
+    origname="rtv.db.io.records"
+    mname="p4_${origname//./_}"
+    echo "# HELP $mname P4 realtime IO records counter" >> "$tmpfname"
+    echo "# TYPE $mname counter" >> "$tmpfname"
+    count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
+    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+
+    origname="rtv.rpl.behind.bytes"
+    mname="p4_${origname//./_}"
+    echo "# HELP $mname P4 realtime replica bytes lag counter" >> "$tmpfname"
+    echo "# TYPE $mname gauge" >> "$tmpfname"
+    count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
+    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+
+    origname="rtv.rpl.behind.journals"
+    mname="p4_${origname//./_}"
+    echo "# HELP $mname P4 realtime replica journal lag counter" >> "$tmpfname"
+    echo "# TYPE $mname gauge" >> "$tmpfname"
+    count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
+    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+
+    origname="rtv.svr.sessions.active"
+    mname="p4_${origname//./_}"
+    echo "# HELP $mname P4 realtime server active sessions counter" >> "$tmpfname"
+    echo "# TYPE $mname gauge" >> "$tmpfname"
+    count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
+    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+
+    origname="rtv.svr.sessions.total"
+    mname="p4_${origname//./_}"
+    echo "# HELP $mname P4 realtime server total sessions counter" >> "$tmpfname"
+    echo "# TYPE $mname counter" >> "$tmpfname"
+    count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
+    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+
+    mv "$tmpfname" "$fname"
+}
+
 update_data_file () {
     echo "Updating data file:"
     cat $tmpdatafile
@@ -433,6 +503,7 @@ monitor_checkpoint
 monitor_replicas
 monitor_errors
 monitor_pull
+monitor_realtime
 update_data_file
 
 # Make sure all readable by node_exporter or other user
