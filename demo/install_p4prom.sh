@@ -16,7 +16,7 @@ fi
 metrics_root=/hxlogs/metrics
 metrics_link=/p4/metrics
 
-VER_NODE_EXPORTER="1.1.1"
+VER_NODE_EXPORTER="1.1.2"
 VER_P4PROMETHEUS="0.7.2"
 
 # ============================================================
@@ -112,7 +112,7 @@ install_node_exporter () {
 
     cd /tmp
     PVER="$VER_NODE_EXPORTER"
-    wget https://github.com/prometheus/node_exporter/releases/download/v$PVER/node_exporter-$PVER.linux-amd64.tar.gz
+    curl -k -s -O https://github.com/prometheus/node_exporter/releases/download/v$PVER/node_exporter-$PVER.linux-amd64.tar.gz
 
     tar xvf node_exporter-$PVER.linux-amd64.tar.gz 
     mv node_exporter-$PVER.linux-amd64/node_exporter /usr/local/bin/
@@ -153,7 +153,7 @@ EOF
 install_p4prometheus () {
 
     PVER="$VER_P4PROMETHEUS"
-    wget https://github.com/perforce/p4prometheus/releases/download/v$PVER/p4prometheus.linux-amd64.gz
+    curl -k -s -O https://github.com/perforce/p4prometheus/releases/download/v$PVER/p4prometheus.linux-amd64.gz
 
     gunzip p4prometheus.linux-amd64.gz
     
@@ -210,6 +210,10 @@ output_cmds_by_ip: false
 # on automation users only, without generating thousands of labels for all users)
 output_cmds_by_user_regex: ""
 
+# ----------------------
+# fail_on_missing_logfile: Due to timing log file might not be there - just wait.
+fail_on_missing_logfile: false
+
 EOF
 
     chown "$OSUSER:$OSGROUP" /p4/common/config/p4prometheus.yaml
@@ -239,17 +243,18 @@ EOF
 
 install_monitor_metrics () {
 
+    su $OSUSER <<'EOF'
     # Download latest versions
+    mkdir -p /p4/common/site/bin
     cd /p4/common/site/bin
     for fname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh; do
         [[ -f "$fname" ]] && rm "$fname"
-        wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/$fname"
+        curl -k -s -O "https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/$fname"
         chmod +x "$fname"
         chown "$OSUSER:$OSGROUP" "$fname"
     done
 
     # Install in crontab if required
-    su $OSUSER <<'EOF'
     fname="monitor_metrics.sh"
     if ! crontab -l | grep -q "$fname" ;then
         entry1="*/1 * * * * /p4/common/site/bin/$fname $SDP_INSTANCE > /dev/null 2>&1 ||:"
@@ -260,6 +265,9 @@ install_monitor_metrics () {
         entry1="*/1 * * * * /p4/common/site/bin/$fname $SDP_INSTANCE > /dev/null 2>&1 ||:"
         (crontab -l && echo "$entry1") | crontab -
     fi
+    # List things out for review
+    echo "Crontab after updating - showing monitor entries:"
+    crontab -l | grep /monitor_
 EOF
 
 }
@@ -267,3 +275,15 @@ EOF
 install_node_exporter
 install_p4prometheus
 install_monitor_metrics
+
+echo "
+
+Should have installed node_exporter, p4prometheus and friends.
+Check crontab -l output above (as user perforce)
+
+To review further, please:
+
+    ls -al $metrics_link/
+
+    curl localhost:9100/metrics | grep -E ^p4_
+"
