@@ -32,6 +32,7 @@ import re
 import subprocess
 import datetime
 import json
+from collections import defaultdict
 
 python3 = (sys.version_info[0] >= 3)
 
@@ -56,6 +57,8 @@ class MonitorMetrics:
     def __init__(self):
         self.dbReadLocks = 0
         self.dbWriteLocks = 0
+        self.dbReadLocksTable = defaultdict(int)
+        self.dbWriteLocksTable = defaultdict(int)
         self.clientEntityReadLocks = 0
         self.clientEntityWriteLocks = 0
         self.metaReadLocks = 0
@@ -63,6 +66,7 @@ class MonitorMetrics:
         self.replicaReadLocks = 0
         self.replicaWriteLocks = 0
         self.blockedCommands = 0
+        self.blockingCommands = defaultdict(int)
         self.msgs = []
 
 class P4Monitor(object):
@@ -205,6 +209,16 @@ class P4Monitor(object):
         self.logger.debug("parsed TextLockInfo: %s" % str(jlock))
         return json.dumps(jlock)
             
+    def dbFileInPath(self, path):
+        "Returns name of db file or empty string"
+        parts = path.split("/")
+        if not parts:
+            return ""
+        p = parts[-1]
+        if p.startswith("db.") or p == "rdb.lbr":
+            return p
+        return ""
+
     # lslocks output in JSON format:
     # {"command": "p4d", "pid": "2502", "type": "FLOCK", "size": "17B",
     #   "mode": "READ", "m": "0", "start": "0", "end": "0",
@@ -222,6 +236,7 @@ class P4Monitor(object):
         locks = []
         if 'locks' not in jlock:
             return metrics
+        blockingCommands = defaultdict(dict)
         for j in jlock['locks']:
             if "p4d" not in j["command"]:
                 continue
@@ -241,11 +256,14 @@ class P4Monitor(object):
                     metrics.metaReadLocks += 1
                 elif j["mode"] == "WRITE":
                     metrics.metaWriteLocks += 1
-            if "/db." in j["path"]:
+            dbPath = self.dbFileInPath(j["path"])
+            if dbPath:
                 if j["mode"] == "READ":
                     metrics.dbReadLocks += 1
+                    metrics.dbReadLocksTable[dbPath] += 1
                 if j["mode"] == "WRITE":
                     metrics.dbWriteLocks += 1
+                    metrics.dbWriteLocksTable[dbPath] += 1
             if j["blocker"]:
                 metrics.blockedCommands += 1
                 buser, bcmd, bargs = "unknown", "unknown", "unknown"
@@ -254,7 +272,11 @@ class P4Monitor(object):
                     buser, bcmd, bargs = pids[bpid]
                 msg = "pid %s, user %s, cmd %s, table %s, blocked by pid %s, user %s, cmd %s, args %s" % (
                     pid, user, cmd, path, bpid, buser, bcmd, bargs)
+                if not bcmd in blockingCommands or not bpid in blockingCommands[bcmd]:
+                    blockingCommands[bcmd][bpid] = 1
                 metrics.msgs.append(msg)
+        for cmd in blockingCommands.keys():
+            metrics.blockingCommands[bcmd] = len(blockingCommands[cmd])
         return metrics
 
     def metricsHeader(self, name, help, type):
@@ -271,6 +293,14 @@ class P4Monitor(object):
         name = "p4_locks_db_write"
         lines.extend(self.metricsHeader(name, "Database write locks", "gauge"))
         lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.dbWriteLocks))
+        name = "p4_locks_db_read_by_table"
+        lines.extend(self.metricsHeader(name, "Database read locks by table", "gauge"))
+        for t in metrics.dbReadLocksTable.keys():
+            lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.dbReadLocksTable[t]))
+        name = "p4_locks_db_write_by_table"
+        lines.extend(self.metricsHeader(name, "Database write locks by table", "gauge"))
+        for t in metrics.dbWriteLocksTable.keys():
+            lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.dbWriteLocksTable[t]))
         name = "p4_locks_cliententity_read"
         lines.extend(self.metricsHeader(name, "clientEntity read locks", "gauge"))
         lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.clientEntityReadLocks))
@@ -283,15 +313,13 @@ class P4Monitor(object):
         name = "p4_locks_meta_write"
         lines.extend(self.metricsHeader(name, "meta db write locks", "gauge"))
         lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.metaWriteLocks))
-        name = "p4_locks_replica_read"
-        lines.extend(self.metricsHeader(name, "replica read locks", "gauge"))
-        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.replicaReadLocks))
-        name = "p4_locks_replica_write"
-        lines.extend(self.metricsHeader(name, "replica write locks", "gauge"))
-        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.replicaWriteLocks))
         name = "p4_locks_cmds_blocked"
         lines.extend(self.metricsHeader(name, "cmds blocked by locks", "gauge"))
         lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.blockedCommands))
+        name = "p4_locks_cmds_blocking_by_cmd"
+        lines.extend(self.metricsHeader(name, "cmds blocking by cmd", "gauge"))
+        for k in metrics.blockingCommands.keys():
+            lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.blockingCommands[k]))
         return lines
 
     def writeMetrics(self, lines):
