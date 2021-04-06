@@ -8,6 +8,7 @@ import unittest
 import os
 import re
 import json
+import textwrap
 
 import P4
 curr_dir = os.path.dirname(os.path.abspath(__file__))
@@ -120,6 +121,21 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         self.assertEqual("pid 2502, user fred, cmd sync, table /p4/1/root/db.have, blocked by pid 166, user jim, cmd sync, args -f //...", m.msgs[0])
         self.assertEqual("pid 2503, user susan, cmd sync, table /p4/1/root/db.have, blocked by pid 166, user jim, cmd sync, args -f //...", m.msgs[1])
 
+        lines = [x for x in obj.formatMetrics(m) if not x.startswith("#")]
+        exp = """p4_locks_db_read 3
+                 p4_locks_db_write 0
+                 p4_locks_db_read_by_table{db.have} 3
+                 p4_locks_cliententity_read 0
+                 p4_locks_cliententity_write 0
+                 p4_locks_meta_read 0
+                 p4_locks_meta_write 0
+                 p4_locks_cmds_blocked 2
+                 p4_locks_cmds_blocking_by_cmd{sync} 1""".split("\n")
+        exp_lines = [x.strip() for x in exp]
+        exp_lines.sort()
+        lines.sort()
+        self.maxDiff = None
+        self.assertEqual(exp_lines, lines)
 
 if __name__ == '__main__':
     unittest.main()

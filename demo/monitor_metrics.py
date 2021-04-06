@@ -78,7 +78,7 @@ class P4Monitor(object):
         self.sdpinst_label = ""
         self.serverid_label = ""
         if self.options.sdp_instance:
-            self.sdpinst_label = ',sdpinst="%s"' % self.options.sdp_instance
+            self.sdpinst_label = 'sdpinst="%s"' % self.options.sdp_instance
             with open("/p4/%s/root/server.id" % self.options.sdp_instance, "r") as f:
                 self.serverid_label = 'serverid="%s"' % f.read().rstrip()
 
@@ -285,41 +285,56 @@ class P4Monitor(object):
         lines.append("# TYPE %s %s" % (name, type))
         return lines
 
+    def formatLabels(self, labels):
+        if not labels:
+            return ""
+        result = ",".join([x for x in labels if x])
+        if result:
+            return "{%s}" % result
+        return ""
+
     def formatMetrics(self, metrics):
         lines = []
+        labels = [self.serverid_label, self.sdpinst_label]
         name = "p4_locks_db_read"
         lines.extend(self.metricsHeader(name, "Database read locks", "gauge"))
-        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.dbReadLocks))
+        lines.append("%s%s %s" % (name, self.formatLabels(labels), metrics.dbReadLocks))
         name = "p4_locks_db_write"
         lines.extend(self.metricsHeader(name, "Database write locks", "gauge"))
-        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.dbWriteLocks))
+        lines.append("%s%s %s" % (name, self.formatLabels(labels), metrics.dbWriteLocks))
         name = "p4_locks_db_read_by_table"
         lines.extend(self.metricsHeader(name, "Database read locks by table", "gauge"))
-        for t in metrics.dbReadLocksTable.keys():
-            lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.dbReadLocksTable[t]))
+        for k in metrics.dbReadLocksTable.keys():
+            labs = labels[:]
+            labs.append(k)
+            lines.append("%s%s %s" % (name, self.formatLabels(labs), metrics.dbReadLocksTable[k]))
         name = "p4_locks_db_write_by_table"
         lines.extend(self.metricsHeader(name, "Database write locks by table", "gauge"))
-        for t in metrics.dbWriteLocksTable.keys():
-            lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.dbWriteLocksTable[t]))
+        for k in metrics.dbWriteLocksTable.keys():
+            labs = labels[:]
+            labs.append(k)
+            lines.append("%s%s %s" % (name, self.formatLabels(labs), metrics.dbWriteLocksTable[k]))
         name = "p4_locks_cliententity_read"
         lines.extend(self.metricsHeader(name, "clientEntity read locks", "gauge"))
-        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.clientEntityReadLocks))
+        lines.append("%s%s %s" % (name, self.formatLabels(labels), metrics.clientEntityReadLocks))
         name = "p4_locks_cliententity_write"
         lines.extend(self.metricsHeader(name, "clientEntity write locks", "gauge"))
-        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.clientEntityWriteLocks))
+        lines.append("%s%s %s" % (name, self.formatLabels(labels), metrics.clientEntityWriteLocks))
         name = "p4_locks_meta_read"
         lines.extend(self.metricsHeader(name, "meta db read locks", "gauge"))
-        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.metaReadLocks))
+        lines.append("%s%s %s" % (name, self.formatLabels(labels), metrics.metaReadLocks))
         name = "p4_locks_meta_write"
         lines.extend(self.metricsHeader(name, "meta db write locks", "gauge"))
-        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.metaWriteLocks))
+        lines.append("%s%s %s" % (name, self.formatLabels(labels), metrics.metaWriteLocks))
         name = "p4_locks_cmds_blocked"
         lines.extend(self.metricsHeader(name, "cmds blocked by locks", "gauge"))
-        lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.blockedCommands))
+        lines.append("%s%s %s" % (name, self.formatLabels(labels), metrics.blockedCommands))
         name = "p4_locks_cmds_blocking_by_cmd"
         lines.extend(self.metricsHeader(name, "cmds blocking by cmd", "gauge"))
         for k in metrics.blockingCommands.keys():
-            lines.append("%s{%s%s} %s" % (name, self.serverid_label, self.sdpinst_label, metrics.blockingCommands[k]))
+            labs = labels[:]
+            labs.append(k)
+            lines.append("%s%s %s" % (name, self.formatLabels(labs), metrics.blockingCommands[k]))
         return lines
 
     def writeMetrics(self, lines):
