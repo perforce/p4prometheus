@@ -9,7 +9,7 @@ On monitoring server, install:
   - node_exporter
   - alertmanager (optional)
 
-On your commit/master or any perforce edge/replica servers, install:
+On your commit/master or any perforce edge/replica server machines, install:
   - node_exporter
   - p4prometheus
   - monitor_metrics.sh
@@ -18,6 +18,7 @@ On your commit/master or any perforce edge/replica servers, install:
 *Table of Contents:*
 
 - [Installation Details for P4Prometheus and Other Components](#installation-details-for-p4prometheus-and-other-components)
+- [Automated Script Installation](#automated-script-installation)
 - [Package Install of Grafana](#package-install-of-grafana)
   - [Setup of Grafana dashboards](#setup-of-grafana-dashboards)
 - [Install Prometheus](#install-prometheus)
@@ -46,6 +47,15 @@ On your commit/master or any perforce edge/replica servers, install:
   - [P4prometheus on Windows](#p4prometheus-on-windows)
   - [Running monitor_metrics.sh](#running-monitor_metricssh)
   - [Installing Programs as Services](#installing-programs-as-services)
+
+# Automated Script Installation
+
+There are two scripts which automate the manual installation steps listed below. At the moment these scripts
+assume an SDP structure.
+
+Checkout  following files:
+* [install_p4prom.sh](demo/install_p4prom.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/install_p4prom.sh) - the installer for servers hosting a p4d instance
+* [install_prom_graf.sh](demo/install_prom_graf.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/install_prom_graf.sh) - the installer for monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
 
 # Package Install of Grafana
 
