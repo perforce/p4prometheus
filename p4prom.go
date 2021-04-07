@@ -67,13 +67,14 @@ func readServerID(logger *logrus.Logger, instance string) string {
 	return ""
 }
 
-// Writes metrics to appropriate file
+// Writes metrics to appropriate file - writes to temp file first and renames it after
 func (p4p *P4Prometheus) writeMetricsFile(metrics []byte) {
 	var f *os.File
 	var err error
-	f, err = os.Create(p4p.config.MetricsOutput)
+	tmpFile := p4p.config.MetricsOutput + ".tmp"
+	f, err = os.Create(tmpFile)
 	if err != nil {
-		p4p.logger.Errorf("Error opening %s: %v", p4p.config.MetricsOutput, err)
+		p4p.logger.Errorf("Error opening %s: %v", tmpFile, err)
 		return
 	}
 	f.Write(bytes.ToValidUTF8(metrics, []byte{'?'}))
@@ -81,9 +82,13 @@ func (p4p *P4Prometheus) writeMetricsFile(metrics []byte) {
 	if err != nil {
 		p4p.logger.Errorf("Error closing file: %v", err)
 	}
-	err = os.Chmod(p4p.config.MetricsOutput, 0644)
+	err = os.Chmod(tmpFile, 0644)
 	if err != nil {
 		p4p.logger.Errorf("Error chmod-ing file: %v", err)
+	}
+	err = os.Rename(tmpFile, p4p.config.MetricsOutput)
+	if err != nil {
+		p4p.logger.Errorf("Error renaming: %s to %s - %v", tmpFile, p4p.config.MetricsOutput, err)
 	}
 }
 
