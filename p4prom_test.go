@@ -75,6 +75,36 @@ func getOutput(testchan chan string, historical bool) []string {
 	return result
 }
 
+func hasPrefix(prefixes []string, line string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(line, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func compareOutput(t *testing.T, expected, actual []string) {
+	nExpected := make([]string, 0)
+	nActual := make([]string, 0)
+	// Ignore these elements as the contents varies per test run
+	ignorePrefixes := []string{"p4_prom_cmds_pending", "p4_prom_cpu_user", "p4_prom_cpu_system",
+		"p4_cmd_cpu_"}
+	for _, line := range expected {
+		if !hasPrefix(ignorePrefixes, line) {
+			nExpected = append(nExpected, line)
+		}
+	}
+	for _, line := range actual {
+		if !hasPrefix(ignorePrefixes, line) {
+			nActual = append(nActual, line)
+		}
+	}
+	sort.Strings(nActual)
+	sort.Strings(nExpected)
+	assert.Equal(t, nExpected, nActual)
+}
+
 func basicTest(t *testing.T, cfg *config.Config, input string, historical bool) []string {
 	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
 	logger.SetReportCaller(true)
@@ -143,8 +173,6 @@ p4_cmd_cumulative_seconds{serverid="myserverid",cmd="user-sync"} 0.031
 p4_cmd_program_counter{serverid="myserverid",program="p4/2016.2/LINUX26X86_64/1598668"} 1
 p4_cmd_program_cumulative_seconds{serverid="myserverid",program="p4/2016.2/LINUX26X86_64/1598668"} 0.031
 p4_cmd_running{serverid="myserverid"} 1
-p4_cmd_user_cpu_cumulative_seconds{serverid="myserverid",cmd="user-sync"} 0.000
-p4_cmd_system_cpu_cumulative_seconds{serverid="myserverid",cmd="user-sync"} 0.000
 p4_prom_cmds_pending{serverid="myserverid"} 0
 p4_prom_cmds_processed{serverid="myserverid"} 1
 p4_prom_log_lines_read{serverid="myserverid"} 8
@@ -153,9 +181,7 @@ p4_sync_bytes_updated{serverid="myserverid"} 0
 p4_sync_files_added{serverid="myserverid"} 0
 p4_sync_files_deleted{serverid="myserverid"} 0
 p4_sync_files_updated{serverid="myserverid"} 0`, -1)
-	sort.Strings(baseExpected)
-	assert.Equal(t, len(baseExpected), len(output))
-	assert.Equal(t, baseExpected, output)
+	compareOutput(t, baseExpected, output)
 
 	historical = true
 	output = basicTest(t, cfg, input, historical)
@@ -166,8 +192,6 @@ p4_cmd_cumulative_seconds;serverid=myserverid;cmd=user-sync 0.031 1441207389
 p4_cmd_program_counter;serverid=myserverid;program=p4/2016.2/LINUX26X86_64/1598668 1 1441207389
 p4_cmd_program_cumulative_seconds;serverid=myserverid;program=p4/2016.2/LINUX26X86_64/1598668 0.031 1441207389
 p4_cmd_running;serverid=myserverid 1 1441207389
-p4_cmd_system_cpu_cumulative_seconds;serverid=myserverid;cmd=user-sync 0.000 1441207389
-p4_cmd_user_cpu_cumulative_seconds;serverid=myserverid;cmd=user-sync 0.000 1441207389
 p4_prom_cmds_pending;serverid=myserverid 0 1441207389
 p4_prom_cmds_processed;serverid=myserverid 1 1441207389
 p4_prom_log_lines_read;serverid=myserverid 8 1441207389
@@ -176,9 +200,7 @@ p4_sync_bytes_updated;serverid=myserverid 0 1441207389
 p4_sync_files_added;serverid=myserverid 0 1441207389
 p4_sync_files_deleted;serverid=myserverid 0 1441207389
 p4_sync_files_updated;serverid=myserverid 0 1441207389`, -1)
-	sort.Strings(baseExpectedHistorical)
-	assert.Equal(t, len(baseExpectedHistorical), len(output))
-	assert.Equal(t, baseExpectedHistorical, output)
+	compareOutput(t, baseExpectedHistorical, output)
 
 	// Now change config and expect some extra metrics to be output
 	cfg = &config.Config{
@@ -201,8 +223,7 @@ p4_cmd_user_detail_cumulative_seconds{serverid="myserverid",user="robert",cmd="u
 	sort.Strings(expected)
 	historical = false
 	output = basicTest(t, cfg, input, historical)
-	assert.Equal(t, len(expected), len(output))
-	assert.Equal(t, expected, output)
+	compareOutput(t, expected, output)
 
 	expected = eol.Split(`p4_cmd_ip_counter;serverid=myserverid;ip=127.0.0.1 1 1441207389
 p4_cmd_ip_cumulative_seconds;serverid=myserverid;ip=127.0.0.1 0.031 1441207389
@@ -216,7 +237,6 @@ p4_cmd_user_detail_cumulative_seconds;serverid=myserverid;user=robert;cmd=user-s
 	sort.Strings(expected)
 	historical = true
 	output = basicTest(t, cfg, input, historical)
-	assert.Equal(t, len(expected), len(output))
-	assert.Equal(t, expected, output)
+	compareOutput(t, expected, output)
 
 }
