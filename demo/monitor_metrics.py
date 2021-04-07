@@ -302,18 +302,20 @@ class P4Monitor(object):
         name = "p4_locks_db_write"
         lines.extend(self.metricsHeader(name, "Database write locks", "gauge"))
         lines.append("%s%s %s" % (name, self.formatLabels(labels), metrics.dbWriteLocks))
-        name = "p4_locks_db_read_by_table"
-        lines.extend(self.metricsHeader(name, "Database read locks by table", "gauge"))
-        for k in metrics.dbReadLocksTable.keys():
-            labs = labels[:]
-            labs.append(k)
-            lines.append("%s%s %s" % (name, self.formatLabels(labs), metrics.dbReadLocksTable[k]))
-        name = "p4_locks_db_write_by_table"
-        lines.extend(self.metricsHeader(name, "Database write locks by table", "gauge"))
-        for k in metrics.dbWriteLocksTable.keys():
-            labs = labels[:]
-            labs.append(k)
-            lines.append("%s%s %s" % (name, self.formatLabels(labs), metrics.dbWriteLocksTable[k]))
+        if metrics.dbReadLocksTable:
+            name = "p4_locks_db_read_by_table"
+            lines.extend(self.metricsHeader(name, "Database read locks by table", "gauge"))
+            for k in metrics.dbReadLocksTable.keys():
+                labs = labels[:]
+                labs.append(k)
+                lines.append("%s%s %s" % (name, self.formatLabels(labs), metrics.dbReadLocksTable[k]))
+        if metrics.dbWriteLocksTable:
+            name = "p4_locks_db_write_by_table"
+            lines.extend(self.metricsHeader(name, "Database write locks by table", "gauge"))
+            for k in metrics.dbWriteLocksTable.keys():
+                labs = labels[:]
+                labs.append(k)
+                lines.append("%s%s %s" % (name, self.formatLabels(labs), metrics.dbWriteLocksTable[k]))
         name = "p4_locks_cliententity_read"
         lines.extend(self.metricsHeader(name, "clientEntity read locks", "gauge"))
         lines.append("%s%s %s" % (name, self.formatLabels(labels), metrics.clientEntityReadLocks))
@@ -329,12 +331,13 @@ class P4Monitor(object):
         name = "p4_locks_cmds_blocked"
         lines.extend(self.metricsHeader(name, "cmds blocked by locks", "gauge"))
         lines.append("%s%s %s" % (name, self.formatLabels(labels), metrics.blockedCommands))
-        name = "p4_locks_cmds_blocking_by_cmd"
-        lines.extend(self.metricsHeader(name, "cmds blocking by cmd", "gauge"))
-        for k in metrics.blockingCommands.keys():
-            labs = labels[:]
-            labs.append(k)
-            lines.append("%s%s %s" % (name, self.formatLabels(labs), metrics.blockingCommands[k]))
+        if metrics.blockingCommands:
+            name = "p4_locks_cmds_blocking_by_cmd"
+            lines.extend(self.metricsHeader(name, "cmds blocking by cmd", "gauge"))
+            for k in metrics.blockingCommands.keys():
+                labs = labels[:]
+                labs.append(k)
+                lines.append("%s%s %s" % (name, self.formatLabels(labs), metrics.blockingCommands[k]))
         return lines
 
     def writeMetrics(self, lines):
@@ -345,6 +348,7 @@ class P4Monitor(object):
         with open(tmpfname, "w") as f:
             f.write("\n".join(lines))
             f.write("\n")
+        os.chmod(tmpfname, 0o644)
         os.rename(tmpfname, fname)
 
     def formatLog(self, metrics):

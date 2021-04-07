@@ -170,6 +170,7 @@ monitor_uptime () {
     echo "# HELP p4_server_uptime P4D Server uptime (seconds)" > "$tmpfname"
     echo "# TYPE p4_server_uptime counter" >> "$tmpfname"
     echo "p4_server_uptime{${serverid_label}${sdpinst_label}} $uptime_secs" >> "$tmpfname"
+    chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
 }
 
@@ -182,6 +183,7 @@ monitor_change () {
         echo "# HELP p4_change_counter P4D change counter" > "$tmpfname"
         echo "# TYPE p4_change_counter counter" >> "$tmpfname"
         echo "p4_change_counter{${serverid_label}${sdpinst_label}} $curr_change" >> "$tmpfname"
+        chmod 644 "$tmpfname"
         mv "$tmpfname" "$fname"
     fi
 }
@@ -217,6 +219,7 @@ monitor_processes () {
     pcount=$(ps ax | grep "$proc " | grep -v "grep $proc" | wc -l)
     echo "p4_process_count{${serverid_label}${sdpinst_label}} $pcount" >> "$tmpfname"
 
+    chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
 }
 
@@ -255,6 +258,7 @@ monitor_completed_cmds () {
     echo "#HELP p4_completed_cmds Completed p4 commands" > "$tmpfname"
     echo "#TYPE p4_completed_cmds counter" >> "$tmpfname"
     echo "p4_completed_cmds{${serverid_label}${sdpinst_label}} $num_cmds" >> "$tmpfname"
+    chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
 }
 
@@ -303,6 +307,7 @@ monitor_checkpoint () {
     fi
     echo "p4_sdp_checkpoint_duration{${serverid_label}${sdpinst_label}} $ckp_duration" >> "$tmpfname"
 
+    chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
 }
 
@@ -345,6 +350,7 @@ monitor_replicas () {
         echo "p4_replica_curr_pos{${serverid_label}${sdpinst_label},servername=\"$s\"} $curr_pos" >> "$tmpfname"
     done
 
+    chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
 }
 
@@ -379,6 +385,7 @@ monitor_errors () {
         echo "p4_error_count{${serverid_label}${sdpinst_label},subsystem=\"$subsystem\",error_id=\"$error_id\",level=\"$level\"} $count" >> "$tmpfname"
     done < <(awk -F, -v indID="$indID" -v indSS="$indSS" -v indError="$indError" '{printf "%s %s %s\n", $indID, $indSS, $indError}' "$errors_file" | sort | uniq -c)
 
+    chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
 }
 
@@ -400,6 +407,7 @@ monitor_pull () {
     count=$(grep -cvEa "failed\.$" "$pullfile")
     echo "p4_pull_queue{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
 
+    chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
 }
 
@@ -484,6 +492,7 @@ monitor_realtime () {
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
     echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
 
+    chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
 }
 
@@ -507,4 +516,4 @@ monitor_realtime
 update_data_file
 
 # Make sure all readable by node_exporter or other user
-chmod 755 $metrics_root/*.prom
+chmod 644 $metrics_root/*.prom
