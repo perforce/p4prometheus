@@ -7,62 +7,50 @@ from grafanalib.core import (
 )
 from grafanalib._gen import write_dashboard
 
-    # origname="rtv.db.lockwait"
-    # origname="rtv.db.ckp.active"
-    # origname="rtv.db.ckp.records"
-    # origname="rtv.db.io.records"
-    # origname="rtv.rpl.behind.bytes"
-    # origname="rtv.rpl.behind.journals"
-    # origname="rtv.svr.sessions.active"
-    # origname="rtv.svr.sessions.total"
+metrics = """
+p4_rtv_db_lockwait
+p4_rtv_db_ckp_active
+p4_rtv_db_ckp_records
+p4_rtv_db_io_records
+p4_rtv_rpl_behind_bytes
+p4_rtv_rpl_behind_journals
+p4_rtv_svr_sessions_active
+p4_rtv_svr_sessions_total
+p4_locks_db_read
+p4_locks_db_write
+p4_locks_db_read_by_table
+p4_locks_db_write_by_table
+p4_locks_cliententity_read
+p4_locks_cliententity_write
+p4_locks_meta_read
+p4_locks_meta_write
+p4_locks_cmds_blocked
+p4_locks_cmds_blocking_by_cmd
+""".split("\n")
 
 dashboard = Dashboard(
-    title="Python generated dashboard3",
-    rows=[
-        Row(panels=[
-          Graph(
-              title="p4_rtv_db_lockwait",
-              dataSource='default',
-              targets=[
-                  Target(
-                    expr='p4_rtv_db_lockwait',
-                    legendFormat="instance {{instance}}, serverid {{serverid}}",
-                    refId='A',
-                  ),
-              ],
-              yAxes=single_y_axis(),
-          ),
-        ]),
-        Row(panels=[
-          Graph(
-              title="p4_rtv_rpl_behind_bytes",
-              dataSource='default',
-              targets=[
-                  Target(
-                    expr='p4_rtv_rpl_behind_bytes',
-                    legendFormat="instance {{instance}}, serverid {{serverid}}",
-                    refId='A',
-                  ),
-              ],
-              yAxes=single_y_axis(),
-          ),
-        ]),
-        Row(panels=[
-          Graph(
-              title="p4_rtv_rpl_behind_bytes",
-              dataSource='default',
-              targets=[
-                  Target(
-                    expr='p4_rtv_rpl_behind_bytes',
-                    legendFormat="instance {{instance}}, serverid {{serverid}}",
-                    refId='A',
-                  ),
-              ],
-              yAxes=single_y_axis(),
-          ),
-        ]),
-    ],
-).auto_panel_ids()
+    title="Python generated dashboard"
+)
+
+for metric in metrics:
+    if not metric.strip():
+        continue
+    graph = Graph(title=metric,
+                    dataSource='default',
+                    targets=[Target(
+                            expr=metric,
+                            legendFormat="instance {{instance}}, serverid {{serverid}}",
+                            refId='A',
+                        ),
+                    ],
+                    yAxes=single_y_axis(),
+                )
+    dashboard.rows.append(
+        Row(panels=[graph])
+    )
+
+# Auto-number panels - returns new dashboard
+dashboard = dashboard.auto_panel_ids()
 
 s = io.StringIO()
 write_dashboard(dashboard, s)
