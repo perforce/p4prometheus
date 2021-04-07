@@ -355,7 +355,7 @@ Get latest release download link: https://github.com/perforce/p4prometheus/relea
 
 Run the following as `root` (using link copied from above page):
 
-    export PVER=0.7.2
+    export PVER=0.7.3
     wget https://github.com/perforce/p4prometheus/releases/download/v$PVER/p4prometheus.linux-amd64.gz
 
     gunzip p4prometheus.linux-amd64.gz

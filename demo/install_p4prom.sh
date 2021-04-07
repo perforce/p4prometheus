@@ -17,7 +17,7 @@ metrics_root=/hxlogs/metrics
 metrics_link=/p4/metrics
 
 VER_NODE_EXPORTER="1.1.2"
-VER_P4PROMETHEUS="0.7.2"
+VER_P4PROMETHEUS="0.7.3"
 
 # ============================================================
 
