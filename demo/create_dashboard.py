@@ -1,7 +1,7 @@
 
 import io
 from grafanalib.core import (
-    Dashboard, Graph,
+    Dashboard, Graph, Legend,
     OPS_FORMAT, Row,
     single_y_axis, Target, TimeRange, YAxes, YAxis
 )
@@ -29,7 +29,7 @@ p4_locks_cmds_blocking_by_cmd
 """.split("\n")
 
 dashboard = Dashboard(
-    title="Python generated dashboard"
+    title="Python generated dashboard2"
 )
 
 for metric in metrics:
@@ -43,6 +43,9 @@ for metric in metrics:
                             refId='A',
                         ),
                     ],
+                    legend=Legend(show=True,alignAsTable=True,
+                                  min=True,max=True,avg=True,current=True,total=True,
+                                  sort='max',sortDesc=True),
                     yAxes=single_y_axis(),
                 )
     dashboard.rows.append(
