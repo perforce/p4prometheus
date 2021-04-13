@@ -167,6 +167,7 @@ for metric in metrics:
         continue
     graph = G.Graph(title=metric['title'],
                     dataSource='default',
+                    maxDataPoints=1000,
                     legend=G.Legend(show=True, alignAsTable=True,
                                   min=True, max=True, avg=True, current=True, total=True,
                                   sort='max', sortDesc=True),
