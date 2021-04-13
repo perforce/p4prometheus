@@ -2,15 +2,25 @@
 # Generate lock monitoring metrics and log file for use with Prometheus (collected via node_exporter)
 # Calls the underlying script monitor_metrics.py
 # Note that the Python script requires the 'lslocks' utility to be installed.
-# If required, put this job into perforce user crontab:
+#
+# If used, put this job into perforce user crontab, for SDP, e.g. where INSTANCE=1:
 #
 #   */1 * * * * /p4/common/site/bin/monitor_wrapper.sh $INSTANCE > /dev/null 2>&1 ||:
+#
+# For non-SDP installation, either specify port/user or ensure P4PORT and P4USER are set in environment:
+#
+#   */1 * * * * /p4/common/site/bin/monitor_wrapper.sh -nosdp -p server:1666 -u p4admin > /dev/null 2>&1 ||:
+#
+# If not using SDP then please ensure that appropriate LONG TERM TICKET is setup in the environment
+# that this script is running.
+#
+# You can specify metrics root director (for use with node_exporter) with: -m /my_metrics
 #
 # Please note you need to make sure that the specified directory below (which may be linked)
 # can be read by the node_exporter user (and is setup via --collector.textfile.directory parameter)
 #
 
-# This might also be /hxlogs/metrics or /var/metrics
+# This might also be /hxlogs/metrics or /var/metrics, and can be set via the "-m" parameter to script.
 metrics_root=/p4/metrics
 
 

@@ -178,7 +178,7 @@ monitor_change () {
     # Latest changelist counter as single counter value
     fname="$metrics_root/p4_change${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-    curr_change=$($p4 counters 2>&1 | grep change | awk '{print $3}')
+    curr_change=$($p4 counters 2>&1 | egrep '^change =' | awk '{print $3}')
     if [[ ! -z "$curr_change" ]]; then
         echo "# HELP p4_change_counter P4D change counter" > "$tmpfname"
         echo "# TYPE p4_change_counter counter" >> "$tmpfname"
