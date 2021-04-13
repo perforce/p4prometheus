@@ -6,9 +6,20 @@ echo -e "\n\tERROR: $1"
 cat <<HELPINFO
 ---
 Usage:
+
+Define environment variables: GRAFANA_SERVER and GRAFANA_API_KEY, e.g.
+
+    https://grafana.com/docs/grafana/latest/http_api/auth/#create-api-token
+
+    export GRAFANA_SERVER=p4monitor:3000
+    export GRAFANA_API_KEY=asdf23vsd23
+
     ./upload_grafana_dashboard.sh </path/to/dashboard.json>
+
 Example:
-    ./upload_grafana_dashboard.sh /root/local/grafana_dashboards/dashboard_single.json
+
+    ./upload_grafana_dashboard.sh dash.json
+
 HELPINFO
 }
 
@@ -44,4 +55,3 @@ curl -X POST \
   -H 'Content-Type: application/json' \
   -d "${payload}" \
   "http://api_key:$GRAFANA_API_KEY@$GRAFANA_SERVER/api/dashboards/db" -w "\n" | tee -a "$logfile"
-  

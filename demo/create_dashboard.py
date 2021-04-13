@@ -1,7 +1,46 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
+# ==============================================================================
+# Copyright and license info is available in the LICENSE file included with
+# the Server Deployment Package (SDP), and also available online:
+# https://swarm.workshop.perforce.com/projects/perforce-software-sdp/view/main/LICENSE
+# ------------------------------------------------------------------------------
+
+"""
+NAME:
+    create_dashboard.py
+
+DESCRIPTION:
+    This script creates Grafana dashboards for p4prometheus monitoring metrics.
+
+    The resulting dashboard can be easily uploaded to Grafana with associated script:
+
+        upload_grafana_dashboard.sh
+
+USAGE:
+    ./create_dashboard.py -h
+
+    Set environment variables for use in upload script:
+
+    export GRAFANA_SERVER=p4monitor:3000
+    export GRAFANA_API_KEY="<API key created above>"
+
+    Create and upload the dashboard:
+
+    ./create_dashboard.py --title "My python dashboard" > dash.json
+    ./upload_grafana_dashboard.sh dash.json
+
+"""
+
+import textwrap
+import argparse
+import sys
 import io
 import grafanalib.core as G
 from grafanalib._gen import write_dashboard
+
+DEFAULT_TITLE = "P4prometheus Metrics"
 
 metrics = [
     {'section': 'Monitor Tracking'},
@@ -138,55 +177,88 @@ metrics = [
      'expr': ['p4_locks_cmds_blocking_by_cmd']},
 ]
 
-dashboard = G.Dashboard(
-    title="Python generated dashboard3",
-    templating=G.Templating(list=[
-        G.Template(
-            default="1",
-            dataSource="default",
-            name="sdpinst",
-            label="SDPInstance",
-            query="label_values(sdpinst)"
-        ),
-        G.Template(
-            default="",
-            dataSource="default",
-            name="serverid",
-            label="ServerID",
-            query="label_values(serverid)"
+
+class CreateDashboard():
+    """See module doc string for details"""
+
+    def __init__(self, *args, **kwargs):
+        self.parse_args(__doc__, args)
+
+    def parse_args(self, doc, args):
+        """Common parsing and setting up of args"""
+        desc = textwrap.dedent(doc)
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            description=desc,
+            epilog="Copyright (c) 2021 Perforce Software, Inc."
         )
-    ])
-)
+        self.add_parse_args(parser)
+        self.options = parser.parse_args(args=args)
+        self.options.use_sdp = not self.options.no_sdp
 
-for metric in metrics:
-    if 'section' in metric:
-        dashboard.rows.append(G.Row(title=metric['section'], showTitle=True))
-        continue
-    if 'row' in metric:
-        dashboard.rows.append(G.Row(title='', showTitle=False))
-        continue
-    graph = G.Graph(title=metric['title'],
-                    dataSource='default',
-                    maxDataPoints=1000,
-                    legend=G.Legend(show=True, alignAsTable=True,
-                                  min=True, max=True, avg=True, current=True, total=True,
-                                  sort='max', sortDesc=True),
-                    yAxes=G.single_y_axis(),
-                )
-    refId = 'A'
-    for t in metric['expr']:
-        graph.targets.append(G.Target(expr=t,
-                                    legendFormat="instance {{instance}}, serverid {{serverid}}",
-                                    refId=refId))
-        refId = chr(ord(refId) + 1)
-    dashboard.rows[-1].panels.append(graph)
+    def add_parse_args(self, parser):
+        """Default trigger arguments - common to all triggers"""
+        parser.add_argument('-t', '--title', default=DEFAULT_TITLE, help="Dashboard title. Default: " + DEFAULT_TITLE)
+        parser.add_argument('--no-sdp', action='store_true', default=False, help="Whether this is SDP instance or not - default is SDP")
 
-# Auto-number panels - returns new dashboard
-dashboard = dashboard.auto_panel_ids()
+    def run(self):
+        templateList = []
+        if self.options.use_sdp:
+            templateList.append(G.Template(
+                    default="1",
+                    dataSource="default",
+                    name="sdpinst",
+                    label="SDPInstance",
+                    query="label_values(sdpinst)"))
+        templateList.append(G.Template(
+                    default="",
+                    dataSource="default",
+                    name="serverid",
+                    label="ServerID",
+                    query="label_values(serverid)"))
 
-s = io.StringIO()
-write_dashboard(dashboard, s)
-print("""{
-"dashboard": %s
-}
-""" % s.getvalue())
+        dashboard = G.Dashboard(
+            title=self.options.title,
+            templating=G.Templating(list=templateList)
+        )
+
+        for metric in metrics:
+            if 'section' in metric:
+                dashboard.rows.append(G.Row(title=metric['section'], showTitle=True))
+                continue
+            if 'row' in metric:
+                dashboard.rows.append(G.Row(title='', showTitle=False))
+                continue
+            graph = G.Graph(title=metric['title'],
+                            dataSource='default',
+                            maxDataPoints=1000,
+                            legend=G.Legend(show=True, alignAsTable=True,
+                                        min=True, max=True, avg=True, current=True, total=True,
+                                        sort='max', sortDesc=True),
+                            yAxes=G.single_y_axis(),
+                        )
+            refId = 'A'
+            for texp in metric['expr']:
+                # Remove SDP
+                if not self.options.use_sdp:
+                    texp = texp.replace('sdpinst="$sdpinst",', '')
+                graph.targets.append(G.Target(expr=texp,
+                                              legendFormat="instance {{instance}}, serverid {{serverid}}",
+                                              refId=refId))
+                refId = chr(ord(refId) + 1)
+            dashboard.rows[-1].panels.append(graph)
+
+        # Auto-number panels - returns new dashboard
+        dashboard = dashboard.auto_panel_ids()
+
+        s = io.StringIO()
+        write_dashboard(dashboard, s)
+        print("""{
+        "dashboard": %s
+        }
+        """ % s.getvalue())
+
+if __name__ == '__main__':
+    """ Main Program"""
+    obj = CreateDashboard(*sys.argv[1:])
+    obj.run()

@@ -21,6 +21,7 @@ On your commit/master or any perforce edge/replica server machines, install:
 - [Automated Script Installation](#automated-script-installation)
 - [Package Install of Grafana](#package-install-of-grafana)
   - [Setup of Grafana dashboards](#setup-of-grafana-dashboards)
+    - [Script to create Grafana dashboard](#script-to-create-grafana-dashboard)
 - [Install Prometheus](#install-prometheus)
   - [Prometheus config](#prometheus-config)
   - [Install victoria metrics (optional but recommended)](#install-victoria-metrics-optional-but-recommended)
@@ -74,11 +75,34 @@ Once Grafana is installed the following 2 dashboards are recommended:
 * https://grafana.com/grafana/dashboards/405 - Node Exporter Server Info
 * https://grafana.com/grafana/dashboards?search=node%20exporter
 
-They can be imported from Grafana dashboard management page.
+They can be imported from Grafana dashboard management page. Alternatively see below for experimental 
+script to create dashboards which is easier to customize.
 
 For Windows see [Windows Installation](#windows-installation) since WMI Exporter is used instead of Node Exporter.
 
 If first time with Grafana, the default user/pwd: `admin`/`admin`
+
+### Script to create Grafana dashboard
+
+Download the following files:
+* [create_dashboard.py](demo/create_dashboard.py) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/create_dashboard.py)
+* [upload_grafana_dashboard.sh](demo/upload_grafana_dashboard.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/upload_grafana_dashboard.sh)
+
+Create a [Grafana API token](https://grafana.com/docs/grafana/latest/http_api/auth/#create-api-token) for your Grafana installation.
+
+  pip3 install grafanalib
+
+  python3 create_dashboard.py > dash.json
+
+Set environment variables:
+
+  export GRAFANA_SERVER=p4monitor:3000
+  export GRAFANA_API_KEY="<API key created above>"
+
+  ./upload_grafana_dashboard.sh dash.json
+
+If you want to tweak and re-upload the dashboard, you will need to delete the dashboard from within the Grafana interface 
+as it re-uses the ID.
 
 # Install Prometheus
 
