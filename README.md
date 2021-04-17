@@ -2,11 +2,18 @@
 
 # p4prometheus
 
-Utility which integrates Perforce (Helix Core) with Prometheus. If performs real-time analysis of p4d log files feeding to a dashboard and for system alerting.
+This project integrates Perforce's Helix Core Server (p4d) with the [Prometheus](https://prometheus.io/) monitoring framework and associated tools.
+It allows real-time metrics from analysis of p4d log files and other monitoring commands to be collected by Prometheus
+and shown on Grafana dashboards. The metrics can also used for system alerting.
 
-It continuously parses p4d log files and writes a summary to 
+[Prometheus has many integrations](https://prometheus.io/docs/instrumenting/exporters/) with other monitoring packages 
+and other systems, so just because you are not using Prometheus doesn't mean this isn't useful! 
+This project has simple installation instructions and scripts for all the required components.
+
+The `p4prometheus` component itself (from this project) continuously parses p4d log files and writes a summary to 
 a specified Prometheus compatible metrics file which can be handled via the `node_exporter`
-textfile collector module.
+textfile collector module. Other components of this package collect related metrics by interrogating p4d server
+and other associated logs.
 
 Uses [go-libp4dlog](https://github.com/rcowham/go-libp4dlog) for actual log file parsing.
 
@@ -28,18 +35,23 @@ This is currently a Community Supported Perforce tool.
 
 This is part of a solution consisting of the following components:
 
-* Prometheus - time series metrics management system: https://prometheus.io/
-* VictoriaMetrics - (optional) high performing storage management which is Prometheus compatible: https://github.com/VictoriaMetrics/VictoriaMetrics
-* Grafana - The leading open source software for time series analytics - https://grafana.com/
-* node_exporter - Prometheus collector for basic Linux metrics - https://github.com/prometheus/node_exporter
+* [Prometheus](https://prometheus.io/) - time series metrics management system
+* [VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics) - (optional but recommended) high performing storage management which is Prometheus-compatible
+* [Grafana](https://grafana.com/) - The leading open source software for time series analytics
+* [node_exporter](https://github.com/prometheus/node_exporter) - Prometheus collector for basic Linux metrics
+* [windows_exporter](https://github.com/prometheus-community/windows_exporter) - Prometheus collector for Windows machines
+* [alertmanager](https://github.com/prometheus/alertmanager) - handles alerting including de-duplication etc - part of Prometheus
 
-Two custom components:
+Custom components in this project:
 
-* p4prometheus - This component.
-* monitor_metrics.sh - [SDP](https://swarm.workshop.perforce.com/projects/perforce-software-sdp) compatible bash script to generate simple supplementary metrics - [monitor_metrics.sh](demo/monitor_metrics.sh)
+* [p4prometheus](releases/latest) - a released binary executable
+* [monitor_metrics.sh](demo/monitor_metrics.sh) - an [SDP](https://swarm.workshop.perforce.com/projects/perforce-software-sdp) compatible bash script to generate simple supplementary metrics - see also [installation instructions](INSTALL.md)
+* other useful scripts and tools
 
-Check out the ![Prometheus architecture](https://prometheus.io/assets/architecture.png)
-The custom components referred to above are "Prometheus targets".
+Check out the Prometheus architecture below. The custom components referred to above interface with
+"Prometheus targets"  (or "Jobs/exporters") in the lower left of the diagram.
+
+![Prometheus architecture](https://prometheus.io/assets/architecture.png)
 
 # Grafana Dashboards
 
@@ -57,7 +69,7 @@ Active commands (monitor):
 
 ![Commands](images/p4stats_monitor.png)
 
-Replication status:
+Replication status (there is a lag in the middle of the picture - which might exceed a configurable threshold for your site and trigger an alert):
 
 ![Commands](images/p4stats_replication.png)
 
@@ -71,7 +83,7 @@ Dashboard alerts can be defined, as well as alert rules which are actioned by [a
 
 You need to install Prometheus and Grafana using standard methods. This is typically done on a seperate VM/machine to the Perforce server itself (for security and HA reasons).
 
-Note that all the components do run on Windows but you will need an appropriate Service wrapper.
+Note that all the components do run on Windows but you may need an appropriate Service wrapper.
 
 See [Detailed Installation Instructions (INSTALL.md)](INSTALL.md) in this project.
 
