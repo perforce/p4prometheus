@@ -1,0 +1,90 @@
+#!/bin/bash
+# push_metrics.sh
+# 
+# Takes node_exporter metrics and pushes them to pushgateway instance centrally.
+#
+# If used, put this job into perforce user crontab, for SDP, e.g. where INSTANCE=1:
+#
+#   */1 * * * * /p4/common/site/bin/push_metrics.sh -c /p4/common/config/.push_metrics.cfg > /dev/null 2>&1 ||:
+#
+# You can specify a config file as above, with expected format:
+#
+#   metrics_host=https://monitorgw.hra.p4demo.com:9100
+#   metrics_user=customerid
+#   metrics_passwd=MySecurePassword
+#   metrics_job=pushgateway
+#   metrics_instance=hra_custid-prod-hra
+#
+# Please note you need to make sure that the specified directory below (which may be linked)
+# can be read by the node_exporter user (and is setup via --collector.textfile.directory parameter)
+#
+
+node_exporter_url="http://localhost:9100"
+
+function msg () { echo -e "$*"; }
+function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
+
+function usage
+{
+   declare style=${1:--h}
+   declare errorMessage=${2:-Unset}
+ 
+   if [[ "$errorMessage" != Unset ]]; then
+      echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
+   fi
+ 
+   echo "USAGE for push_metrics.sh:
+ 
+push_metrics.sh -c <config_file>
+ 
+   or
+ 
+push_metrics.sh -h
+"
+}
+
+# Command Line Processing
+ 
+declare -i shiftArgs=0
+ConfigFile=/p4/common/config/.push_metrics.cfg
+
+set +u
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        (-h) usage -h;;
+        # (-man) usage -man;;
+        (-c) ConfigFile=$2; shiftArgs=1;;
+        (-*) usage -h "Unknown command line option ($1)." && exit 1;;
+    esac
+ 
+    # Shift (modify $#) the appropriate number of times.
+    shift; while [[ "$shiftArgs" -gt 0 ]]; do
+        [[ $# -eq 0 ]] && usage -h "Incorrect number of arguments."
+        shiftArgs=$shiftArgs-1
+        shift
+    done
+done
+set -u
+
+[[ -f "$ConfigFile" ]] || bail "Can't find config file: ${ConfigFile}!"
+
+# Get config values - format: key=value
+metrics_host=$(grep metrics_host "$ConfigFile" | awk -F= '{print $2}')
+metrics_job=$(grep metrics_job "$ConfigFile" | awk -F= '{print $2}')
+metrics_instance=$(grep metrics_instance "$ConfigFile" | awk -F= '{print $2}')
+metrics_user=$(grep metrics_user "$ConfigFile" | awk -F= '{print $2}')
+metrics_passwd=$(grep metrics_passwd "$ConfigFile" | awk -F= '{print $2}')
+
+metrics_host=${metrics_host:-Unset}
+metrics_job=${metrics_job:-Unset}
+metrics_instance=${metrics_instance:-Unset}
+metrics_user=${metrics_user:-Unset}
+metrics_passwd=${metrics_passwd:-Unset}
+if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Unset ]]; then
+   echo -e "\\nError: Required parameters not supplied.\\n"
+   echo "You must set the variables metrics_host, metrics_user, metrics_passwd in $ConfigFile."
+   exit 1
+fi
+
+metrics=$(curl "$node_exporter_url/metrics")
+echo "$metrics" | curl --user "$metrics_user:$metrics_passwd" --data-binary @- "$metrics_host/metrics/job/$metrics_job/instance/$metrics_instance"

@@ -21,7 +21,7 @@ Uses [go-libp4dlog](https://github.com/rcowham/go-libp4dlog) for actual log file
   - [Support Status](#support-status)
   - [Overview](#overview)
 - [Grafana Dashboards](#grafana-dashboards)
-- [Detailed Installation](#detailed-installation)
+- [Detailed Installation Instructions](#detailed-installation-instructions)
 - [Metrics Available](#metrics-available)
   - [P4Prometheus](#p4prometheus-1)
   - [Monitor_metrics.sh](#monitor_metricssh)
@@ -79,7 +79,7 @@ Read/write locks held/waiting status:
 
 Dashboard alerts can be defined, as well as alert rules which are actioned by [alertmanager](https://prometheus.io/docs/alerting/alertmanager/) - see installation link below for examples.
 
-# Detailed Installation
+# Detailed Installation Instructions
 
 You need to install Prometheus and Grafana using standard methods. This is typically done on a seperate VM/machine to the Perforce server itself (for security and HA reasons).
 

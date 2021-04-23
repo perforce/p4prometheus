@@ -312,6 +312,10 @@ scrape_configs:
 
   - job_name: 'pushgateway'
     honor_labels: true
+    # Optional auth settings if this is configured for security
+    # basic_auth:
+    #   username: admin
+    #   password: SomeSecurePassword
     static_configs:
       - targets:
           - localhost:9091
