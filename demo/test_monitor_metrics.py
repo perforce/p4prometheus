@@ -107,16 +107,12 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         obj = P4Monitor()
         m = obj.findLocks(lockdata, mondata)
         self.assertEqual(3, m.dbReadLocks)
-        self.assertEqual(3, m.dbReadLocksTable["db.have"])
-        self.assertEqual(1, len(m.dbReadLocksTable.keys()))
         self.assertEqual(0, m.dbWriteLocks)
-        self.assertEqual(0, len(m.dbWriteLocksTable.keys()))
         self.assertEqual(0, m.clientEntityReadLocks)
         self.assertEqual(0, m.clientEntityWriteLocks)
         self.assertEqual(0, m.metaReadLocks)
         self.assertEqual(0, m.metaWriteLocks)
         self.assertEqual(2, m.blockedCommands)
-        self.assertEqual(1, m.blockingCommands["sync"])
         self.assertEqual(2, len(m.msgs))
         self.assertEqual("pid 2502, user fred, cmd sync, table /p4/1/root/db.have, blocked by pid 166, user jim, cmd sync, args -f //...", m.msgs[0])
         self.assertEqual("pid 2503, user susan, cmd sync, table /p4/1/root/db.have, blocked by pid 166, user jim, cmd sync, args -f //...", m.msgs[1])
@@ -124,13 +120,11 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         lines = [x for x in obj.formatMetrics(m) if not x.startswith("#")]
         exp = """p4_locks_db_read 3
                  p4_locks_db_write 0
-                 p4_locks_db_read_by_table{db.have} 3
                  p4_locks_cliententity_read 0
                  p4_locks_cliententity_write 0
                  p4_locks_meta_read 0
                  p4_locks_meta_write 0
-                 p4_locks_cmds_blocked 2
-                 p4_locks_cmds_blocking_by_cmd{sync} 1""".split("\n")
+                 p4_locks_cmds_blocked 2""".split("\n")
         exp_lines = [x.strip() for x in exp]
         exp_lines.sort()
         lines.sort()
