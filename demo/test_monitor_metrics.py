@@ -6,19 +6,17 @@ from __future__ import print_function
 import sys
 import unittest
 import os
-import re
 import json
-import textwrap
 
-import P4
 curr_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(curr_dir))
 
-from monitor_metrics import P4Monitor, MonitorMetrics
+from monitor_metrics import P4Monitor
 
 # os.environ["LOGS"] = "."
 # LOGGER_NAME = "testMonitorMetrics"
 # LOG_FILE = "log-testMonitorMetrics.log"
+
 
 class TestMonitorMetrics(unittest.TestCase):
     # def __init__(self, methodName='runTest'):
@@ -66,26 +64,26 @@ class TestMonitorMetrics(unittest.TestCase):
     def testTextLslocksParse(self):
         """Check parsing of textual form"""
         lockdata = """COMMAND           PID   TYPE SIZE MODE  M START END PATH                       BLOCKER
-(unknown)          -1 OFDLCK   0B WRITE 0     0   0 /etc/hosts                 
-(unknown)          -1 OFDLCK   0B READ  0     0   0                            
+(unknown)          -1 OFDLCK   0B WRITE 0     0   0 /etc/hosts
+(unknown)          -1 OFDLCK   0B READ  0     0   0
 p4d               107  FLOCK  16K READ* 0     0   0 /path/db.config            105
-p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.config            
-p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh            
+p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.config
+p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
 """
         obj = P4Monitor()
         jlock = obj.parseTextLockInfo(lockdata)
         expected = {"locks": [
-                {"command": "(unknown)", "pid": "-1", "type": "OFDLCK", "size": "0B", 
-                    "mode": "WRITE", "m": "0", "start": "0", "end": "0", "path": "/etc/hosts", 
+                {"command": "(unknown)", "pid": "-1", "type": "OFDLCK", "size": "0B",
+                    "mode": "WRITE", "m": "0", "start": "0", "end": "0", "path": "/etc/hosts",
                     "blocker": None},
-                {"command": "p4d", "pid": "107", "type": "FLOCK", "size": "16K", 
-                    "mode": "READ*", "m": "0", "start": "0", "end": "0", "path": "/path/db.config", 
+                {"command": "p4d", "pid": "107", "type": "FLOCK", "size": "16K",
+                    "mode": "READ*", "m": "0", "start": "0", "end": "0", "path": "/path/db.config",
                     "blocker": "105"},
-                {"command": "p4d", "pid": "105", "type": "FLOCK", "size": "16K", 
-                    "mode": "WRITE", "m": "0", "start": "0", "end": "0", "path": "/path/db.config", 
+                {"command": "p4d", "pid": "105", "type": "FLOCK", "size": "16K",
+                    "mode": "WRITE", "m": "0", "start": "0", "end": "0", "path": "/path/db.config",
                     "blocker": None},
-                {"command": "p4d", "pid": "105", "type": "FLOCK", "size": "16K", 
-                    "mode": "WRITE", "m": "0", "start": "0", "end": "0", "path": "/path/db.configh", 
+                {"command": "p4d", "pid": "105", "type": "FLOCK", "size": "16K",
+                    "mode": "WRITE", "m": "0", "start": "0", "end": "0", "path": "/path/db.configh",
                     "blocker": None},
             ]}
         self.maxDiff = None
@@ -130,6 +128,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         lines.sort()
         self.maxDiff = None
         self.assertEqual(exp_lines, lines)
+
 
 if __name__ == '__main__':
     unittest.main()

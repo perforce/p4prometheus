@@ -51,6 +51,7 @@ if os.path.exists(LOGDIR):
 DEFAULT_VERBOSITY = 'DEBUG'
 LOGGER_NAME = 'monitor_metrics'
 
+
 class MonitorMetrics:
     """Metric counts"""
 
@@ -65,6 +66,7 @@ class MonitorMetrics:
         self.replicaWriteLocks = 0
         self.blockedCommands = 0
         self.msgs = []
+
 
 class P4Monitor(object):
     """See module doc string for details"""
@@ -137,10 +139,9 @@ class P4Monitor(object):
             if get_output:
                 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, shell=True)
                 if python3:
-                    output, err = p.communicate(timeout=timeout)
+                    output, _ = p.communicate(timeout=timeout)
                 else:
-                    output, err = p.communicate()
-                rc = p.returncode
+                    output, _ = p.communicate()
                 self.logger.debug("Output:\n%s" % output)
             else:
                 if python3:
@@ -161,15 +162,15 @@ class P4Monitor(object):
         return output
 
     def parseMonitorData(self, mondata):
-        reProc = re.compile("(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*(.*)$")
+        reProc = re.compile(r"(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*(.*)$")
         pids = {}
         for line in mondata.split("\n"):
             m = reProc.search(line)
             if m:
                 pid = m.group(1)
-                runstate = m.group(2)
+                # runstate = m.group(2)
                 user = m.group(3)
-                elapsed = m.group(4)
+                # elapsed = m.group(4)
                 cmd = m.group(5)
                 args = None
                 if len(m.groups()) == 6:
@@ -180,11 +181,11 @@ class P4Monitor(object):
     # Old versions of lslocks can't return json so we parse text
     # For now assume no spaces in file paths or this won't work!
     # COMMAND           PID   TYPE SIZE MODE  M START END PATH                       BLOCKER
-    # (unknown)          -1 OFDLCK   0B WRITE 0     0   0 /etc/hosts                 
-    # (unknown)          -1 OFDLCK   0B READ  0     0   0                            
+    # (unknown)          -1 OFDLCK   0B WRITE 0     0   0 /etc/hosts
+    # (unknown)          -1 OFDLCK   0B READ  0     0   0
     # p4d               107  FLOCK  16K READ* 0     0   0 /path/db.config            105
-    # p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.config            
-    # p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh     
+    # p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.config
+    # p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
     def parseTextLockInfo(self, lockdata):
         jlock = {'locks': []}
         for line in lockdata.split("\n"):
@@ -196,16 +197,16 @@ class P4Monitor(object):
             if parts[0] == "COMMAND" or parts[3] == "START":
                 continue
             lockinfo = {"command": parts[0], "pid": parts[1],
-                    "type": parts[2], "size": parts[3],
-                    "mode": parts[4], "m": parts[5],
-                    "start": parts[6], "end": parts[7],
-                    "path": parts[8], "blocker": None}
+                        "type": parts[2], "size": parts[3],
+                        "mode": parts[4], "m": parts[5],
+                        "start": parts[6], "end": parts[7],
+                        "path": parts[8], "blocker": None}
             if len(parts) == 10:
                 lockinfo["blocker"] = parts[9]
             jlock['locks'].append(lockinfo)
         self.logger.debug("parsed TextLockInfo: %s" % str(jlock))
         return json.dumps(jlock)
-            
+
     def dbFileInPath(self, path):
         "Returns name of db file or empty string"
         parts = path.split("/")
@@ -230,7 +231,6 @@ class P4Monitor(object):
         except Exception as e:
             self.logger.warning("Failed to load json: %s", str(e))
             jlock = []
-        locks = []
         if 'locks' not in jlock:
             return metrics
         blockingCommands = defaultdict(dict)
@@ -242,12 +242,12 @@ class P4Monitor(object):
                     metrics.clientEntityReadLocks += 1
                 elif j["mode"] == "WRITE":
                     metrics.clientEntityWriteLocks += 1
-            cmd = user = args = ""
+            cmd = user = ""
             pid = j["pid"]
-            mode = j["mode"]
+            # mode = j["mode"]
             path = j["path"]
             if j["pid"] in pids:
-                user, cmd, args = pids[j["pid"]]
+                user, cmd, _ = pids[j["pid"]]
             if "server.locks/meta" in j["path"]:
                 if j["mode"] == "READ":
                     metrics.metaReadLocks += 1
@@ -267,7 +267,7 @@ class P4Monitor(object):
                     buser, bcmd, bargs = pids[bpid]
                 msg = "pid %s, user %s, cmd %s, table %s, blocked by pid %s, user %s, cmd %s, args %s" % (
                     pid, user, cmd, path, bpid, buser, bcmd, bargs)
-                if not bcmd in blockingCommands or not bpid in blockingCommands[bcmd]:
+                if bcmd not in blockingCommands or bpid not in blockingCommands[bcmd]:
                     blockingCommands[bcmd][bpid] = 1
                 metrics.msgs.append(msg)
         return metrics
@@ -342,7 +342,7 @@ class P4Monitor(object):
         # lslocks from util-linux 2.23.2
         try:
             return ver.split()[-1]
-        except:
+        except Exception:
             return "1.0"
 
     def run(self):
@@ -362,6 +362,7 @@ class P4Monitor(object):
         metrics = self.findLocks(lockdata, mondata)
         self.writeLog(self.formatLog(metrics))
         self.writeMetrics(self.formatMetrics(metrics))
+
 
 if __name__ == '__main__':
     """ Main Program"""
