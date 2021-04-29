@@ -37,145 +37,205 @@ import textwrap
 import argparse
 import sys
 import io
+import yaml
 import grafanalib.core as G
 from grafanalib._gen import write_dashboard
 
 DEFAULT_TITLE = "P4prometheus Metrics"
 
-metrics = [
-    {'section': 'Monitor Tracking'},
-    {'row': 1},
-    {'title': 'Monitor Processes (by cmd)',
-     'expr': [r'p4_monitor_by_cmd{sdpinst="$sdpinst",serverid="$serverid"}',
-              r'sum(p4_monitor_by_cmd{sdpinst="$sdpinst",serverid="$serverid"})']},
-    {'title': 'Monitor Processes (by user)',
-     'expr': ['p4_monitor_by_user{sdpinst="$sdpinst",serverid="$serverid"}',
-             'sum(p4_monitor_by_user{sdpinst="$sdpinst",serverid="$serverid"})']},
-    {'row': 1},
-    {'title': 'p4d process count',
-     'expr': ['p4_process_count']},
-    {'title': 'rtv sessions active',
-     'expr': ['p4_rtv_svr_sessions_active']},
-    {'row': 1},
-    {'title': '$serverid Time for last checkpoint',
-     'expr': ['p4_sdp_checkpoint_duration{sdpinst="$sdpinst",serverid="$serverid"}']},
-    {'title': 'Uptime',
-     'expr': ['p4_server_uptime{sdpinst="$sdpinst"}']},
-    {'row': 1},
-    {'title': '$serverid time since last checkpoint',
-     'expr': ['time() - p4_sdp_checkpoint_log_time{sdpinst="$sdpinst",serverid="$serverid"}']},
-     
-    {'row': 1},
-    {'title': 'All P4 Cmds Count (rate/10min)',
-     'expr': ['rate(p4_completed_cmds_per_day{instance="p4poke-chi:9100",sdpinst="$sdpinst",serverid="$serverid"}[10m])',
-              'sum(rate(p4_cmd_counter{sdpinst="$sdpinst",serverid="$serverid"}[10m]))']},
-    {'title': 'p4d log lines read (rate/min)',
-     'expr': ['rate(p4_prom_log_lines_read{sdpinst="$sdpinst",serverid="$serverid"}[1m])']},
-    {'row': 1},
-    {'title': 'Error Count rates by subsystem/id',
-     'expr': ['rate(p4_error_count{subsystem!~"[0-9].*"}[1m])']},
-    
-    {'section': 'Replication'},
-    {'row': 1},
-    {'title': 'Replica Journal number',
-     'expr': ['p4_replica_curr_jnl{sdpinst="$sdpinst",serverid="$serverid"}']},
-    {'title': 'Replica Journal Pos',
-     'expr': ['p4_replica_curr_pos{sdpinst="$sdpinst",serverid="$serverid"}']},
-    {'row': 1},
-    {'title': 'Replica Lag p4d_ha_chi',
-     'expr': ['p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="master-1666"} - '
-              'ignoring(serverid,servername) '
-              'p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="p4d_ha_chi"}']},
-    {'title': 'Replica Lag p4d_fs_brk',
-     'expr': ['p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="master-1666"} - '
-              'ignoring(serverid, servername) '
-              'p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="p4d_fs_brk"}']},
-    {'row': 1},
-    {'title': 'Pull queue size',
-     'expr': ['p4_pull_queue{sdpinst="$sdpinst"}']},
-    {'title': 'rtv_repl_behind_bytes p4d_fs_brk',
-     'expr': ['p4_rtv_rpl_behind_bytes{instance="gemini:9100", job="node_exporter", sdpinst="1", serverid="p4d_fs_brk"}']},
-    {'row': 1},
-    {'title': 'Pull queue errors',
-     'expr': ['p4_pull_errors{sdpinst="$sdpinst"}']},
+metrics = yaml.load("""
+- section: Monitor Tracking
+- row: 1
+- title: Monitor Processes (by cmd)
+  target:
+  - expr: p4_monitor_by_cmd{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: "{{cmd}}"
+  - expr: sum(p4_monitor_by_cmd{sdpinst="$sdpinst",serverid="$serverid"})
+    legend: all
+- title: Monitor Processes (by user)
+  target:
+  - expr: p4_monitor_by_user{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: "{{user}}"
+  - expr: sum(p4_monitor_by_user{sdpinst="$sdpinst",serverid="$serverid"})
+    legend: all
+- row: 1
+- title: p4d process count
+  target:
+  - expr: p4_process_count
+- title: rtv sessions active
+  target:
+  - expr: p4_rtv_svr_sessions_active
 
-    {'section': 'Cmd Count and Duration'},
-    {'row': 1},
-    {'title': 'Cmds duration (rate/min)',
-     'expr': ['rate(p4_cmd_cumulative_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m])']},
-    {'title': 'p4 cmds top 10 (rate/min)',
-     'expr': ['sum without (instance, job)(rate(p4_cmd_counter{sdpinst="$sdpinst",serverid="$serverid"}[1m]))']},
+- row: 1
+- title: $serverid Time for last checkpoint
+  target:
+  - expr: p4_sdp_checkpoint_duration{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: s
+- title: Uptime
+  type: gauge
+  target:
+  - expr: p4_server_uptime{sdpinst="$sdpinst"}
+  yformat: s
 
-    {'section': 'Table Locking'},
-    {'row': 1},
-    {'title': 'P4 Read Locks',
-     'expr': ['p4_locks_db_read{sdpinst="$sdpinst",serverid="$serverid"}',
-              'p4_locks_cliententity_read{sdpinst="$sdpinst",serverid="$serverid"}',
-              'p4_locks_meta_read{sdpinst="$sdpinst",serverid="$serverid"}',
-              'p4_locks_replica_read{sdpinst="$sdpinst",serverid="$serverid"}']},
-    {'title': 'P4 Write Locks',
-     'expr': ['p4_locks_db_write{sdpinst="$sdpinst",serverid="$serverid"}',
-              'p4_locks_cliententity_write{sdpinst="$sdpinst",serverid="$serverid"}',
-              'p4_locks_meta_write{sdpinst="$sdpinst",serverid="$serverid"}',
-              'p4_locks_replica_write{sdpinst="$sdpinst",serverid="$serverid"}']},
-    {'row': 1},
-    {'title': 'p4 read locks held per table (rate/min)',
-     'expr': ['sum without (instance, job)(rate(p4_total_read_held_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m]))']},
-    {'title': 'p4 read locks waiting (rate/min)',
-     'expr': ['sum without (instance, job)(rate(p4_total_read_wait_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m]))']},
-    {'row': 1},
-    {'title': 'p4 write locks held per table (rate/min)',
-     'expr': ['sum without (instance, job)(rate(p4_total_write_held_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m]))']},
-    {'title': 'p4 write locks wait per table (rate/min)',
-     'expr': ['sum without (instance, job)(rate(p4_total_write_wait_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m]))']},
+- row: 1
+- title: $serverid time since last checkpoint
+  target:
+  - expr: time() - p4_sdp_checkpoint_log_time{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: s
 
-    {'row': 1},
-    {'title': 'RTV processes waiting for locks',
-     'expr': ['p4_rtv_db_lockwait']},
-    {'row': 1},
-    {'title': 'RTV is checkpoint active',
-     'expr': ['p4_rtv_db_ckp_active']},
-    {'title': 'RTV checkpoint records processed',
-     'expr': ['p4_rtv_db_ckp_records']},
-    {'row': 1},
-    {'title': 'RTV DB I/O record count',
-     'expr': ['p4_rtv_db_io_records']},
-    {'row': 1},
-    {'title': 'RTV replica byte lag',
-     'expr': ['p4_rtv_rpl_behind_bytes']},
-    {'title': 'RTV replica journal lag',
-     'expr': ['p4_rtv_rpl_behind_journals']},
-    {'row': 1},
-    {'title': 'RTV active sessions',
-     'expr': ['p4_rtv_svr_sessions_active']},
-    {'title': 'RTV total sessions',
-     'expr': ['p4_rtv_svr_sessions_total']},
-    {'row': 1},
-    {'title': 'Processes waiting on read locks',
-     'expr': ['p4_locks_db_read']},
-    {'title': 'Processes waiting on write locks',
-     'expr': ['p4_locks_db_write']},
-    {'row': 1},
-    {'title': 'Processes waiting on read locks per table',
-     'expr': ['p4_locks_db_read_by_table']},
-    {'title': 'Processes waiting on write locks per table',
-     'expr': ['p4_locks_db_write_by_table']},
-    {'row': 1},
-    {'title': 'Processes waiting on cliententity read locks',
-     'expr': ['p4_locks_cliententity_read']},
-    {'title': 'Processes waiting on cliententity write locks',
-     'expr': ['p4_locks_cliententity_write']},
-    {'row': 1},
-    {'title': 'p4_locks_meta_read',
-     'expr': ['Processes waiting on meta_read']},
-    {'title': 'p4_locks_meta_write',
-     'expr': ['Processes waiting on meta_write']},
-    {'row': 1},
-    {'title': 'Processes blocked count',
-     'expr': ['p4_locks_cmds_blocked']},
-    {'title': 'Processes blocked count by cmd',
-     'expr': ['p4_locks_cmds_blocking_by_cmd']},
-]
+- row: 1
+- title: All P4 Cmds Count (rate/10min)
+  target:
+  - expr: rate(p4_completed_cmds_per_day{instance="p4poke-chi:9100",sdpinst="$sdpinst",serverid="$serverid"}[10m])
+  - expr: sum(rate(p4_cmd_counter{sdpinst="$sdpinst",serverid="$serverid"}[10m]))
+- title: p4d log lines read (rate/min)
+  target:
+  - expr: rate(p4_prom_log_lines_read{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+- row: 1
+- title: Error Count rates by subsystem/id
+  target:
+  - expr: rate(p4_error_count{subsystem!~"[0-9].*"}[1m])
+
+- section: Replication
+- row: 1
+- title: Replica Journal number
+  target:
+  - expr: p4_replica_curr_jnl{sdpinst="$sdpinst",serverid="$serverid"}
+- title: Replica Journal Pos
+  target:
+  - expr: p4_replica_curr_pos{sdpinst="$sdpinst",serverid="$serverid"}
+
+- row: 1
+- title: Replica Lag p4d_ha_chi
+  target:
+  - expr: >-
+      p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="master-1666"} -
+      ignoring(serverid, servername)
+      p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="p4d_ha_chi"}
+- title: Replica Lag p4d_fs_brk
+  target:
+  - expr: >-
+      p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="master-1666"} -
+      ignoring(serverid, servername)
+      p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="p4d_fs_brk"}
+
+- row: 1
+- title: Pull queue size
+  target:
+  - expr: p4_pull_queue{sdpinst="$sdpinst"}
+- title: rtv_repl_behind_bytes p4d_fs_brk
+  target:
+  - expr: p4_rtv_rpl_behind_bytes{instance="gemini:9100", job="node_exporter", sdpinst="1", serverid="p4d_fs_brk"}
+- row: 1
+- title: Pull queue errors
+  target:
+  - expr: p4_pull_errors{sdpinst="$sdpinst"}
+
+- section: Cmd Count and Duration
+- row: 1
+- title: Cmds duration (rate/min)
+  target:
+  - expr: rate(p4_cmd_cumulative_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+    legend: "{{cmd}}"
+- title: p4 cmds top 10 (rate/min)
+  target:
+  - expr: sum without (instance, job)(rate(p4_cmd_counter{sdpinst="$sdpinst",serverid="$serverid"}[1m]))
+    legend: "{{cmd}}"
+
+- section: Table Locking
+- row: 1
+- title: P4 Read Locks
+  target:
+  - expr: p4_locks_db_read{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: db
+  - expr: p4_locks_cliententity_read{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: cliententity
+  - expr: p4_locks_meta_read{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: meta
+- title: P4 Write Locks
+  target:
+  - expr: p4_locks_db_write{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: db
+  - expr: p4_locks_cliententity_write{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: cliententity
+  - expr: p4_locks_meta_write{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: meta
+- row: 1
+- title: p4 read locks held per table (rate/min)
+  target:
+  - expr: sum without (instance, job) (rate(p4_total_read_held_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m]))
+    legend: "{{table}}"
+- title: p4 read locks waiting (rate/min)
+  target:
+  - expr: sum without (instance, job) (rate(p4_total_read_wait_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m]))
+    legend: "{{table}}"
+
+- row: 1
+- title: p4 write locks held per table (rate/min)
+  target:
+  - expr: sum without (instance, job) (rate(p4_total_write_held_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m]))
+    legend: "{{table}}"
+- title: p4 write locks wait per table (rate/min)
+  target:
+  - expr: sum without (instance, job) (rate(p4_total_write_wait_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m]))
+    legend: "{{table}}"
+
+- row: 1
+- title: RTV processes waiting for locks
+  target:
+  - expr: p4_rtv_db_lockwait
+- row: 1
+- title: RTV is checkpoint active
+  target:
+  - expr: p4_rtv_db_ckp_active
+- title: RTV checkpoint records processed
+  target:
+  - expr: p4_rtv_db_ckp_records
+- row: 1
+- title: RTV DB I/O record count
+  target:
+  - expr: p4_rtv_db_io_records
+- row: 1
+- title: RTV replica byte lag
+  target:
+  - expr: p4_rtv_rpl_behind_bytes
+- title: RTV replica journal lag
+  target:
+  - expr: p4_rtv_rpl_behind_journals
+- row: 1
+- title: RTV active sessions
+  target:
+  - expr: p4_rtv_svr_sessions_active
+- title: RTV total sessions
+  target:
+  - expr: p4_rtv_svr_sessions_total
+
+- row: 1
+- title: Processes waiting on read locks
+  target:
+  - expr: p4_locks_db_read
+- title: Processes waiting on write locks
+  target:
+  - expr: p4_locks_db_write
+- row: 1
+- title: Processes waiting on cliententity read locks
+  target:
+  - expr: p4_locks_cliententity_read
+- title: Processes waiting on cliententity write locks
+  target:
+  - expr: p4_locks_cliententity_write
+- row: 1
+- title: Processes waiting on meta_read
+  target:
+  - expr: p4_locks_meta_read
+- title: Processes waiting on meta_write
+  target:
+  - expr: p4_locks_meta_write
+- row: 1
+- title: Processes blocked count
+  target:
+  - expr: p4_locks_cmds_blocked
+""", Loader=yaml.FullLoader)
 
 
 class CreateDashboard():
@@ -229,24 +289,36 @@ class CreateDashboard():
             if 'row' in metric:
                 dashboard.rows.append(G.Row(title='', showTitle=False))
                 continue
-            graph = G.Graph(title=metric['title'],
-                            dataSource='default',
-                            maxDataPoints=1000,
-                            legend=G.Legend(show=True, alignAsTable=True,
-                                        min=True, max=True, avg=True, current=True, total=True,
-                                        sort='max', sortDesc=True),
-                            yAxes=G.single_y_axis(),
-                        )
-            refId = 'A'
-            for texp in metric['expr']:
-                # Remove SDP
-                if not self.options.use_sdp:
-                    texp = texp.replace('sdpinst="$sdpinst",', '')
-                graph.targets.append(G.Target(expr=texp,
-                                              legendFormat="instance {{instance}}, serverid {{serverid}}",
-                                              refId=refId))
-                refId = chr(ord(refId) + 1)
-            dashboard.rows[-1].panels.append(graph)
+            if 'type' in metric and metric['type'] == 'gauge':
+                pass
+                # text = G.Text(title=metric['title'],
+                #                 dataSource='default')
+                # dashboard.rows[-1].panels.append(G.Text)
+            else:
+                yAxis = G.single_y_axis(format="short")
+                if 'yformat' in metric:
+                    yAxis = G.single_y_axis(format=metric['yformat'])
+                graph = G.Graph(title=metric['title'],
+                                dataSource='default',
+                                maxDataPoints=1000,
+                                legend=G.Legend(show=True, alignAsTable=True,
+                                                min=True, max=True, avg=True, current=True, total=True,
+                                                sort='max', sortDesc=True),
+                                yAxes=yAxis)
+                refId = 'A'
+                for targ in metric['target']:
+                    texp = targ['expr']
+                    legend = "instance {{instance}}, serverid {{serverid}}"
+                    if 'legend' in targ:
+                        legend += ' %s' % targ['legend']
+                    # Remove SDP
+                    if not self.options.use_sdp:
+                        texp = texp.replace('sdpinst="$sdpinst",', '')
+                    graph.targets.append(G.Target(expr=texp,
+                                                  legendFormat=legend,
+                                                  refId=refId))
+                    refId = chr(ord(refId) + 1)
+                dashboard.rows[-1].panels.append(graph)
 
         # Auto-number panels - returns new dashboard
         dashboard = dashboard.auto_panel_ids()
@@ -257,6 +329,7 @@ class CreateDashboard():
         "dashboard": %s
         }
         """ % s.getvalue())
+
 
 if __name__ == '__main__':
     """ Main Program"""
