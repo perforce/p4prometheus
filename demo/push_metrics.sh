@@ -14,6 +14,7 @@
 #   metrics_passwd=MySecurePassword
 #   metrics_job=pushgateway
 #   metrics_instance=hra_custid-prod-hra
+#   metrics_customer=hra_custid
 #
 # Please note you need to make sure that the specified directory below (which may be linked)
 # can be read by the node_exporter user (and is setup via --collector.textfile.directory parameter)
@@ -72,19 +73,21 @@ set -u
 metrics_host=$(grep metrics_host "$ConfigFile" | awk -F= '{print $2}')
 metrics_job=$(grep metrics_job "$ConfigFile" | awk -F= '{print $2}')
 metrics_instance=$(grep metrics_instance "$ConfigFile" | awk -F= '{print $2}')
+metrics_customer=$(grep metrics_customer "$ConfigFile" | awk -F= '{print $2}')
 metrics_user=$(grep metrics_user "$ConfigFile" | awk -F= '{print $2}')
 metrics_passwd=$(grep metrics_passwd "$ConfigFile" | awk -F= '{print $2}')
 
 metrics_host=${metrics_host:-Unset}
 metrics_job=${metrics_job:-Unset}
 metrics_instance=${metrics_instance:-Unset}
+metrics_customer=${metrics_customer:-Unset}
 metrics_user=${metrics_user:-Unset}
 metrics_passwd=${metrics_passwd:-Unset}
-if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Unset ]]; then
+if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Unset || $metrics_instance == Unset || $metrics_customer == Unset ]]; then
    echo -e "\\nError: Required parameters not supplied.\\n"
-   echo "You must set the variables metrics_host, metrics_user, metrics_passwd in $ConfigFile."
+   echo "You must set the variables metrics_host, metrics_user, metrics_passwd, metrics_instance, metrics_custmer in $ConfigFile."
    exit 1
 fi
 
 metrics=$(curl "$node_exporter_url/metrics")
-echo "$metrics" | curl --user "$metrics_user:$metrics_passwd" --data-binary @- "$metrics_host/metrics/job/$metrics_job/instance/$metrics_instance"
+echo "$metrics" | curl --user "$metrics_user:$metrics_passwd" --data-binary @- "$metrics_host/metrics/job/$metrics_job/instance/$metrics_instance/customer/$metrics_customer"

@@ -35,11 +35,14 @@ function usage
  
    echo "USAGE for install_p4mon.sh:
  
-install_p4mon.sh <instance> [-m <metrics_dir>] [-d <data_file>]
+install_p4mon.sh <instance> [-m <metrics_dir>] [-d <data_file>] [-push]
  
    or
  
 monitor_metrics.sh -h
+
+-push Means install pushgateway cronjob and config file.
+
 "
 }
 
@@ -47,6 +50,7 @@ monitor_metrics.sh -h
  
 declare -i shiftArgs=0
 declare -i UseSDP=1
+declare -i InstallPushgateway=0
 
 set +u
 while [[ $# -gt 0 ]]; do
@@ -57,6 +61,7 @@ while [[ $# -gt 0 ]]; do
         (-u) User=$2; shiftArgs=1;;
         (-m) metrics_root=$2; shiftArgs=1;;
         (-d) data_file=$2; shiftArgs=1;;
+        (-push) InstallPushgateway=1;;
         (-nosdp) UseSDP=0;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
@@ -102,19 +107,30 @@ else
     exit 1
 fi
 
+download_and_untar () {
+    fname=$1
+    url=$2
+    [[ -f "$fname" ]] && rm -f "$fname"
+    msg "downloading and extracting $url"
+    wget -q "$url"
+    tar zxvf "$fname"
+}
 
 install_node_exporter () {
 
     userid="node_exporter"
     if ! grep -q "^$userid:" /etc/passwd ;then
         useradd --no-create-home --shell /bin/false "$userid" || bail "Failed to create user"
+        msg "Created user $userid"
     fi
 
     cd /tmp
     PVER="$VER_NODE_EXPORTER"
-    curl -k -s -O https://github.com/prometheus/node_exporter/releases/download/v$PVER/node_exporter-$PVER.linux-amd64.tar.gz
+    fname="node_exporter-$PVER.linux-amd64.tar.gz"
+    download_and_untar "$fname" "https://github.com/prometheus/node_exporter/releases/download/v$PVER/$fname"
 
     tar xvf node_exporter-$PVER.linux-amd64.tar.gz 
+    msg "Installing node_exporter"
     mv node_exporter-$PVER.linux-amd64/node_exporter /usr/local/bin/
 
     mkdir "$metrics_root"
@@ -126,6 +142,7 @@ install_node_exporter () {
     ln -s "$metrics_root" "$metrics_link"
     chown -h "$OSUSER:$OSGROUP" "$metrics_link"
 
+    msg "Creating service file for node_exporter"
     cat << EOF > /etc/systemd/system/node_exporter.service
 [Unit]
 Description=Node Exporter
@@ -153,7 +170,8 @@ EOF
 install_p4prometheus () {
 
     PVER="$VER_P4PROMETHEUS"
-    curl -k -s -O https://github.com/perforce/p4prometheus/releases/download/v$PVER/p4prometheus.linux-amd64.gz
+    fname="p4prometheus.linux-amd64.gz"
+    download_and_untar "$fname" "https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
 
     gunzip p4prometheus.linux-amd64.gz
     
@@ -218,6 +236,7 @@ EOF
 
     chown "$OSUSER:$OSGROUP" /p4/common/config/p4prometheus.yaml
 
+    msg "Creating service file for p4prometheus"
     cat << EOF > /etc/systemd/system/p4prometheus.service
 [Unit]
 Description=P4prometheus
@@ -247,9 +266,10 @@ install_monitor_metrics () {
     # Download latest versions
     mkdir -p /p4/common/site/bin
     cd /p4/common/site/bin
-    for fname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh; do
+    for fname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh; do
         [[ -f "$fname" ]] && rm "$fname"
-        curl -k -s -O "https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/$fname"
+        echo "downloading $fname"
+        wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/$fname"
         chmod +x "$fname"
         chown "$OSUSER:$OSGROUP" "$fname"
     done
@@ -265,9 +285,41 @@ install_monitor_metrics () {
         entry1="*/1 * * * * /p4/common/site/bin/$fname $SDP_INSTANCE > /dev/null 2>&1 ||:"
         (crontab -l && echo "$entry1") | crontab -
     fi
+    fname="push_metrics.sh"
+    if ! crontab -l | grep -q "$fname" ;then
+        entry1="*/1 * * * * /p4/common/site/bin/$fname -c /p4/common/config/.push_metrics.cfg > /dev/null 2>&1 ||:"
+        (crontab -l && echo "$entry1") | crontab -
+    fi
     # List things out for review
     echo "Crontab after updating - showing monitor entries:"
     crontab -l | grep /monitor_
+EOF
+
+    if [[ $InstallPushgateway eq 0 ]]; then
+        return
+    fi
+
+    config_file="/p4/common/config/.push_metrics.cfg"
+    cat << EOF > $config_file
+metrics_host=https://monitorgw.hra.p4demo.com:9100
+metrics_user=customerid
+metrics_passwd=MySecurePassword
+metrics_job=pushgateway
+metrics_instance=hra_custid-prod-hra
+metrics_customer=hra_custid
+EOF
+
+    chown $OSUSER:$OSGROUP "$config_file"
+    su $OSUSER <<'EOF'
+    fname="push_metrics.sh"
+    if ! crontab -l | grep -q "$fname" ;then
+        entry1="*/1 * * * * /p4/common/site/bin/$fname -c $config_file > /dev/null 2>&1 ||:"
+        (crontab -l && echo "$entry1") | crontab -
+    fi
+    # List things out for review
+    echo "Crontab after updating - showing monitor entries:"
+    crontab -l | grep /monitor_
+    echo "Please update values in $config_file"
 EOF
 
 }
