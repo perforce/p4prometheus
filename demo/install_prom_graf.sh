@@ -14,7 +14,7 @@ VER_NODE_EXPORTER="1.1.2"
 VER_PROMETHEUS="2.23.0"
 VER_ALERTMANAGER="0.21.0"
 VER_PUSHGATEWAY="1.4.0"
-VER_VICTORIA_METRICS="1.48.0"
+VER_VICTORIA_METRICS="1.59.0"
 
 # ============================================================
 
@@ -32,22 +32,27 @@ function usage
  
    echo "USAGE for install_prom_graf.sh:
  
-install_prom_graf.sh <instance>
- 
-   or
- 
-monitor_metrics.sh -h
+    install_prom_graf.sh [-push]
+
+or
+
+    install_prom_graf.sh -h
+
+  -push Means install pushgateway (otherwise it won't be installed)
+
 "
 }
 
 # Command Line Processing
  
 declare -i shiftArgs=0
+declare -i InstallPushgateway=0
 
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
         (-h) usage -h;;
+        (-push) InstallPushgateway=1;;
         # (-man) usage -man;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
     esac
@@ -74,9 +79,29 @@ download_and_untar () {
     tar zxvf "$fname"
 }
 
+check_os() {
+    grep ubuntu /proc/version > /dev/null 2>&1
+    isubuntu=${?}
+    grep centos /proc/version > /dev/null 2>&1
+    iscentos=${?}
+    grep redhat /proc/version > /dev/null 2>&1
+    isredhat=${?}
+}
+
 install_grafana () {
 
-    cat << EOF > /etc/yum.repos.d/grafana.repo
+    if [[ $isubuntu -eq 0 ]]; then
+
+        apt-get install -y apt-transport-https software-properties-common wget
+        wget -q -O - https://packages.grafana.com/gpg.key | sudo apt-key add -
+        echo "deb https://packages.grafana.com/oss/deb stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+
+        apt-get update
+        apt-get install -y grafana
+
+    else    # Assume CentOS
+
+        cat << EOF > /etc/yum.repos.d/grafana.repo
 [grafana]
 name=grafana
 baseurl=https://packages.grafana.com/oss/rpm
@@ -88,7 +113,9 @@ sslverify=1
 sslcacert=/etc/pki/tls/certs/ca-bundle.crt
 EOF
 
-    yum install -y grafana
+        yum install -y grafana
+    fi
+
     systemctl daemon-reload
     systemctl start grafana-server
     systemctl status grafana-server
@@ -138,6 +165,37 @@ ExecStart=/usr/local/bin/alertmanager --config.file=/etc/alertmanager/alertmanag
 WantedBy=multi-user.target
 EOF
 
+    cat << EOF > /etc/alertmanager/alertmanager.yml
+global:
+  smtp_from: alertmanager@example.com
+  smtp_smarthost: localhost:25
+  smtp_require_tls: false
+  # Hello is the local machine name
+  smtp_hello: localhost
+
+route:
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 60m
+  receiver: mail
+
+receivers:
+- name: mail
+  email_configs:
+  - to: p4-group@example.com
+EOF
+
+    echo -e "
+validate:
+\\tamtool check-config alertmanager.yml
+
+restart:
+\\tsystemctl restart alertmanager
+" >  /etc/alertmanager/Makefile
+
+    chown $userid:$userid /etc/alertmanager/alertmanager.yml /etc/alertmanager/Makefile
+
     systemctl daemon-reload
     systemctl enable alertmanager
     systemctl start alertmanager
@@ -170,7 +228,7 @@ User=$userid
 Group=$userid
 Type=simple
 ExecStart=/usr/local/bin/node_exporter --collector.systemd \
-        --collector.systemd.unit-include="(p4.*|node_exporter)\.service"
+  --collector.systemd.unit-include=(p4.*|node_exporter)\.service
 
 [Install]
 WantedBy=multi-user.target
@@ -201,6 +259,7 @@ install_victoria_metrics () {
     mv vmauth-prod /usr/local/bin/
     mv vmbackup-prod /usr/local/bin/
     mv vmrestore-prod /usr/local/bin/
+    mv vmctl-prod /usr/local/bin/
 
     cat << EOF > /etc/systemd/system/victoria-metrics.service
 [Unit]
@@ -271,10 +330,10 @@ User=$userid
 Group=$userid
 Type=simple
 ExecStart=/usr/local/bin/prometheus \
-    --config.file /etc/prometheus/prometheus.yml \
-    --storage.tsdb.path /var/lib/prometheus/ \
-    --web.console.templates=/etc/prometheus/consoles \
-    --web.console.libraries=/etc/prometheus/console_libraries
+ --config.file /etc/prometheus/prometheus.yml \
+ --storage.tsdb.path /var/lib/prometheus/ \
+ --web.console.templates=/etc/prometheus/consoles \
+ --web.console.libraries=/etc/prometheus/console_libraries
  
 [Install]
 WantedBy=multi-user.target
@@ -326,7 +385,15 @@ remote_write:
 
 EOF
 
-    chown "$userid:$userid" /etc/prometheus/prometheus.yml
+    echo -e "
+validate:
+\\tpromtool check config prometheus.yml
+
+restart:
+\\tsystemctl restart prometheus
+" >  /etc/prometheus/Makefile
+
+    chown "$userid:$userid" /etc/prometheus/prometheus.yml /etc/prometheus/Makefile
 
     systemctl daemon-reload
     systemctl enable prometheus
@@ -360,11 +427,11 @@ User=$userid
 Group=$userid
 Type=simple
 ExecStart=/usr/local/bin/pushgateway \
-    --web.listen-address=:9091 \
-    --web.telemetry-path=/metrics \
-    --persistence.file=/tmp/metric.store \
-    --persistence.interval=5m \
-    --log.level=info
+ --web.listen-address=:9091 \
+ --web.telemetry-path=/metrics \
+ --persistence.file=/tmp/metric.store \
+ --persistence.interval=5m \
+ --log.level=info
 
 [Install]
 WantedBy=multi-user.target
@@ -377,14 +444,19 @@ EOF
 }
 
 install_node_exporter
-# install_alertmanager
+install_alertmanager
 install_victoria_metrics
 install_prometheus
-install_pushgateway
+[[ $InstallPushgateway -eq 1 ]] && install_pushgateway
 install_grafana
 
 echo "
 
 Should have installed node_exporter, prometheus and friends.
+
+Please review config files, and adjust as necessary (reloading/restarting services as appropriate):
+
+    /etc/prometheus/prometheus.yml
+    /etc/alertmanager/alertmanager.yml
 
 "

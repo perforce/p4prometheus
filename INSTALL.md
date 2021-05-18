@@ -1,6 +1,6 @@
 # Installation Details for P4Prometheus and Other Components
 
-Note it is possible to perform [Windows Installation](#windows-installation).
+Note it is possible to perform a [Windows Installation](#windows-installation).
 
 On monitoring server, install:
   - grafana
@@ -98,6 +98,8 @@ Set environment variables:
 
   export GRAFANA_SERVER=p4monitor:3000
   export GRAFANA_API_KEY="<API key created above>"
+
+Upload the dashboard:
 
   ./upload_grafana_dashboard.sh dash.json
 
@@ -348,7 +350,7 @@ EOF
 
 ```ini
 ExecStart=/usr/local/bin/node_exporter --collector.systemd \
-        --collector.systemd.unit-include="(p4.*|node_exporter)\.service" \
+        --collector.systemd.unit-include=(p4.*|node_exporter)\.service \
         --collector.textfile.directory=/hxlogs/metrics
 ```
 
@@ -505,13 +507,14 @@ if you are not collecting the data at the time!
 
 Warning: make sure that `lslocks` is installed on your Linux distribution!
 
-Install in crontab to run every minute:
+Install in crontab (for user `perforce` or `$OSUSER`) to run every minute:
 
     INSTANCE=1
     */1 * * * * /p4/common/site/bin/monitor_metrics.sh $INSTANCE > /dev/null 2>&1 ||:
     */1 * * * * /p4/common/site/bin/monitor_wrapper.sh $INSTANCE > /dev/null 2>&1 ||:
 
 For non-SDP installation:
+
     */1 * * * * /path/to/monitor_metrics.sh -p $P4PORT -u $P4USER -nosdp > /dev/null 2>&1 ||:
 
 If not using SDP then please ensure that appropriate LONG TERM TICKET is setup in the environment
@@ -523,13 +526,13 @@ Look in the log file /p4/1/logs/monitor_metrics.log for output.
 
 e.g. the following will find all info messages
 
-    grep ^2020 /p4/1/logs/monitor_metrics.log | grep -v "no blocked commands" | less
+    grep " blocked " /p4/1/logs/monitor_metrics.log | grep -v "no blocked commands" | grep -v HELP | less
 
 Output might be something like:
 
     2020-04-03 14:40:01 pid 3657, user fred, cmd reconcile, table /p4/1/db1/server.locks/clients/79,d/FRED_LAPTOP, blocked by pid 326259, user fred, cmd reconcile, args -f -m -n c:\dev\ext\...
 
-Please note that metrics are written to `/p4/metrics/locks.prom` and will be available to Prometheus/Grafana.
+Please note that metrics are written to `/p4/metrics/locks.prom` (or your metrics dir) and will be available to Prometheus/Grafana.
 
 ## Start and enable service
 
@@ -651,7 +654,7 @@ Checking perforce_rules.yml
   SUCCESS: 8 rules found
 ```
 
-Please customize the below for things like `serverid` values and replica host names.
+Please customize the below for things like `instance` and `servername` values and replica host names.
 
 ```yaml
 groups:
@@ -666,7 +669,10 @@ groups:
       summary: "Endpoint {{ $labels.instance }} too few log lines"
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been below target for more than 1 minutes."
   - alert: Replication Slow HA
-    expr: p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="master"} - ignoring(serverid,servername) p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="p4d_ha_bos"} > 5e+7
+    expr: >
+      p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="master"}
+      - ignoring(serverid, servername)
+      p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="p4d_ha_bos"} > 5e+7
     for: 10m
     labels:
       severity: "warning"
@@ -674,7 +680,10 @@ groups:
       summary: "Endpoint {{ $labels.instance }} replication warning"
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 1 minutes."
   - alert: Replication Slow London
-    expr: p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="master"} - ignoring(serverid,servername) p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="p4d_fr_lon"} > 5e+7
+    expr: >
+      p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="master"}
+      - ignoring (serverid, servername) 
+      p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="p4d_fr_lon"} > 5e+7
     for: 10m
     labels:
       severity: "warning"
@@ -713,6 +722,20 @@ groups:
     annotations:
       summary: "Endpoint {{ $labels.instance }} disk space below 10%"
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been below limit for 5 minutes."
+  - alert: DiskspaceLowPrediction
+    expr: >
+        predict_linear(node_filesystem_free_bytes{mountpoint=~"/hx.*"}[1h], 2 * 24 * 3600) < 0
+        and on (instance, mountpoint)
+        node_filesystem_free_bytes{mountpoint=~"/hx.*"} / node_filesystem_size_bytes{mountpoint=~"/hx.*"} * 100 < 10 
+        and on (instance, mountpoint)
+        node_filesystem_free_bytes{mountpoint=~"/hx.*"} < 10 * 1024 * 1024 * 1024
+    for: 30m
+    labels:
+      severity: "high"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} disk space predicting to fill up in 48  hours based on current usage trend and is less than 10% free and < 10G free"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true 30 minutes."
+
 ```
 
 ## Alertmanager config
@@ -813,7 +836,11 @@ Assuming you have installed the `/etc/systemd/system/node_exporter.service` then
 
 Check that you can see values:
 
-    curl http://localhost:9100/metrics | grep p4_
+    curl localhost:9100/metrics | grep p4_
+
+If the above is empty, then double check the permissions on `/hxlogs/metrics' or the directory you have configured. Look for errors in:
+
+    sudo journalctl -u node_exporter --no-pager | less
 
 ## prometheus
 
@@ -823,14 +850,14 @@ Access page http://localhost:9090 in your browser and search for some metrics.
 
 Check that a suitable data source is setup (i.e. Prometheus)
 
-Use the `Explore` option to look for some basic metrics, e.g. just start typing p4_ and it should autocomplete if it has found p4_ metrics being collected.
+Use the `Explore` option to look for some basic metrics, e.g. just start typing `p4_` and it should autocomplete if it has found `p4_` metrics being collected.
 
 # Advanced config options
 
 For improved security:
 
 * consider LDAP integration for Grafana
-* implement appropriate authentication for the various end-points such as Prometheus/node_exporter
+* implement appropriate authentication for the various end-points such as Prometheus and node_exporter
 
 # Windows Installation
 

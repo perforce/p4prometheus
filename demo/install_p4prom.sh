@@ -38,10 +38,10 @@ function usage
 install_p4mon.sh <instance> [-m <metrics_dir>] [-d <data_file>] [-push]
  
    or
- 
-monitor_metrics.sh -h
 
--push Means install pushgateway cronjob and config file.
+install_p4mon.sh -h
+
+  -push Means install pushgateway cronjob and config file.
 
 "
 }
@@ -154,8 +154,8 @@ User=$userid
 Group=$userid
 Type=simple
 ExecStart=/usr/local/bin/node_exporter --collector.systemd \
-        --collector.systemd.unit-include="(p4.*|node_exporter)\.service" \
-        --collector.textfile.directory=$metrics_root
+  --collector.systemd.unit-include=(p4.*|node_exporter)\.service \
+  --collector.textfile.directory=$metrics_root
 
 [Install]
 WantedBy=multi-user.target
