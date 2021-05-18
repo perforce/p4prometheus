@@ -45,7 +45,7 @@ metrics_file = "locks.prom"
 script_name = os.path.basename(os.path.splitext(__file__)[0])
 LOGDIR = os.getenv('LOGS', '/p4/1/logs')
 
-DEFAULT_LOG_FILE = "log-%s.log" % script_name
+DEFAULT_LOG_FILE = "%s.log" % script_name
 if os.path.exists(LOGDIR):
     DEFAULT_LOG_FILE = os.path.join(LOGDIR, "%s.log" % script_name)
 DEFAULT_VERBOSITY = 'DEBUG'
@@ -108,7 +108,6 @@ class P4Monitor(object):
                             help="Perforce server port. Default: $P4PORT")
         parser.add_argument('-u', '--p4user', default=None, help="Perforce user. Default: $P4USER")
         parser.add_argument('-L', '--log', default=default_log_file, help="Default: " + default_log_file)
-        parser.add_argument('--no-sdp', action='store_true', default=False, help="Whether this is SDP instance or not")
         parser.add_argument('-i', '--sdp-instance', help="SDP instance")
         parser.add_argument('-m', '--metrics-root', default=metrics_root, help="Metrics directory to use. Default: " + metrics_root)
         parser.add_argument('-v', '--verbosity',

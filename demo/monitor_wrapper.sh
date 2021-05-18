@@ -23,7 +23,6 @@
 # This might also be /hxlogs/metrics or /var/metrics, and can be set via the "-m" parameter to script.
 metrics_root=/p4/metrics
 
-
 function msg () { echo -e "$*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
 
@@ -75,66 +74,24 @@ set -u
 
 [[ -d "$metrics_root" ]] || bail "Specified metrics directory '$metrics_root' does not exist!"
 
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
 if [[ $UseSDP -eq 1 ]]; then
     SDP_INSTANCE=${SDP_INSTANCE:-Unset}
     SDP_INSTANCE=${1:-$SDP_INSTANCE}
     if [[ $SDP_INSTANCE == Unset ]]; then
         echo -e "\\nError: Instance parameter not supplied.\\n"
-        echo "You must supply the Perforce SDP instance as a parameter to this script."
+        echo "You must supply the Perforce SDP instance as a parameter to this script or use flag: -nosdp."
         exit 1
     fi
-
-    # Load SDP controlled shell environment.
-    # shellcheck disable=SC1091
-    source /p4/common/bin/p4_vars "$SDP_INSTANCE" ||\
-    { echo -e "\\nError: Failed to load SDP environment.\\n"; exit 1; }
-
-    p4="$P4BIN -u $P4USER -p $P4PORT"
-    $p4 info -s || bail "Can't connect to P4PORT: $P4PORT"
-    sdpinst_label=",sdpinst=\"$SDP_INSTANCE\""
-    sdpinst_suffix="-$SDP_INSTANCE"
-    p4logfile="$P4LOG"
-    errors_file="$LOGS/errors.csv"
 else
     p4port=${Port:-$P4PORT}
     p4user=${User:-$P4USER}
-    p4="p4 -u $p4user -p $p4port"
-    $p4 info -s || bail "Can't connect to P4PORT: $p4port"
-    sdpinst_label=""
-    sdpinst_suffix=""
-    p4logfile=$($p4 configure show | grep P4LOG | sed -e 's/P4LOG=//' -e 's/ .*//')
-    errors_file=$($p4 configure show | egrep "serverlog.file.*errors.csv" | cut -d= -f2 | sed -e 's/ (.*//')
-    check_for_replica=$($p4 info | grep -c 'Replica of:')
-    if [[ "$check_for_replica" -eq "0" ]]; then
-        P4REPLICA="FALSE"
-    else
-        P4REPLICA="TRUE"
-    fi
 fi
-
-# Get server id
-SERVER_ID=$($p4 serverid | awk '{print $3}')
-SERVER_ID=${SERVER_ID:-noserverid}
-serverid_label="serverid=\"$SERVER_ID\""
-
-SDP_INSTANCE=${SDP_INSTANCE:-Unset}
-SDP_INSTANCE=${1:-$SDP_INSTANCE}
-if [[ $SDP_INSTANCE == Unset ]]; then
-   echo -e "\\nError: Instance parameter not supplied.\\n"
-   echo "You must supply the Perforce SDP instance as a parameter to this script."
-   exit 1
-fi
-
-# Load SDP controlled shell environment.
-# shellcheck disable=SC1091
-source /p4/common/bin/p4_vars "$SDP_INSTANCE" ||\
-   { echo -e "\\nError: Failed to load SDP environment.\\n"; exit 1; }
-
-p4="$P4BIN -u $P4USER -p $P4PORT"
-
-# Get server id
-SERVER_ID=$($p4 serverid | awk '{print $3}')
-SERVER_ID=${SERVER_ID:-unset}
 
 # Adjust to your script location if required
-/p4/common/site/bin/monitor_metrics.py  -i "$SDP_INSTANCE" -m "$metrics_root"
+if [[ $UseSDP -eq 1 ]]; then
+    "$SCRIPT_DIR"/monitor_metrics.py  -i "$SDP_INSTANCE" -m "$metrics_root"
+else
+    "$SCRIPT_DIR"/monitor_metrics.py -m "$metrics_root" -p "$p4port" -u "$p4user"
+fi

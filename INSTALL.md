@@ -516,9 +516,10 @@ Install in crontab (for user `perforce` or `$OSUSER`) to run every minute:
 For non-SDP installation:
 
     */1 * * * * /path/to/monitor_metrics.sh -p $P4PORT -u $P4USER -nosdp > /dev/null 2>&1 ||:
+    */1 * * * * /path/to/monitor_wrapper.sh -p $P4PORT -u $P4USER -nosdp  > /dev/null 2>&1 ||:
 
-If not using SDP then please ensure that appropriate LONG TERM TICKET is setup in the environment
-that this script is running.
+If not using SDP then please ensure that an appropriate LONG TERM TICKET is setup in the environment
+that this script is running in.
 
 ### Checking for blocked commands
 
