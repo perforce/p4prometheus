@@ -54,4 +54,4 @@ payload="$(jq . ${DASHBOARD}) >> $logfile"
 curl -X POST \
   -H 'Content-Type: application/json' \
   -d "${payload}" \
-  "http://api_key:$GRAFANA_API_KEY@$GRAFANA_SERVER/api/dashboards/db" -w "\n" | tee -a "$logfile"
+  "https://api_key:$GRAFANA_API_KEY@$GRAFANA_SERVER/api/dashboards/db" -w "\n" | tee -a "$logfile"
