@@ -79,7 +79,7 @@ download_and_untar () {
     tar zxvf "$fname"
 }
 
-check_os() {
+check_os () {
     grep ubuntu /proc/version > /dev/null 2>&1
     isubuntu=${?}
     grep centos /proc/version > /dev/null 2>&1
@@ -443,6 +443,7 @@ EOF
     systemctl status pushgateway
 }
 
+check_os
 install_node_exporter
 install_alertmanager
 install_victoria_metrics
