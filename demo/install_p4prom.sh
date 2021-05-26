@@ -4,6 +4,7 @@
 # First version assumes SDP environment.
 #
 
+# shellcheck disable=SC2128
 if [[ -z "${BASH_VERSINFO}" ]] || [[ -z "${BASH_VERSINFO[0]}" ]] || [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
     echo "This script requires Bash version >= 4";
     exit 1;
@@ -22,11 +23,10 @@ VER_P4PROMETHEUS="0.7.3"
 # ============================================================
 
 function msg () { echo -e "$*"; }
-function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
+function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
 function usage
 {
-   declare style=${1:--h}
    declare errorMessage=${2:-Unset}
  
    if [[ "$errorMessage" != Unset ]]; then
@@ -35,13 +35,23 @@ function usage
  
    echo "USAGE for install_p4mon.sh:
  
-install_p4mon.sh <instance> [-m <metrics_dir>] [-d <data_file>] [-push]
+install_p4mon.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>] [-push]
  
    or
 
 install_p4mon.sh -h
 
-  -push Means install pushgateway cronjob and config file.
+    -push     Means install pushgateway cronjob and config file.
+    <metrics_root> is the directory where metrics will be written - default: $metrics_root
+    <metrics_link> is an alternative link to metrics_root where metrics will be written - default: $metrics_link
+                Typically only used for SDP installations.
+
+Specify either the SDP instance (e.g. 1), or -nosdp
+
+Examples:
+
+./install_p4mon.sh 1
+./install_p4mon.sh -nosdp -m /p4metrics
 
 "
 }
@@ -57,10 +67,7 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         (-h) usage -h;;
         # (-man) usage -man;;
-        (-p) Port=$2; shiftArgs=1;;
-        (-u) User=$2; shiftArgs=1;;
         (-m) metrics_root=$2; shiftArgs=1;;
-        (-d) data_file=$2; shiftArgs=1;;
         (-push) InstallPushgateway=1;;
         (-nosdp) UseSDP=0;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
@@ -82,6 +89,7 @@ if [[ $(id -u) -ne 0 ]]; then
 fi
 
 # Find OSGROUP for ownership permissions - group of /p4 dir itself
+# shellcheck disable=SC2010
 OSGROUP=$(ls -al /p4/ | grep -E '\.$' | head -1 | awk '{print $4}')
 
 # [[ -d "$metrics_root" ]] || bail "Specified metrics directory '$metrics_root' does not exist!"
@@ -124,7 +132,7 @@ install_node_exporter () {
         msg "Created user $userid"
     fi
 
-    cd /tmp
+    cd /tmp || bail "Failed to cd to /tmp"
     PVER="$VER_NODE_EXPORTER"
     fname="node_exporter-$PVER.linux-amd64.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/node_exporter/releases/download/v$PVER/$fname"
@@ -133,14 +141,16 @@ install_node_exporter () {
     msg "Installing node_exporter"
     mv node_exporter-$PVER.linux-amd64/node_exporter /usr/local/bin/
 
-    mkdir "$metrics_root"
+    mkdir -p "$metrics_root"
     chown "$OSUSER:$OSGROUP" "$metrics_root"
     chmod 755 "$metrics_root"
-    # Assume only 2 levels deep - TODO make generic
-    chmod 755 $(dirname "$metrics_root")
+    f=$(readlink -f "$metrics_root")
+    while [[ $f != / ]]; do chmod 755 "$f"; f=$(dirname "$f"); done;
 
-    ln -s "$metrics_root" "$metrics_link"
-    chown -h "$OSUSER:$OSGROUP" "$metrics_link"
+    if [[ $UseSDP -eq 1 ]]; then
+        ln -s "$metrics_root" "$metrics_link"
+        chown -h "$OSUSER:$OSGROUP" "$metrics_link"
+    fi
 
     msg "Creating service file for node_exporter"
     cat << EOF > /etc/systemd/system/node_exporter.service
@@ -262,7 +272,7 @@ EOF
 
 install_monitor_metrics () {
 
-    su $OSUSER <<'EOF'
+    su "$OSUSER" <<'EOF'
     # Download latest versions
     mkdir -p /p4/common/site/bin
     cd /p4/common/site/bin
@@ -295,7 +305,7 @@ install_monitor_metrics () {
     crontab -l | grep /monitor_
 EOF
 
-    if [[ $InstallPushgateway eq 0 ]]; then
+    if [[ $InstallPushgateway -eq 0 ]]; then
         return
     fi
 
@@ -309,8 +319,8 @@ metrics_instance=hra_custid-prod-hra
 metrics_customer=hra_custid
 EOF
 
-    chown $OSUSER:$OSGROUP "$config_file"
-    su $OSUSER <<'EOF'
+    chown "$OSUSER:$OSGROUP" "$config_file"
+    su "$OSUSER" <<'EOF'
     fname="push_metrics.sh"
     if ! crontab -l | grep -q "$fname" ;then
         entry1="*/1 * * * * /p4/common/site/bin/$fname -c $config_file > /dev/null 2>&1 ||:"

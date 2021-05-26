@@ -2,6 +2,7 @@
 # Installs the following: node_exporter, prometheus, victoriametrics, grafana and alertmanager
 # This is the monitoring machine
 
+# shellcheck disable=SC2128
 if [[ -z "${BASH_VERSINFO}" ]] || [[ -z "${BASH_VERSINFO[0]}" ]] || [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
     echo "This script requires Bash version >= 4";
     exit 1;
@@ -19,11 +20,10 @@ VER_VICTORIA_METRICS="1.59.0"
 # ============================================================
 
 function msg () { echo -e "$*"; }
-function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
+function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
 function usage
 {
-   declare style=${1:--h}
    declare errorMessage=${2:-Unset}
  
    if [[ "$errorMessage" != Unset ]]; then
@@ -81,11 +81,13 @@ download_and_untar () {
 
 check_os () {
     grep ubuntu /proc/version > /dev/null 2>&1
-    isubuntu=${?}
+    isubuntu="${?}"
     grep centos /proc/version > /dev/null 2>&1
-    iscentos=${?}
+    # shellcheck disable=SC2034
+    iscentos="${?}"
     grep redhat /proc/version > /dev/null 2>&1
-    isredhat=${?}
+    # shellcheck disable=SC2034
+    isredhat="${?}"
 }
 
 install_grafana () {
@@ -134,7 +136,7 @@ install_alertmanager () {
     chown $userid:$userid /etc/alertmanager
     chown $userid:$userid /var/lib/alertmanager
 
-    cd /tmp
+    cd /tmp || bail "failed to cd"
     PVER="$VER_ALERTMANAGER"
     fname="alertmanager-$PVER.linux-amd64.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/alertmanager/releases/download/v$PVER/$fname"
@@ -210,7 +212,7 @@ install_node_exporter () {
         useradd --no-create-home --shell /bin/false "$userid" || bail "Failed to create user"
     fi
 
-    cd /tmp
+    cd /tmp || bail "failed to cd"
     PVER="$VER_NODE_EXPORTER"
     fname="node_exporter-$PVER.linux-amd64.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/node_exporter/releases/download/v$PVER/$fname"
@@ -247,7 +249,7 @@ install_victoria_metrics () {
         useradd --no-create-home --shell /bin/false "$userid" || bail "Failed to create user"
     fi
 
-    cd /tmp
+    cd /tmp || bail "failed to cd"
     PVER="$VER_VICTORIA_METRICS"
     for fname in victoria-metrics-v$PVER.tar.gz zxvf vmutils-v$PVER.tar.gz; do
         download_and_untar "$fname" "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v$PVER/$fname"
@@ -300,7 +302,7 @@ install_prometheus () {
     chown $userid:$userid /etc/prometheus
     chown $userid:$userid /var/lib/prometheus
 
-    cd /tmp
+    cd /tmp || bail "failed to cd"
     PVER="$VER_PROMETHEUS"
     fname="prometheus-$PVER.linux-amd64.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/prometheus/releases/download/v$PVER/prometheus-$PVER.linux-amd64.tar.gz"
@@ -409,7 +411,7 @@ install_pushgateway () {
         useradd --no-create-home --shell /bin/false "$userid" || bail "Failed to create user"
     fi
 
-    cd /tmp
+    cd /tmp || bail "failed to cd"
     PVER="$VER_PUSHGATEWAY"
     fname="pushgateway-$PVER.linux-amd64.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/pushgateway/releases/download/v$PVER/$fname"
