@@ -55,8 +55,8 @@ There are two scripts which automate the manual installation steps listed below.
 assume an SDP structure.
 
 Checkout  following files:
-* [install_p4prom.sh](demo/install_p4prom.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/install_p4prom.sh) - the installer for servers hosting a p4d instance
-* [install_prom_graf.sh](demo/install_prom_graf.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/install_prom_graf.sh) - the installer for monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
+* [install_p4prom.sh](scripts/install_p4prom.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance
+* [install_prom_graf.sh](scripts/install_prom_graf.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
 
 # Package Install of Grafana
 
@@ -85,8 +85,8 @@ If first time with Grafana, the default user/pwd: `admin`/`admin`
 ### Script to create Grafana dashboard
 
 Download the following files:
-* [create_dashboard.py](demo/create_dashboard.py) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/create_dashboard.py)
-* [upload_grafana_dashboard.sh](demo/upload_grafana_dashboard.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/upload_grafana_dashboard.sh)
+* [create_dashboard.py](scripts/create_dashboard.py) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/create_dashboard.py)
+* [upload_grafana_dashboard.sh](scripts/upload_grafana_dashboard.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/upload_grafana_dashboard.sh)
 
 Create a [Grafana API token](https://grafana.com/docs/grafana/latest/http_api/auth/#create-api-token) for your Grafana installation.
 
@@ -494,9 +494,9 @@ Check that metrics are being written:
 ## Install monitor metrics cron jobs
 
 Download the following files:
-* [monitor_metrics.sh](demo/monitor_metrics.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/monitor_metrics.sh)
-* [monitor_wrapper.sh](demo/monitor_wrapper.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/monitor_wrapper.sh)
-* [monitor_metrics.py](demo/monitor_metrics.py) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/monitor_metrics.py)
+* [monitor_metrics.sh](scripts/monitor_metrics.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_metrics.sh)
+* [monitor_wrapper.sh](scripts/monitor_wrapper.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_wrapper.sh)
+* [monitor_metrics.py](scripts/monitor_metrics.py) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_metrics.py)
 
 Configure them for your metrics directory (e.g. `/hxlogs/metrics`)
 
@@ -823,7 +823,7 @@ Make sure monitor_metrics.sh is working:
 bash -xv /p4/common/site/bin/monitor_metrics.sh 1
 ```
 
-Or if not using SDP, copy the [monitor_metrics.sh script](demo/monitor_metrics.sh) to an appropriate place such as `/usr/local/bin` and install it in your crontab.
+Or if not using SDP, copy the [monitor_metrics.sh script](scripts/monitor_metrics.sh) to an appropriate place such as `/usr/local/bin` and install it in your crontab.
 
 Check that appropriate files are listed in your metrics dir (and are being updated every minute), e.g.
 
