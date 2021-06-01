@@ -234,7 +234,7 @@ class P4Monitor(object):
             return metrics
         blockingCommands = defaultdict(dict)
         for j in jlock['locks']:
-            if "p4d" not in j["command"]:
+            if "p4d" not in j["command"] or "path" not in j or not j["path"]:
                 continue
             if "clientEntity" in j["path"]:
                 if j["mode"] == "READ":
