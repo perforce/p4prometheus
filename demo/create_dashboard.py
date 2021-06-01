@@ -41,7 +41,17 @@ import yaml
 import grafanalib.core as G
 from grafanalib._gen import write_dashboard
 
-DEFAULT_TITLE = "P4prometheus Metrics"
+DEFAULT_TITLE = "P4Prometheus Metrics"
+
+# The following counters not included (for now)
+# p4_cmd_ip_counter
+# p4_cmd_ip_cumulative_seconds
+# p4_cmd_running
+# p4_cmd_user_counter
+# p4_cmd_user_cumulative_seconds
+# p4_cmd_user_detail_counter
+# p4_cmd_user_detail_cumulative_seconds
+
 
 metrics = yaml.load("""
 - section: Monitor Tracking
@@ -58,6 +68,7 @@ metrics = yaml.load("""
     legend: "{{user}}"
   - expr: sum(p4_monitor_by_user{sdpinst="$sdpinst",serverid="$serverid"})
     legend: all
+
 - row: 1
 - title: p4d process count
   target:
@@ -86,15 +97,42 @@ metrics = yaml.load("""
 - row: 1
 - title: All P4 Cmds Count (rate/10min)
   target:
-  - expr: rate(p4_completed_cmds_per_day{instance="p4poke-chi:9100",sdpinst="$sdpinst",serverid="$serverid"}[10m])
+  - expr: rate(p4_completed_cmds_per_day{sdpinst="$sdpinst",serverid="$serverid"}[10m])
   - expr: sum(rate(p4_cmd_counter{sdpinst="$sdpinst",serverid="$serverid"}[10m]))
 - title: p4d log lines read (rate/min)
   target:
   - expr: rate(p4_prom_log_lines_read{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+
+- row: 1
+- title: p4prometheus cmds pending
+  target:
+  - expr: p4_prom_cmds_pending{sdpinst="$sdpinst",serverid="$serverid"}
+- title: p4prometheus cmds processed (rate/min)
+  target:
+  - expr: rate(p4_prom_cmds_processed{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+
+- row: 1
+- title: p4prometheus CPU system (rate/min)
+  target:
+  - expr: rate(p4_prom_cpu_system{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+- title: p4prometheus CPU user (rate/min)
+  target:
+  - expr: rate(p4_prom_cpu_user{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+
 - row: 1
 - title: Error Count rates by subsystem/id
   target:
   - expr: rate(p4_error_count{subsystem!~"[0-9].*"}[1m])
+
+- row: 1
+- title: P4 cmds by program - count (rate/10min)
+  target:
+  - expr: rate(p4_cmd_program_counter{sdpinst="$sdpinst",serverid="$serverid"}[10m])
+    legend: "{{program}}"
+- title: P4 cmds by program - duration (rate/10min)
+  target:
+  - expr: rate(p4_cmd_program_cumulative_seconds{sdpinst="$sdpinst",serverid="$serverid"}[10m])
+    legend: "{{program}}"
 
 - section: Replication
 - row: 1
@@ -110,7 +148,7 @@ metrics = yaml.load("""
   target:
   - expr: >-
       p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="master-1666"} -
-      ignoring(serverid, servername)
+      ignoring (serverid, servername)
       p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="p4d_ha_chi"}
 - title: Replica Lag p4d_fs_brk
   target:
@@ -126,10 +164,39 @@ metrics = yaml.load("""
 - title: rtv_repl_behind_bytes p4d_fs_brk
   target:
   - expr: p4_rtv_rpl_behind_bytes{instance="gemini:9100", job="node_exporter", sdpinst="1", serverid="p4d_fs_brk"}
+
 - row: 1
 - title: Pull queue errors
   target:
-  - expr: p4_pull_errors{sdpinst="$sdpinst"}
+  - expr: p4_pull_errors{sdpinst="$sdpinst",serverid="$serverid"}
+
+- row: 1
+- title: Cmd counts per replica IP rate/min
+  target:
+  - expr: rate(p4_cmd_replica_counter{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+    legend: "{{replica}}"
+- title: Cmd counts per replica IP duration/min
+  target:
+  - expr: rate(p4_cmd_replica_cumulative_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+    legend: "{{replica}}"
+
+- row: 1
+- title: Files synced (add/update/delete) /min
+  target:
+  - expr: rate(p4_sync_files_added{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+    legend: "added"
+  - expr: rate(p4_sync_files_updated{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+    legend: "updated"
+  - expr: rate(p4_sync_files_deleted{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+    legend: "deleted"
+- title: Bytes synced (add/update) /min
+  target:
+  - expr: rate(p4_sync_bytes_added{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+    legend: "added"
+    yformat: decbytes
+  - expr: rate(p4_sync_bytes_updated{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+    legend: "updated"
+    yformat: decbytes
 
 - section: Cmd Count and Duration
 - row: 1
@@ -141,6 +208,27 @@ metrics = yaml.load("""
   target:
   - expr: sum without (instance, job)(rate(p4_cmd_counter{sdpinst="$sdpinst",serverid="$serverid"}[1m]))
     legend: "{{cmd}}"
+
+- row: 1
+- title: Cmds CPU System (rate/min)
+  target:
+  - expr: rate(p4_cmd_cpu_system_cumulative_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+    legend: "{{cmd}}"
+- title: Cmds CPU User (rate/min)
+  target:
+  - expr: rate(p4_cmd_cpu_user_cumulative_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+    legend: "{{cmd}}"
+
+- row: 1
+- title: Cmd Error Counter (rate/min)
+  target:
+  - expr: rate(p4_cmd_error_counter{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+    legend: "{{cmd}}"
+
+- title: Trigger duration (rate/min)
+  target:
+  - expr: rate(p4_total_trigger_lapse_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m])
+    legend: "{{trigger}}"
 
 - section: Table Locking
 - row: 1
@@ -160,6 +248,7 @@ metrics = yaml.load("""
     legend: cliententity
   - expr: p4_locks_meta_write{sdpinst="$sdpinst",serverid="$serverid"}
     legend: meta
+
 - row: 1
 - title: p4 read locks held per table (rate/min)
   target:
@@ -183,58 +272,62 @@ metrics = yaml.load("""
 - row: 1
 - title: RTV processes waiting for locks
   target:
-  - expr: p4_rtv_db_lockwait
+  - expr: p4_rtv_db_lockwait{sdpinst="$sdpinst",serverid="$serverid"}
+- title: RTV DB I/O record count
+  target:
+  - expr: p4_rtv_db_io_records{sdpinst="$sdpinst",serverid="$serverid"}
+
 - row: 1
 - title: RTV is checkpoint active
   target:
-  - expr: p4_rtv_db_ckp_active
+  - expr: p4_rtv_db_ckp_active{sdpinst="$sdpinst",serverid="$serverid"}
 - title: RTV checkpoint records processed
   target:
-  - expr: p4_rtv_db_ckp_records
-- row: 1
-- title: RTV DB I/O record count
-  target:
-  - expr: p4_rtv_db_io_records
+  - expr: p4_rtv_db_ckp_records{sdpinst="$sdpinst",serverid="$serverid"}
 - row: 1
 - title: RTV replica byte lag
   target:
-  - expr: p4_rtv_rpl_behind_bytes
+  - expr: p4_rtv_rpl_behind_bytes{sdpinst="$sdpinst",serverid="$serverid"}
 - title: RTV replica journal lag
   target:
-  - expr: p4_rtv_rpl_behind_journals
+  - expr: p4_rtv_rpl_behind_journals{sdpinst="$sdpinst",serverid="$serverid"}
+
 - row: 1
 - title: RTV active sessions
   target:
-  - expr: p4_rtv_svr_sessions_active
+  - expr: p4_rtv_svr_sessions_active{sdpinst="$sdpinst",serverid="$serverid"}
 - title: RTV total sessions
   target:
-  - expr: p4_rtv_svr_sessions_total
+  - expr: p4_rtv_svr_sessions_total{sdpinst="$sdpinst",serverid="$serverid"}
 
 - row: 1
 - title: Processes waiting on read locks
   target:
-  - expr: p4_locks_db_read
+  - expr: p4_locks_db_read{sdpinst="$sdpinst",serverid="$serverid"}
 - title: Processes waiting on write locks
   target:
-  - expr: p4_locks_db_write
+  - expr: p4_locks_db_write{sdpinst="$sdpinst",serverid="$serverid"}
+
 - row: 1
 - title: Processes waiting on cliententity read locks
   target:
-  - expr: p4_locks_cliententity_read
+  - expr: p4_locks_cliententity_read{sdpinst="$sdpinst",serverid="$serverid"}
 - title: Processes waiting on cliententity write locks
   target:
-  - expr: p4_locks_cliententity_write
+  - expr: p4_locks_cliententity_write{sdpinst="$sdpinst",serverid="$serverid"}
+
 - row: 1
 - title: Processes waiting on meta_read
   target:
-  - expr: p4_locks_meta_read
+  - expr: p4_locks_meta_read{sdpinst="$sdpinst",serverid="$serverid"}
 - title: Processes waiting on meta_write
   target:
-  - expr: p4_locks_meta_write
+  - expr: p4_locks_meta_write{sdpinst="$sdpinst",serverid="$serverid"}
+
 - row: 1
 - title: Processes blocked count
   target:
-  - expr: p4_locks_cmds_blocked
+  - expr: p4_locks_cmds_blocked{sdpinst="$sdpinst",serverid="$serverid"}
 """, Loader=yaml.FullLoader)
 
 
@@ -259,6 +352,7 @@ class CreateDashboard():
     def add_parse_args(self, parser):
         """Default trigger arguments - common to all triggers"""
         parser.add_argument('-t', '--title', default=DEFAULT_TITLE, help="Dashboard title. Default: " + DEFAULT_TITLE)
+        parser.add_argument('--customer', action='store_true', help="Specify that customer variable is defined and included")
         parser.add_argument('--no-sdp', action='store_true', default=False, help="Whether this is SDP instance or not - default is SDP")
 
     def run(self):
@@ -270,6 +364,13 @@ class CreateDashboard():
                     name="sdpinst",
                     label="SDPInstance",
                     query="label_values(sdpinst)"))
+        if self.options.customer:
+            templateList.append(G.Template(
+                    default="1",
+                    dataSource="default",
+                    name="customer",
+                    label="Customer",
+                    query="label_values(customer)"))
         templateList.append(G.Template(
                     default="",
                     dataSource="default",
@@ -314,6 +415,8 @@ class CreateDashboard():
                     # Remove SDP
                     if not self.options.use_sdp:
                         texp = texp.replace('sdpinst="$sdpinst",', '')
+                    if self.options.customer:
+                        texp = texp.replace('{', '{customer="$customer",')
                     graph.targets.append(G.Target(expr=texp,
                                                   legendFormat=legend,
                                                   refId=refId))
