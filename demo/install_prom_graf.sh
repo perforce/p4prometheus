@@ -15,7 +15,7 @@ VER_NODE_EXPORTER="1.1.2"
 VER_PROMETHEUS="2.23.0"
 VER_ALERTMANAGER="0.21.0"
 VER_PUSHGATEWAY="1.4.0"
-VER_VICTORIA_METRICS="1.59.0"
+VER_VICTORIA_METRICS="1.60.0"
 
 # ============================================================
 
@@ -251,7 +251,7 @@ install_victoria_metrics () {
 
     cd /tmp || bail "failed to cd"
     PVER="$VER_VICTORIA_METRICS"
-    for fname in victoria-metrics-v$PVER.tar.gz zxvf vmutils-v$PVER.tar.gz; do
+    for fname in victoria-metrics-amd64-v$PVER.tar.gz zxvf vmutils-amd64-v$PVER.tar.gz; do
         download_and_untar "$fname" "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v$PVER/$fname"
     done
 
