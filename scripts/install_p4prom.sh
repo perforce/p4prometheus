@@ -279,7 +279,7 @@ install_monitor_metrics () {
     for fname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh; do
         [[ -f "$fname" ]] && rm "$fname"
         echo "downloading $fname"
-        wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/demo/$fname"
+        wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/$fname"
         chmod +x "$fname"
         chown "$OSUSER:$OSGROUP" "$fname"
     done
