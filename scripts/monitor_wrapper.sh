@@ -84,6 +84,7 @@ if [[ $UseSDP -eq 1 ]]; then
         echo "You must supply the Perforce SDP instance as a parameter to this script or use flag: -nosdp."
         exit 1
     fi
+    source /p4/common/bin/p4_vars "$SDP_INSTANCE"
 else
     p4port=${Port:-$P4PORT}
     p4user=${User:-$P4USER}
