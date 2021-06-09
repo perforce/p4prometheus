@@ -311,7 +311,7 @@ EOF
 
     config_file="/p4/common/config/.push_metrics.cfg"
     cat << EOF > $config_file
-metrics_host=https://monitorgw.hra.p4demo.com:9100
+metrics_host=https://monitor.hra.p4demo.com:9091
 metrics_user=customerid
 metrics_passwd=MySecurePassword
 metrics_job=pushgateway
@@ -327,8 +327,8 @@ EOF
         (crontab -l && echo "$entry1") | crontab -
     fi
     # List things out for review
-    echo "Crontab after updating - showing monitor entries:"
-    crontab -l | grep /monitor_
+    echo "Crontab after updating - showing push_metrics entries:"
+    crontab -l | grep /push_metrics
     echo "Please update values in $config_file"
 EOF
 
