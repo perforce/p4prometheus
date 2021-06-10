@@ -44,7 +44,7 @@ On your commit/master or any perforce edge/replica server machines, install:
   - [Grafana](#grafana)
 - [Advanced config options](#advanced-config-options)
 - [Windows Installation](#windows-installation)
-  - [WMI Exporter on Windows](#wmi-exporter-on-windows)
+  - [Windows Exporter](#windows-exporter)
   - [P4prometheus on Windows](#p4prometheus-on-windows)
   - [Running monitor_metrics.sh](#running-monitor_metricssh)
   - [Installing Programs as Services](#installing-programs-as-services)
@@ -870,13 +870,15 @@ Details:
 
 * Grafana has a Windows Installer: [Grafana Installer](https://grafana.com/grafana/download)
 * Prometheus has a Windows executable: [Prometheus Executable](https://github.com/prometheus/prometheus/releases)
-* Instead of Node Exporter use: [WMI Exporter](https://github.com/martinlindhe/wmi_exporter/releases)
+* Instead of Node Exporter use: [Windows Exporter](https://github.com/prometheus-community/windows_exporter/releases)
 * P4Prometheus has a Windows executable: [P4prometheus Executable](https://github.com/perforce/p4prometheus/releases)
 
 For testing it is recommended just to run the various executables from command line first and test with Prometheus and Grafana. This allows you to test with firewalls/ports/access rights etc.
 When it is all working, you can wrap up and install each binary as a Service as noted below.
 
-## WMI Exporter on Windows
+## Windows Exporter
+
+This used to be called "WMI Exporter".
 
 This takes a similar parameter to node_exporter: `--collector.textfile.directory` which must be correctly set and agree with the value used by P4prometheus.
 
@@ -905,5 +907,7 @@ It is important that the user account used has a long login ticket specified.
 ## Installing Programs as Services
 
 To install as a service using for example [NSSM - Non Sucking Service Manager!](https://nssm.cc/) to wrap the Prometheus/WMI Exporter/P4Prometheus binaries downloaded above.
+
+Note that `Windows Exporter` has an MSI installer which will install it as a service automatically (if run with Windows Admin privileges). See the [Installation section](https://github.com/prometheus-community/windows_exporter) for more details and options.
 
 Note recommendation above regarding getting things working on command line first (e.g. with debug options).
