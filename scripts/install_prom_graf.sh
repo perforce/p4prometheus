@@ -51,7 +51,7 @@ declare -i InstallPushgateway=0
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
-        (-h) usage -h;;
+        (-h) usage -h && exit 1;;
         (-push) InstallPushgateway=1;;
         # (-man) usage -man;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;

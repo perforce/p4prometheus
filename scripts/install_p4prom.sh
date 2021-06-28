@@ -65,7 +65,7 @@ declare -i InstallPushgateway=0
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
-        (-h) usage -h;;
+        (-h) usage -h  && exit 1;;
         # (-man) usage -man;;
         (-m) metrics_root=$2; shiftArgs=1;;
         (-push) InstallPushgateway=1;;
@@ -276,7 +276,7 @@ install_monitor_metrics () {
     # Download latest versions
     mkdir -p /p4/common/site/bin
     cd /p4/common/site/bin
-    for fname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh; do
+    for fname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh check_for_updates.sh; do
         [[ -f "$fname" ]] && rm "$fname"
         echo "downloading $fname"
         wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/$fname"
