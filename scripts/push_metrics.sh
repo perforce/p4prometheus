@@ -21,6 +21,7 @@
 #
 
 node_exporter_url="http://localhost:9100"
+logfile="push_metrics.log"
 
 function msg () { echo -e "$*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
@@ -89,5 +90,26 @@ if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Uns
    exit 1
 fi
 
-metrics=$(curl "$node_exporter_url/metrics")
-echo "$metrics" | curl --user "$metrics_user:$metrics_passwd" --data-binary @- "$metrics_host/metrics/job/$metrics_job/instance/$metrics_instance/customer/$metrics_customer"
+curl "$node_exporter_url/metrics" > _push.log
+
+# Loop while pushing as there seem to be temporary password failures quite frequently
+
+iterations=0
+max_iterations=10
+STATUS=1
+while [ $STATUS -ne 0 ]; do
+    sleep 1
+    ((iterations=$iterations+1))
+    msg "Pushing metrics"
+    result=$(curl --retry 5 --user "$metrics_user:$metrics_passwd" --data-binary @_push.log "$metrics_host/metrics/job/$metrics_job/instance/$metrics_instance/customer/$metrics_customer")
+    STATUS=0
+    msg "Checking result: $result"
+    if [[ "$result" = '{"message":"invalid username or password"}' ]]; then
+        STATUS=1
+        msg "Retrying due to temporary password failure"
+    fi
+    if [ "$iterations" -ge "$max_iterations" ]; then
+        msg "Push loop iterations exceeded"
+        exit 1
+    fi
+done
