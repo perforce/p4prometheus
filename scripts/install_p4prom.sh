@@ -35,7 +35,7 @@ function usage
  
    echo "USAGE for install_p4prom.sh:
  
-install_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>] [-push]
+install_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>] [-u <osuser>] [-push]
  
    or
 
@@ -45,13 +45,17 @@ install_p4prom.sh -h
     <metrics_root> is the directory where metrics will be written - default: $metrics_root
     <metrics_link> is an alternative link to metrics_root where metrics will be written - default: $metrics_link
                 Typically only used for SDP installations.
+    <osuser>    Operating system user, e.g. perforce, under which p4d process is running
 
 Specify either the SDP instance (e.g. 1), or -nosdp
+
+WARNING: If using -nosdp, then please ensure P4PORT and P4USER are appropriately set and that you can connect
+    to your server (e.g. you have done a 'p4 trust' if required, and logged in already)
 
 Examples:
 
 ./install_p4prom.sh 1
-./install_p4prom.sh -nosdp -m /p4metrics
+./install_p4prom.sh -nosdp -m /p4metrics -u perforce
 
 "
 }
