@@ -11,11 +11,11 @@ fi
 # ============================================================
 # Configuration section
 
-VER_NODE_EXPORTER="1.1.2"
-VER_PROMETHEUS="2.23.0"
-VER_ALERTMANAGER="0.21.0"
+VER_NODE_EXPORTER="1.2.2"
+VER_PROMETHEUS="2.29.1"
+VER_ALERTMANAGER="0.22.2"
 VER_PUSHGATEWAY="1.4.0"
-VER_VICTORIA_METRICS="1.60.0"
+VER_VICTORIA_METRICS="1.64.1"
 
 # ============================================================
 
@@ -71,12 +71,18 @@ if [[ $(id -u) -ne 0 ]]; then
    exit 1
 fi
 
+if command -v getenforce > /dev/null; then
+    selinux=$(getenforce)
+    [[ "$selinux" == "Enforcing" ]] && bail "SELinux in use - please set to Permissive to run this script: setenforce Permissive"
+fi
+
 download_and_untar () {
     fname=$1
     url=$2
     [[ -f "$fname" ]] && rm -f "$fname"
-    wget -q "$url"
-    tar zxvf "$fname"
+    msg "Downloading $url"
+    wget -q "$url" || bail "Failed to download $url"
+    tar zxvf "$fname" || bail "Failed to untar $fname"
 }
 
 check_os () {
@@ -120,7 +126,7 @@ EOF
 
     systemctl daemon-reload
     systemctl start grafana-server
-    systemctl status grafana-server
+    systemctl status grafana-server --no-pager
 
 }
 
@@ -137,7 +143,7 @@ install_alertmanager () {
     chown $userid:$userid /var/lib/alertmanager
 
     cd /tmp || bail "failed to cd"
-    PVER="$VER_ALERTMANAGER"
+     PVER="$VER_ALERTMANAGER"
     fname="alertmanager-$PVER.linux-amd64.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/alertmanager/releases/download/v$PVER/$fname"
 
@@ -201,7 +207,7 @@ restart:
     systemctl daemon-reload
     systemctl enable alertmanager
     systemctl start alertmanager
-    systemctl status alertmanager
+    systemctl status alertmanager --no-pager
 
 }
 
@@ -239,7 +245,7 @@ EOF
     systemctl daemon-reload
     systemctl enable node_exporter
     systemctl start node_exporter
-    systemctl status node_exporter
+    systemctl status node_exporter --no-pager
 }
 
 install_victoria_metrics () {
@@ -251,10 +257,11 @@ install_victoria_metrics () {
 
     cd /tmp || bail "failed to cd"
     PVER="$VER_VICTORIA_METRICS"
-    for fname in victoria-metrics-amd64-v$PVER.tar.gz zxvf vmutils-amd64-v$PVER.tar.gz; do
+    for fname in victoria-metrics-amd64-v$PVER.tar.gz vmutils-amd64-v$PVER.tar.gz; do
         download_and_untar "$fname" "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v$PVER/$fname"
     done
 
+    chown $userid:$userid victoria-metrics-prod vm*
     mv victoria-metrics-prod /usr/local/bin/
     mv vmagent-prod /usr/local/bin/
     mv vmalert-prod /usr/local/bin/
@@ -287,7 +294,7 @@ EOF
     systemctl daemon-reload
     systemctl enable victoria-metrics
     systemctl start victoria-metrics
-    systemctl status victoria-metrics
+    systemctl status victoria-metrics --no-pager
 }
 
 install_prometheus () {
@@ -367,10 +374,15 @@ scrape_configs:
 
   - job_name: 'node_exporter'
     static_configs:
+    # ==========================================================
     # CONFIGURE THESE VALUES AS APPROPRIATE FOR YOUR SERVERS!!!!
+    # ==========================================================
     - targets:
         - localhost:9100
 
+  # ==========================================================
+  # This section can be deleted if pushgateway not in use
+  # ==========================================================
   - job_name: 'pushgateway'
     honor_labels: true
     # Optional auth settings if this is configured for security
@@ -381,7 +393,7 @@ scrape_configs:
       - targets:
           - localhost:9091
 
-# Send to VictoriaMetrics
+# Send to VictoriaMetrics - better for performance and long term storage
 remote_write:
   - url: http://localhost:8428/api/v1/write
 
@@ -400,7 +412,7 @@ restart:
     systemctl daemon-reload
     systemctl enable prometheus
     systemctl start prometheus
-    systemctl status prometheus
+    systemctl status prometheus --no-pager
 }
 
 
@@ -432,7 +444,7 @@ ExecStart=/usr/local/bin/pushgateway \
  --web.listen-address=:9091 \
  --web.telemetry-path=/metrics \
  --persistence.file=/tmp/metric.store \
- --persistence.interval=5m \
+ --persistence.interval=15m \
  --log.level=info
 
 [Install]
@@ -442,7 +454,7 @@ EOF
     systemctl daemon-reload
     systemctl enable pushgateway
     systemctl start pushgateway
-    systemctl status pushgateway
+    systemctl status pushgateway --no-pager
 }
 
 check_os

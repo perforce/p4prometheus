@@ -33,13 +33,13 @@ function usage
       echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
    fi
  
-   echo "USAGE for install_p4mon.sh:
+   echo "USAGE for install_p4prom.sh:
  
-install_p4mon.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>] [-push]
+install_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>] [-push]
  
    or
 
-install_p4mon.sh -h
+install_p4prom.sh -h
 
     -push     Means install pushgateway cronjob and config file.
     <metrics_root> is the directory where metrics will be written - default: $metrics_root
@@ -50,8 +50,8 @@ Specify either the SDP instance (e.g. 1), or -nosdp
 
 Examples:
 
-./install_p4mon.sh 1
-./install_p4mon.sh -nosdp -m /p4metrics
+./install_p4prom.sh 1
+./install_p4prom.sh -nosdp -m /p4metrics
 
 "
 }
@@ -61,6 +61,7 @@ Examples:
 declare -i shiftArgs=0
 declare -i UseSDP=1
 declare -i InstallPushgateway=0
+declare OsUser=""
 
 set +u
 while [[ $# -gt 0 ]]; do
@@ -68,6 +69,7 @@ while [[ $# -gt 0 ]]; do
         (-h) usage -h  && exit 1;;
         # (-man) usage -man;;
         (-m) metrics_root=$2; shiftArgs=1;;
+        (-u) OsUser="$2"; shiftArgs=1;;
         (-push) InstallPushgateway=1;;
         (-nosdp) UseSDP=0;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
@@ -88,9 +90,13 @@ if [[ $(id -u) -ne 0 ]]; then
    exit 1
 fi
 
-# Find OSGROUP for ownership permissions - group of /p4 dir itself
-# shellcheck disable=SC2010
-OSGROUP=$(ls -al /p4/ | grep -E '\.$' | head -1 | awk '{print $4}')
+wget=$(which wget)
+[[ $? -eq 0 ]] || bail "Failed to find wget in path"
+
+if command -v getenforce > /dev/null; then
+    selinux=$(getenforce)
+    [[ "$selinux" == "Enforcing" ]] && bail "SELinux in use - please set to Permissive to run this script"
+fi
 
 # [[ -d "$metrics_root" ]] || bail "Specified metrics directory '$metrics_root' does not exist!"
 
@@ -99,9 +105,14 @@ if [[ $UseSDP -eq 1 ]]; then
     SDP_INSTANCE=${1:-$SDP_INSTANCE}
     if [[ $SDP_INSTANCE == Unset ]]; then
         echo -e "\\nError: Instance parameter not supplied.\\n"
-        echo "You must supply the Perforce SDP instance as a parameter to this script."
+        echo "You must supply the Perforce SDP instance as a parameter to this script. E.g."
+        echo "    install_p4prom.sh 1"
         exit 1
     fi
+
+    # Find OSGROUP for ownership permissions - group of /p4 dir itself
+    # shellcheck disable=SC2010
+    OSGROUP=$(ls -al /p4/ | grep -E '\.$' | head -1 | awk '{print $4}')
 
     # Load SDP controlled shell environment.
     # shellcheck disable=SC1091
@@ -110,10 +121,20 @@ if [[ $UseSDP -eq 1 ]]; then
 
     p4="$P4BIN -u $P4USER -p $P4PORT"
     $p4 info -s || bail "Can't connect to P4PORT: $P4PORT"
+    p4prom_config_dir="/p4/common/config"
+    p4prom_bin_dir="/p4/common/site/bin"
 else
-    echo -e "\\nError: only SDP installs supported.\\n"
-    exit 1
+    p4port=${Port:-$P4PORT}
+    p4user=${User:-$P4USER}
+    OSUSER="$OsUser"
+    OSGROUP=$(id -gn "$OSUSER")
+    p4="p4 -u $p4user -p $p4port"
+    $p4 info -s || bail "Can't connect to P4PORT: $p4port"
+    p4prom_config_dir="/etc/p4prometheus"
+    p4prom_bin_dir="$p4prom_config_dir"
 fi
+
+p4prom_config_file="$p4prom_config_dir/p4prometheus.yaml"
 
 download_and_untar () {
     fname=$1
@@ -174,7 +195,7 @@ EOF
     sudo systemctl daemon-reload
     sudo systemctl enable node_exporter
     sudo systemctl start node_exporter
-    sudo systemctl status node_exporter
+    sudo systemctl status node_exporter --no-pager
 }
 
 install_p4prometheus () {
@@ -189,7 +210,7 @@ install_p4prometheus () {
 
     mv p4prometheus.linux-amd64 /usr/local/bin/p4prometheus
 
-cat << EOF > /p4/common/config/p4prometheus.yaml
+cat << EOF > $p4prom_config_file
 # ----------------------
 # sdp_instance: SDP instance - typically integer, but can be
 # See: https://swarm.workshop.perforce.com/projects/perforce-software-sdp for more
@@ -244,7 +265,7 @@ fail_on_missing_logfile: false
 
 EOF
 
-    chown "$OSUSER:$OSGROUP" /p4/common/config/p4prometheus.yaml
+    chown "$OSUSER:$OSGROUP" "p4prom_config_file"
 
     msg "Creating service file for p4prometheus"
     cat << EOF > /etc/systemd/system/p4prometheus.service
@@ -257,7 +278,7 @@ After=network-online.target
 User=$OSUSER
 Group=$OSGROUP
 Type=simple
-ExecStart=/usr/local/bin/p4prometheus --config=/p4/common/config/p4prometheus.yaml
+ExecStart=/usr/local/bin/p4prometheus --config=$p4prom_config_file
 
 [Install]
 WantedBy=multi-user.target
@@ -266,7 +287,7 @@ EOF
     systemctl daemon-reload
     systemctl enable p4prometheus
     systemctl start p4prometheus
-    systemctl status p4prometheus
+    systemctl status p4prometheus --no-pager
 
 }
 
@@ -274,8 +295,8 @@ install_monitor_metrics () {
 
     su "$OSUSER" <<'EOF'
     # Download latest versions
-    mkdir -p /p4/common/site/bin
-    cd /p4/common/site/bin
+    mkdir -p $p4prom_bin_dir
+    cd $p4prom_bin_dir
     for fname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh check_for_updates.sh; do
         [[ -f "$fname" ]] && rm "$fname"
         echo "downloading $fname"
@@ -287,17 +308,17 @@ install_monitor_metrics () {
     # Install in crontab if required
     fname="monitor_metrics.sh"
     if ! crontab -l | grep -q "$fname" ;then
-        entry1="*/1 * * * * /p4/common/site/bin/$fname $SDP_INSTANCE > /dev/null 2>&1 ||:"
+        entry1="*/1 * * * * $p4prom_bin_dir/$fname $SDP_INSTANCE > /dev/null 2>&1 ||:"
         (crontab -l && echo "$entry1") | crontab -
     fi
     fname="monitor_wrapper.sh"
     if ! crontab -l | grep -q "$fname" ;then
-        entry1="*/1 * * * * /p4/common/site/bin/$fname $SDP_INSTANCE > /dev/null 2>&1 ||:"
+        entry1="*/1 * * * * $p4prom_bin_dir/$fname $SDP_INSTANCE > /dev/null 2>&1 ||:"
         (crontab -l && echo "$entry1") | crontab -
     fi
     fname="push_metrics.sh"
     if ! crontab -l | grep -q "$fname" ;then
-        entry1="*/1 * * * * /p4/common/site/bin/$fname -c /p4/common/config/.push_metrics.cfg > /dev/null 2>&1 ||:"
+        entry1="*/1 * * * * $p4prom_bin_dir/$fname -c $p4prom_config_dir/.push_metrics.cfg > /dev/null 2>&1 ||:"
         (crontab -l && echo "$entry1") | crontab -
     fi
     # List things out for review
@@ -309,21 +330,24 @@ EOF
         return
     fi
 
-    config_file="/p4/common/config/.push_metrics.cfg"
+    config_file="$p4prom_config_dir/.push_metrics.cfg"
     cat << EOF > $config_file
+# Set these values as appropriate
 metrics_host=https://monitor.hra.p4demo.com:9091
-metrics_user=customerid
-metrics_passwd=MySecurePassword
+metrics_user=customerid_CHANGEME
+metrics_passwd=MySecurePassword_CHANGEME
 metrics_job=pushgateway
-metrics_instance=hra_custid-prod-hra
-metrics_customer=hra_custid
+metrics_instance=customerid-prod-hra_CHANGEME
+metrics_customer=customerid_CHANGEME
+# Modify the value below when everything above is ready - avoids getting bad metrics
+enabled=0
 EOF
 
     chown "$OSUSER:$OSGROUP" "$config_file"
     su "$OSUSER" <<'EOF'
     fname="push_metrics.sh"
     if ! crontab -l | grep -q "$fname" ;then
-        entry1="*/1 * * * * /p4/common/site/bin/$fname -c $config_file > /dev/null 2>&1 ||:"
+        entry1="*/1 * * * * $p4prom_bin_dir/$fname -c $config_file > /dev/null 2>&1 ||:"
         (crontab -l && echo "$entry1") | crontab -
     fi
     # List things out for review
@@ -341,7 +365,7 @@ install_monitor_metrics
 echo "
 
 Should have installed node_exporter, p4prometheus and friends.
-Check crontab -l output above (as user perforce)
+Check crontab -l output above (as user $OSUSER)
 
 To review further, please:
 
