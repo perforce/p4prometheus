@@ -18,7 +18,7 @@ metrics_root=/hxlogs/metrics
 metrics_link=/p4/metrics
 
 VER_NODE_EXPORTER="1.1.2"
-VER_P4PROMETHEUS="0.7.3"
+VER_P4PROMETHEUS="0.7.5"
 
 # ============================================================
 
@@ -206,9 +206,11 @@ install_p4prometheus () {
 
     PVER="$VER_P4PROMETHEUS"
     fname="p4prometheus.linux-amd64.gz"
-    download_and_untar "$fname" "https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
+    url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
+    msg "downloading and extracting $url"
+    wget -q "$url"
 
-    gunzip p4prometheus.linux-amd64.gz
+    gunzip "$fname"
     
     chmod +x p4prometheus.linux-amd64
 
@@ -269,7 +271,7 @@ fail_on_missing_logfile: false
 
 EOF
 
-    chown "$OSUSER:$OSGROUP" "p4prom_config_file"
+    chown "$OSUSER:$OSGROUP" "$p4prom_config_file"
 
     msg "Creating service file for p4prometheus"
     cat << EOF > /etc/systemd/system/p4prometheus.service
@@ -297,38 +299,52 @@ EOF
 
 install_monitor_metrics () {
 
-    su "$OSUSER" <<'EOF'
-    # Download latest versions
-    mkdir -p $p4prom_bin_dir
-    cd $p4prom_bin_dir
-    for fname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh check_for_updates.sh; do
-        [[ -f "$fname" ]] && rm "$fname"
-        echo "downloading $fname"
-        wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/$fname"
-        chmod +x "$fname"
-        chown "$OSUSER:$OSGROUP" "$fname"
-    done
+    mon_installer="/tmp/_install_mon.sh"
+    cat << EOF > $mon_installer
+# Download latest versions
+mkdir -p $p4prom_bin_dir
+cd $p4prom_bin_dir
+for scriptname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh check_for_updates.sh; do
+    [[ -f "\$scriptname" ]] && rm "\$scriptname"
+    echo "downloading \$scriptname"
+    wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/\$scriptname"
+    chmod +x "\$scriptname"
+    chown "$OSUSER:$OSGROUP" "\$scriptname"
+done
 
-    # Install in crontab if required
-    fname="monitor_metrics.sh"
-    if ! crontab -l | grep -q "$fname" ;then
-        entry1="*/1 * * * * $p4prom_bin_dir/$fname $SDP_INSTANCE > /dev/null 2>&1 ||:"
-        (crontab -l && echo "$entry1") | crontab -
-    fi
-    fname="monitor_wrapper.sh"
-    if ! crontab -l | grep -q "$fname" ;then
-        entry1="*/1 * * * * $p4prom_bin_dir/$fname $SDP_INSTANCE > /dev/null 2>&1 ||:"
-        (crontab -l && echo "$entry1") | crontab -
-    fi
-    fname="push_metrics.sh"
-    if ! crontab -l | grep -q "$fname" ;then
-        entry1="*/1 * * * * $p4prom_bin_dir/$fname -c $p4prom_config_dir/.push_metrics.cfg > /dev/null 2>&1 ||:"
-        (crontab -l && echo "$entry1") | crontab -
-    fi
-    # List things out for review
-    echo "Crontab after updating - showing monitor entries:"
-    crontab -l | grep /monitor_
+# Install in crontab if required
+scriptname="monitor_metrics.sh"
+if ! crontab -l | grep -q "\$scriptname" ;then
+    entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname $SDP_INSTANCE > /dev/null 2>&1 ||:"
+    (crontab -l && echo "\$entry1") | crontab -
+fi
+scriptname="monitor_wrapper.sh"
+if ! crontab -l | grep -q "\$scriptname" ;then
+    entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname $SDP_INSTANCE > /dev/null 2>&1 ||:"
+    (crontab -l && echo "\$entry1") | crontab -
+fi
+
 EOF
+
+    if [[ $InstallPushgateway -eq 1 ]]; then
+        cat << EOF >> "$mon_installer"
+scriptname="push_metrics.sh"
+if ! crontab -l | grep -q "\$scriptname" ;then
+    entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname -c $p4prom_config_dir/.push_metrics.cfg > /dev/null 2>&1 ||:"
+    (crontab -l && echo "\$entry1") | crontab -
+fi
+EOF
+    fi
+
+    cat << EOF >> "$mon_installer"
+# List things out for review
+echo "Crontab after updating - showing monitor entries:"
+crontab -l | grep /monitor_
+
+EOF
+
+    chmod 755 "$mon_installer"
+    sudo -u "$OSUSER" bash "$mon_installer"
 
     if [[ $InstallPushgateway -eq 0 ]]; then
         return
@@ -348,17 +364,26 @@ enabled=0
 EOF
 
     chown "$OSUSER:$OSGROUP" "$config_file"
-    su "$OSUSER" <<'EOF'
-    fname="push_metrics.sh"
-    if ! crontab -l | grep -q "$fname" ;then
-        entry1="*/1 * * * * $p4prom_bin_dir/$fname -c $config_file > /dev/null 2>&1 ||:"
-        (crontab -l && echo "$entry1") | crontab -
-    fi
-    # List things out for review
-    echo "Crontab after updating - showing push_metrics entries:"
-    crontab -l | grep /push_metrics
-    echo "Please update values in $config_file"
+    push_installer="/tmp/_install_push.sh"
+    cat << EOF > $push_installer
+scriptname="push_metrics.sh"
+if ! crontab -l | grep -q "\$scriptname" ;then
+    entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname -c $config_file > /dev/null 2>&1 ||:"
+    (crontab -l && echo "\$entry1") | crontab -
+fi
+# List things out for review
+echo "Crontab after updating - showing push_metrics entries:"
+crontab -l | grep /push_metrics
+
+echo ""
+echo "===================================="
+echo "Please update values in $config_file"
+echo "===================================="
+
 EOF
+
+    chmod 755 "$push_installer"
+    sudo -u "$OSUSER" bash "$push_installer"
 
 }
 

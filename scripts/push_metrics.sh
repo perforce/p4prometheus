@@ -13,8 +13,12 @@
 #   metrics_user=customerid
 #   metrics_passwd=MySecurePassword
 #   metrics_job=pushgateway
-#   metrics_instance=hra_custid-prod-hra
-#   metrics_customer=hra_custid
+#   metrics_instance=test_hra_custid-prod-hra
+#   metrics_customer=test_hra_custid
+#   enabled=1
+#
+# Note that "enabled" should be set to 1 when you have everything correctly defined.
+# Otherwise you risk incorrectly named metrics being pushed.
 #
 # Please note you need to make sure that the specified directory below (which may be linked)
 # can be read by the node_exporter user (and is setup via --collector.textfile.directory parameter)
