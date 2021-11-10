@@ -47,11 +47,8 @@ logfile="grafana_upload.log"
 # Get path/file parm
 DASHBOARD=$1
 
-# Pull through jq to validate json
-payload="$(jq . ${DASHBOARD}) >> $logfile"
-
 # Upload the JSON to Grafana
 curl -X POST \
   -H 'Content-Type: application/json' \
-  -d "${payload}" \
-  "https://api_key:$GRAFANA_API_KEY@$GRAFANA_SERVER/api/dashboards/db" -w "\n" | tee -a "$logfile"
+  -d @${DASHBOARD} \
+  "http://api_key:$GRAFANA_API_KEY@$GRAFANA_SERVER/api/dashboards/db" -w "\n" | tee -a "$logfile"
