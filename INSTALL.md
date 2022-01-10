@@ -85,23 +85,24 @@ If first time with Grafana, the default user/pwd: `admin`/`admin`
 ### Script to create Grafana dashboard
 
 Download the following files:
+
 * [create_dashboard.py](scripts/create_dashboard.py) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/create_dashboard.py)
 * [upload_grafana_dashboard.sh](scripts/upload_grafana_dashboard.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/upload_grafana_dashboard.sh)
 
 Create a [Grafana API token](https://grafana.com/docs/grafana/latest/http_api/auth/#create-api-token) for your Grafana installation.
 
-  pip3 install grafanalib
+    pip3 install grafanalib
 
-  python3 create_dashboard.py > dash.json
+    python3 create_dashboard.py > dash.json
 
 Set environment variables:
 
-  export GRAFANA_SERVER=p4monitor:3000
-  export GRAFANA_API_KEY="<API key created above>"
+    export GRAFANA_SERVER=p4monitor:3000
+    export GRAFANA_API_KEY="<API key created above>"
 
 Upload the dashboard:
 
-  ./upload_grafana_dashboard.sh dash.json
+    ./upload_grafana_dashboard.sh dash.json
 
 If you want to tweak and re-upload the dashboard, you will need to delete the dashboard from within the Grafana interface 
 as it re-uses the ID.
