@@ -147,7 +147,7 @@ The basic metrics are those implemented in [P4D Log Parsing library](https://git
 | p4_licensed_user_count | P4D Licensed User count |
 | p4_licensed_user_limit | P4D Licensed User Limit |
 | p4_license_expires | P4D License expiry (epoch secs) |
-| p4_licensed_time_remaining | P4D License time remaining (secs) |
+| p4_license_time_remaining | P4D License time remaining (secs) |
 | p4_license_support_expires | P4D License support expiry (epoch secs) |
 
 ## Locks
