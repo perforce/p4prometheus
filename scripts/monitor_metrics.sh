@@ -224,6 +224,8 @@ monitor_license () {
         licenseTimeRemaining=$(grep licenseTimeRemaining $tmp_license_data | awk '{print $3}')
         supportExpires=$(grep supportExpires $tmp_license_data | awk '{print $3}')
         licenseInfo=$(grep "Server license: " "$tmp_info_data" | sed -e "s/Server license: //" | sed -Ee "s/\(expires [^\)]+\)//" | sed -Ee "s/\(support [^\)]+\)//" )
+        # Trim trailing spaces
+        licenseInfo=$(echo $licenseInfo | sed -Ee 's/[ ]+$//')
         licenseIP=$(grep "Server license-ip: " "$tmp_info_data" | sed -e "s/Server license-ip: //")
     fi
 
