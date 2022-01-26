@@ -20,6 +20,14 @@ if [[ -z "${BASH_VERSINFO}" ]] || [[ -z "${BASH_VERSINFO[0]}" ]] || [[ ${BASH_VE
     exit 1;
 fi
 
+: See https://johannes.truschnigg.info/writing/2021-12_colodebug/
+if [[ -n ${COLODEBUG} && ${-} != *x* ]]; then
+:() {
+    [[ ${1:--} != ::* ]] && return 0
+    printf '%s\n' "${*}" >&2
+}
+fi
+
 # ============================================================
 # Configuration section
 
@@ -42,7 +50,7 @@ function usage
  
    echo "USAGE for monitor_metrics.sh:
  
-monitor_metrics.sh [<instance> | -nosdp] [-p <port>] | [-u <user>] | [-m <metrics_dir>] [-d <data_file>]
+monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ] | [-m <metrics_dir>] [-d <data_file>]
  
    or
  
@@ -50,7 +58,7 @@ monitor_metrics.sh -h
 "
 }
 
-# Command Line Processing
+: Command Line Processing
  
 declare -i shiftArgs=0
 declare -i UseSDP=1
@@ -58,7 +66,7 @@ declare -i UseSDP=1
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
-        (-h) usage -h;;
+        (-h) usage -h && exit 0;;
         # (-man) usage -man;;
         (-p) Port=$2; shiftArgs=1;;
         (-u) User=$2; shiftArgs=1;;
@@ -167,9 +175,58 @@ monitor_uptime () {
     #echo $hours $mins $secs
     # Ensure base 10 arithmetic used to avoid overflow errors
     uptime_secs=$(((10#$hours * 3600) + (10#$mins * 60) + 10#$secs))
-    echo "# HELP p4_server_uptime P4D Server uptime (seconds)" > "$tmpfname"
+    rm -f "$tmpfname"
+    echo "# HELP p4_server_uptime P4D Server uptime (seconds)" >> "$tmpfname"
     echo "# TYPE p4_server_uptime counter" >> "$tmpfname"
     echo "p4_server_uptime{${serverid_label}${sdpinst_label}} $uptime_secs" >> "$tmpfname"
+    chmod 644 "$tmpfname"
+    mv "$tmpfname" "$fname"
+}
+
+monitor_license () {
+    # Server license expiry - parsed from "p4 license -u" - key fields:
+    # ... userCount 893
+    # ... userLimit 1000
+    # ... licenseExpires 1677628800
+    # ... licenseTimeRemaining 34431485
+    # ... supportExpires 1677628800
+    fname="$metrics_root/p4_license${sdpinst_suffix}-${SERVER_ID}.prom"
+    tmpfname="$fname.$$"
+    tmpdata="$metrics_root/tmp_license"
+    # Update every 60 mins
+    [[ ! -f "$tmpdata" || $(find "$tmpdata" -mmin +60) ]] || return
+    $p4 license -u 2>&1 > "$tmpdata"
+    [[ $? -ne 0 ]] && return
+
+    userCount=0
+    userLimit=0
+    licenseExpires=0
+    licenseTimeRemaining=0
+    supportExpires=0
+
+    userCount=$(grep userCount $tmpdata | awk '{print $3}')
+    userLimit=$(grep userLimit $tmpdata | awk '{print $3}')
+    licenseExpires=$(grep licenseExpires $tmpdata | awk '{print $3}')
+    licenseTimeRemaining=$(grep licenseTimeRemaining $tmpdata | awk '{print $3}')
+    supportExpires=$(grep supportExpires $tmpdata | awk '{print $3}')
+
+    rm -f "$tmpfname"
+    echo "# HELP p4_licensed_user_count P4D Licensed User count" >> "$tmpfname"
+    echo "# TYPE p4_licensed_user_count gauge" >> "$tmpfname"
+    echo "p4_licensed_user_count{${serverid_label}${sdpinst_label}} $userCount" >> "$tmpfname"
+    echo "# HELP p4_licensed_user_limit P4D Licensed User Limit" >> "$tmpfname"
+    echo "# TYPE p4_licensed_user_limit gauge" >> "$tmpfname"
+    echo "p4_licensed_user_limit{${serverid_label}${sdpinst_label}} $userLimit" >> "$tmpfname"
+    echo "# HELP p4_license_expires P4D License expiry (epoch secs)" >> "$tmpfname"
+    echo "# TYPE p4_licenp4_license_expiressed_user_count gauge" >> "$tmpfname"
+    echo "p4_license_expires{${serverid_label}${sdpinst_label}} $licenseExpires" >> "$tmpfname"
+    echo "# HELP p4_licensed_time_remaining P4D License time remaining (secs)" >> "$tmpfname"
+    echo "# TYPE p4_licensed_time_remaining gauge" >> "$tmpfname"
+    echo "p4_licensed_time_remaining{${serverid_label}${sdpinst_label}} $licenseTimeRemaining" >> "$tmpfname"
+    echo "# HELP p4_license_support_expires P4D License support expiry (epoch secs)" >> "$tmpfname"
+    echo "# TYPE p4_license_support_expires gauge" >> "$tmpfname"
+    echo "p4_license_support_expires{${serverid_label}${sdpinst_label}} $supportExpires" >> "$tmpfname"
+
     chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
 }
@@ -180,7 +237,8 @@ monitor_change () {
     tmpfname="$fname.$$"
     curr_change=$($p4 counters 2>&1 | egrep '^change =' | awk '{print $3}')
     if [[ ! -z "$curr_change" ]]; then
-        echo "# HELP p4_change_counter P4D change counter" > "$tmpfname"
+        rm -f "$tmpfname"
+        echo "# HELP p4_change_counter P4D change counter" >> "$tmpfname"
         echo "# TYPE p4_change_counter counter" >> "$tmpfname"
         echo "p4_change_counter{${serverid_label}${sdpinst_label}} $curr_change" >> "$tmpfname"
         chmod 644 "$tmpfname"
@@ -195,7 +253,8 @@ monitor_processes () {
     monfile="/tmp/mon.out"
 
     $p4 monitor show > "$monfile" 2> /dev/null
-    echo "# HELP p4_monitor_by_cmd P4 running processes" > "$tmpfname"
+    rm -f "$tmpfname"
+    echo "# HELP p4_monitor_by_cmd P4 running processes" >> "$tmpfname"
     echo "# TYPE p4_monitor_by_cmd counter" >> "$tmpfname"
     awk '{print $5}' "$monfile" | sort | uniq -c | while read count cmd
     do
@@ -255,7 +314,8 @@ monitor_completed_cmds () {
     else
         num_cmds=$(grep -c ' completed ' "$p4logfile")
     fi
-    echo "#HELP p4_completed_cmds Completed p4 commands" > "$tmpfname"
+    rm -f "$tmpfname"
+    echo "#HELP p4_completed_cmds Completed p4 commands" >> "$tmpfname"
     echo "#TYPE p4_completed_cmds counter" >> "$tmpfname"
     echo "p4_completed_cmds{${serverid_label}${sdpinst_label}} $num_cmds" >> "$tmpfname"
     chmod 644 "$tmpfname"
@@ -275,7 +335,8 @@ monitor_checkpoint () {
     fname="$metrics_root/p4_checkpoint${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
 
-    echo "#HELP p4_sdp_checkpoint_log_time Time of last checkpoint log" > "$tmpfname"
+    rm -f "$tmpfname"
+    echo "#HELP p4_sdp_checkpoint_log_time Time of last checkpoint log" >> "$tmpfname"
     echo "#TYPE p4_sdp_checkpoint_log_time gauge" >> "$tmpfname"
 
     # Look for latest checkpoint log which has Start/End (avoids run in progress and rotate_journal logs)
@@ -367,22 +428,25 @@ monitor_errors () {
 
     # Log format differs according to p4d versions - first column
     ver=$(head -1 "$errors_file" | awk -F, '{print $1}')
+    indID=15
     if [[ "$ver" == "4" ]]; then
         indID=15
-    elif [[ "$ver" == "4.50" ]]; then
+    elif [[ "$ver" == "4.50" || "$ver" == "5.50" ]]; then
         indID=17
     fi
     indSS=$((indID+1))
     indError=$((indID-1))
 
-    echo "" > "$tmpfname"
+    rm -f "$tmpfname"
     echo "#HELP p4_error_count Server errors by id" >> "$tmpfname"
     echo "#TYPE p4_error_count counter" >> "$tmpfname"
     while read count ss_id error_id level
     do
-        subsystem=${subsystems[$ss_id]}
-        [[ -z "$subsystem" ]] && subsystem=$ss_id
-        echo "p4_error_count{${serverid_label}${sdpinst_label},subsystem=\"$subsystem\",error_id=\"$error_id\",level=\"$level\"} $count" >> "$tmpfname"
+        if [[ ! -z ${ss_id:-} ]]; then
+            subsystem=${subsystems[$ss_id]}
+            [[ -z "$subsystem" ]] && subsystem=$ss_id
+            echo "p4_error_count{${serverid_label}${sdpinst_label},subsystem=\"$subsystem\",error_id=\"$error_id\",level=\"$level\"} $count" >> "$tmpfname"
+        fi
     done < <(awk -F, -v indID="$indID" -v indSS="$indSS" -v indError="$indError" '{printf "%s %s %s\n", $indID, $indSS, $indError}' "$errors_file" | sort | uniq -c)
 
     chmod 644 "$tmpfname"
@@ -397,7 +461,8 @@ monitor_pull () {
     tmpfname="$fname.$$"
     pullfile="/tmp/pull.out"
     $p4 pull -l > "$pullfile" 2> /dev/null 
-    echo "# HELP p4_pull_errors P4 pull transfers failed count" > "$tmpfname"
+    rm -f "$tmpfname"
+    echo "# HELP p4_pull_errors P4 pull transfers failed count" >> "$tmpfname"
     echo "# TYPE p4_pull_errors counter" >> "$tmpfname"
     count=$(grep -cEa "failed\.$" "$pullfile")
     echo "p4_pull_errors{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
@@ -434,7 +499,7 @@ monitor_realtime () {
     fname="$metrics_root/p4_realtime${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
 
-    echo "" > "$tmpfname"
+    rm -f "$tmpfname"
 
     origname="rtv.db.lockwait"
     mname="p4_${origname//./_}"
@@ -513,6 +578,7 @@ monitor_replicas
 monitor_errors
 monitor_pull
 monitor_realtime
+monitor_license
 update_data_file
 
 # Make sure all readable by node_exporter or other user
