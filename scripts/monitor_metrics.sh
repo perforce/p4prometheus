@@ -88,6 +88,9 @@ set -u
 
 [[ -d "$metrics_root" ]] || bail "Specified metrics directory '$metrics_root' does not exist!"
 
+: Following file is used to cache "p4 info"
+tmp_info_data="$metrics_root/tmp_info.dat"
+
 if [[ $UseSDP -eq 1 ]]; then
     SDP_INSTANCE=${SDP_INSTANCE:-Unset}
     SDP_INSTANCE=${1:-$SDP_INSTANCE}
@@ -103,7 +106,8 @@ if [[ $UseSDP -eq 1 ]]; then
     { echo -e "\\nError: Failed to load SDP environment.\\n"; exit 1; }
 
     p4="$P4BIN -u $P4USER -p $P4PORT"
-    $p4 info -s || bail "Can't connect to P4PORT: $P4PORT"
+    $p4 info -s > "$tmp_info_data"
+    [[ $? -eq 0 ]] || bail "Can't connect to P4PORT: $P4PORT"
     sdpinst_label=",sdpinst=\"$SDP_INSTANCE\""
     sdpinst_suffix="-$SDP_INSTANCE"
     p4logfile="$P4LOG"
@@ -112,12 +116,15 @@ else
     p4port=${Port:-$P4PORT}
     p4user=${User:-$P4USER}
     p4="p4 -u $p4user -p $p4port"
-    $p4 info -s || bail "Can't connect to P4PORT: $p4port"
+    $p4 info -s > "$tmp_info_data"
+    [[ $? -eq 0 ]] || bail "Can't connect to P4PORT: $p4port"
     sdpinst_label=""
     sdpinst_suffix=""
-    p4logfile=$($p4 configure show | grep P4LOG | sed -e 's/P4LOG=//' -e 's/ .*//')
-    errors_file=$($p4 configure show | egrep "serverlog.file.*errors.csv" | cut -d= -f2 | sed -e 's/ (.*//')
-    check_for_replica=$($p4 info | grep -c 'Replica of:')
+    tmp_config_data="$metrics_root/tmp_config_show.dat"
+    $p4 configure show > "$tmp_config_data"
+    p4logfile=$(grep P4LOG "$tmp_config_data" | sed -e 's/P4LOG=//' -e 's/ .*//')
+    errors_file=$(egrep "serverlog.file.*errors.csv" "$tmp_config_data" | cut -d= -f2 | sed -e 's/ (.*//')
+    check_for_replica=$(grep -c 'Replica of:' "$tmp_info_data")
     if [[ "$check_for_replica" -eq "0" ]]; then
         P4REPLICA="FALSE"
     else
@@ -165,7 +172,7 @@ monitor_uptime () {
     # Server uptime: 168:39:20
     fname="$metrics_root/p4_uptime${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-    uptime=$($p4 info 2>&1 | grep uptime | awk '{print $3}')
+    uptime=$(grep uptime "$tmp_info_data" | awk '{print $3}')
     [[ -z "$uptime" ]] && uptime="0:0:0"
     uptime=${uptime//:/ }
     arr=($uptime)
@@ -192,10 +199,12 @@ monitor_license () {
     # ... supportExpires 1677628800
     fname="$metrics_root/p4_license${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-    tmpdata="$metrics_root/tmp_license"
+    tmp_license_data="$metrics_root/tmp_license"
+    # Don't update if there is no license for this server, e.g. a replica
+    no_license=$(grep -c "Server license: none" "$tmp_info_data")
     # Update every 60 mins
-    [[ ! -f "$tmpdata" || $(find "$tmpdata" -mmin +60) ]] || return
-    $p4 license -u 2>&1 > "$tmpdata"
+    [[ ! -f "$tmp_license_data" || $(find "$tmp_license_data" -mmin +60) ]] || return
+    $p4 license -u 2>&1 > "$tmp_license_data"
     [[ $? -ne 0 ]] && return
 
     userCount=0
@@ -203,12 +212,23 @@ monitor_license () {
     licenseExpires=0
     licenseTimeRemaining=0
     supportExpires=0
+    licenseInfo=""
+    licenseInfo_label=""
+    licenseIP=""
+    licenseIP_label=""
 
-    userCount=$(grep userCount $tmpdata | awk '{print $3}')
-    userLimit=$(grep userLimit $tmpdata | awk '{print $3}')
-    licenseExpires=$(grep licenseExpires $tmpdata | awk '{print $3}')
-    licenseTimeRemaining=$(grep licenseTimeRemaining $tmpdata | awk '{print $3}')
-    supportExpires=$(grep supportExpires $tmpdata | awk '{print $3}')
+    if [[ $no_license -ne 1 ]]; then
+        userCount=$(grep userCount $tmp_license_data | awk '{print $3}')
+        userLimit=$(grep userLimit $tmp_license_data | awk '{print $3}')
+        licenseExpires=$(grep licenseExpires $tmp_license_data | awk '{print $3}')
+        licenseTimeRemaining=$(grep licenseTimeRemaining $tmp_license_data | awk '{print $3}')
+        supportExpires=$(grep supportExpires $tmp_license_data | awk '{print $3}')
+        licenseInfo=$(grep "Server license: " "$tmp_info_data" | sed -e "s/Server license: //" | sed -Ee "s/\(expires [^\)]+\)//" | sed -Ee "s/\(support [^\)]+\)//" )
+        licenseIP=$(grep "Server license-ip: " "$tmp_info_data" | sed -e "s/Server license-ip: //")
+    fi
+
+    licenseInfo_label=",info=\"${licenseInfo:-none}\""
+    licenseIP_label=",IP=\"${licenseIP:-none}\""
 
     rm -f "$tmpfname"
     echo "# HELP p4_licensed_user_count P4D Licensed User count" >> "$tmpfname"
@@ -218,7 +238,7 @@ monitor_license () {
     echo "# TYPE p4_licensed_user_limit gauge" >> "$tmpfname"
     echo "p4_licensed_user_limit{${serverid_label}${sdpinst_label}} $userLimit" >> "$tmpfname"
     echo "# HELP p4_license_expires P4D License expiry (epoch secs)" >> "$tmpfname"
-    echo "# TYPE p4_licenp4_license_expiressed_user_count gauge" >> "$tmpfname"
+    echo "# TYPE p4_license_expires gauge" >> "$tmpfname"
     echo "p4_license_expires{${serverid_label}${sdpinst_label}} $licenseExpires" >> "$tmpfname"
     echo "# HELP p4_license_time_remaining P4D License time remaining (secs)" >> "$tmpfname"
     echo "# TYPE p4_license_time_remaining gauge" >> "$tmpfname"
@@ -226,6 +246,42 @@ monitor_license () {
     echo "# HELP p4_license_support_expires P4D License support expiry (epoch secs)" >> "$tmpfname"
     echo "# TYPE p4_license_support_expires gauge" >> "$tmpfname"
     echo "p4_license_support_expires{${serverid_label}${sdpinst_label}} $supportExpires" >> "$tmpfname"
+    echo "# HELP p4_license_info P4D License info" >> "$tmpfname"
+    echo "# TYPE p4_license_info gauge" >> "$tmpfname"
+    echo "p4_license_info{${serverid_label}${sdpinst_label}${licenseInfo_label}} 1" >> "$tmpfname"
+    echo "# HELP p4_license_IP P4D Licensed IP" >> "$tmpfname"
+    echo "# TYPE p4_license_IP" >> "$tmpfname"
+    echo "p4_license_IP{${serverid_label}${sdpinst_label}${licenseIP_label}} 1" >> "$tmpfname"
+
+    chmod 644 "$tmpfname"
+    mv "$tmpfname" "$fname"
+}
+
+monitor_versions () {
+    # P4D and SDP Versions
+    fname="$metrics_root/p4_version_info${sdpinst_suffix}-${SERVER_ID}.prom"
+    tmpfname="$fname.$$"
+
+    p4dVersion=$(grep "Server version:" $tmp_info_data | sed -e 's/Server version: //' | sed -Ee 's/ \([0-9/]+\)//')
+    p4dVersion_label=",version=\"${p4dVersion:-unknown}\""
+    p4dServices=$(grep "Server services:" $tmp_info_data | sed -e 's/Server services: //')
+    p4dServices_label=",services=\"${p4dServices:-unknown}\""
+
+    rm -f "$tmpfname"
+    echo "# HELP p4_p4d_build_info P4D Version/build info" >> "$tmpfname"
+    echo "# TYPE p4_p4d_build_info gauge" >> "$tmpfname"
+    echo "p4_p4d_build_info{${serverid_label}${sdpinst_label}${p4dVersion_label}} 1" >> "$tmpfname"
+    echo "# HELP p4_p4d_server_type P4D server type/services" >> "$tmpfname"
+    echo "# TYPE p4_p4d_server_type gauge" >> "$tmpfname"
+    echo "p4_p4d_server_type{${serverid_label}${sdpinst_label}${p4dServices_label}} 1" >> "$tmpfname"
+
+    if [[ $UseSDP -eq 1 && -f "/p4/sdp/Version" ]]; then
+        SDPVersion=$(cat "/p4/sdp/Version")
+        SDPVersion_label=",version=\"${SDPVersion:-unknown}\""
+        echo "# HELP p4_sdp_version SDP Version" >> "$tmpfname"
+        echo "# TYPE p4_sdp_version gauge" >> "$tmpfname"
+        echo "p4_sdp_version{${serverid_label}${sdpinst_label}${SDPVersion_label}} 1" >> "$tmpfname"
+    fi
 
     chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
@@ -579,6 +635,7 @@ monitor_errors
 monitor_pull
 monitor_realtime
 monitor_license
+monitor_versions
 update_data_file
 
 # Make sure all readable by node_exporter or other user

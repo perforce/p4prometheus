@@ -149,6 +149,11 @@ The basic metrics are those implemented in [P4D Log Parsing library](https://git
 | p4_license_expires | P4D License expiry (epoch secs) |
 | p4_license_time_remaining | P4D License time remaining (secs) |
 | p4_license_support_expires | P4D License support expiry (epoch secs) |
+| p4_license_info | P4D License info (if present) |
+| p4_license_IP | P4D License IP address (if present) |
+| p4_p4d_build_info | P4D Version/build info |
+| p4_p4d_server_type | P4D server type/services |
+| p4_sdp_version | SDP Version |
 
 ## Locks
 
