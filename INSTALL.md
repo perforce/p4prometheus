@@ -18,6 +18,7 @@ On your commit/master or any perforce edge/replica server machines, install:
 *Table of Contents:*
 
 - [Installation Details for P4Prometheus and Other Components](#installation-details-for-p4prometheus-and-other-components)
+- [Metrics Available](#metrics-available)
 - [Automated Script Installation](#automated-script-installation)
 - [Package Install of Grafana](#package-install-of-grafana)
   - [Setup of Grafana dashboards](#setup-of-grafana-dashboards)
@@ -49,14 +50,18 @@ On your commit/master or any perforce edge/replica server machines, install:
   - [Running monitor_metrics.sh](#running-monitor_metricssh)
   - [Installing Programs as Services](#installing-programs-as-services)
 
+# Metrics Available
+
+The metrics available within Grafana are documented in [P4Prometheus README](README.md#metrics-available)
+
 # Automated Script Installation
 
 There are two scripts which automate the manual installation steps listed below. At the moment these scripts
 assume an SDP structure.
 
 Checkout  following files:
-* [install_p4prom.sh](scripts/install_p4prom.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance
-* [install_prom_graf.sh](scripts/install_prom_graf.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
+* [install_p4prom.sh](scripts/install_p4prom.sh) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance
+* [install_prom_graf.sh](scripts/install_prom_graf.sh) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
 
 # Package Install of Grafana
 
@@ -69,9 +74,10 @@ Use the appropriate link below depending if you using `apt` or `yum`:
 
 ## Setup of Grafana dashboards
 
-Once Grafana is installed the following 2 dashboards are recommended:
+Once Grafana is installed the following dashboards are recommended:
 
 * https://grafana.com/grafana/dashboards/12278 - P4 Stats
+* https://grafana.com/grafana/dashboards/15509 - P4 Stats (non-SDP)
 * https://grafana.com/grafana/dashboards/405 - Node Exporter Server Info
 * https://grafana.com/grafana/dashboards?search=node%20exporter
 
@@ -86,8 +92,8 @@ If first time with Grafana, the default user/pwd: `admin`/`admin`
 
 Download the following files:
 
-* [create_dashboard.py](scripts/create_dashboard.py) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/create_dashboard.py)
-* [upload_grafana_dashboard.sh](scripts/upload_grafana_dashboard.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/upload_grafana_dashboard.sh)
+* [create_dashboard.py](scripts/create_dashboard.py) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/create_dashboard.py)
+* [upload_grafana_dashboard.sh](scripts/upload_grafana_dashboard.sh) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/upload_grafana_dashboard.sh)
 
 Create a [Grafana API token](https://grafana.com/docs/grafana/latest/http_api/auth/#create-api-token) for your Grafana installation.
 
@@ -494,10 +500,15 @@ Check that metrics are being written:
 
 ## Install monitor metrics cron jobs
 
-Download the following files:
-* [monitor_metrics.sh](scripts/monitor_metrics.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_metrics.sh)
-* [monitor_wrapper.sh](scripts/monitor_wrapper.sh) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_wrapper.sh)
-* [monitor_metrics.py](scripts/monitor_metrics.py) or [download link](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_metrics.py)
+Download the following files (or use [Automated Script Installation](#automated-script-installation)):
+
+* [monitor_metrics.sh](scripts/monitor_metrics.sh) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_metrics.sh)
+* [monitor_wrapper.sh](scripts/monitor_wrapper.sh) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_wrapper.sh)
+* [monitor_metrics.py](scripts/monitor_metrics.py) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_metrics.py)
+
+There is a convenience script to keep things up-to-date in future:
+
+* [check_for_updates.sh](scripts/check_for_updates.sh) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/check_for_updates.sh). It relies on the `jq` utility to parse GitHub and update the above scripts if new releases have been made.
 
 Configure them for your metrics directory (e.g. `/hxlogs/metrics`)
 

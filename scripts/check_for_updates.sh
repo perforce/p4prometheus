@@ -29,6 +29,11 @@ check_for_updates.sh -c <config_file>
    or
  
 check_for_updates.sh -h
+
+Checks github repo for script updates, and downloads them if available.
+Uses the github API and stores a local file with current status.
+
+Depends on 'curl' and 'jq' being in the path.
 "
 }
 
@@ -42,7 +47,7 @@ ConfigFile=".update_config"
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
-        (-h) usage -h;;
+        (-h) usage -h && exit 0;;
         # (-man) usage -man;;
         (-c) ConfigFile=$2; shiftArgs=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;

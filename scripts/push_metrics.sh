@@ -46,6 +46,10 @@ push_metrics.sh -c <config_file>
    or
  
 push_metrics.sh -h
+
+Takes node_exporter metrics and pushes them to pushgateway instance centrally.
+
+This is not normally required on customer machines.
 "
 }
 
@@ -57,7 +61,7 @@ ConfigFile=/p4/common/config/.push_metrics.cfg
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
-        (-h) usage -h;;
+        (-h) usage -h && exit 0;;
         # (-man) usage -man;;
         (-c) ConfigFile=$2; shiftArgs=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
