@@ -535,17 +535,21 @@ that this script is running in.
 
 ### Checking for blocked commands
 
-Look in the log file /p4/1/logs/monitor_metrics.log for output.
+Look in the log file `/p4/1/logs/monitor_metrics.log` (or wherever you have configured it to go) for output.
 
 e.g. the following will find all info messages
 
-    grep " blocked " /p4/1/logs/monitor_metrics.log | grep -v "no blocked commands" | grep -v HELP | less
+    grep "blocked by pid" /p4/1/logs/monitor_metrics.log | less
 
-Output might be something like:
+Other options to remove client locks (which are output with paths like `.../server.locks/clients/90,d/<client name>`):
 
-    2020-04-03 14:40:01 pid 3657, user fred, cmd reconcile, table /p4/1/db1/server.locks/clients/79,d/FRED_LAPTOP, blocked by pid 326259, user fred, cmd reconcile, args -f -m -n c:\dev\ext\...
+    grep "blocked by pid" /p4/1/logs/monitor_metrics.log | grep -v /clients | less
 
-Please note that metrics are written to `/p4/metrics/locks.prom` (or your metrics dir) and will be available to Prometheus/Grafana.
+Output might contain lines like:
+
+    2021-06-08 10:42:01 pid 4203, user bldagent, cmd client, table /hxmetadata/p4/1/db1/db.have, blocked by pid 3877, user jim, cmd sync, args c:\Users\jim\p4servers\...#have
+
+Please note that metrics (counts of processes locked) are written to `/p4/metrics/locks.prom` (or your metrics dir) and will be available to Prometheus/Grafana. See [P4Prometheus Metrics (look for p4_lock*)](README.md#locks-metrics).
 
 ## Start and enable service
 
