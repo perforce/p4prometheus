@@ -78,7 +78,7 @@ metrics = yaml.load("""
   - expr: p4_rtv_svr_sessions_active
 
 - row: 1
-- title: $serverid Time for last checkpoint
+- title: $serverid Time for last SDP checkpoint
   target:
   - expr: p4_sdp_checkpoint_duration{sdpinst="$sdpinst",serverid="$serverid"}
   yformat: s
@@ -89,7 +89,7 @@ metrics = yaml.load("""
   yformat: s
 
 - row: 1
-- title: $serverid time since last checkpoint
+- title: $serverid time since last SDP checkpoint
   target:
   - expr: time() - p4_sdp_checkpoint_log_time{sdpinst="$sdpinst",serverid="$serverid"}
   yformat: s
@@ -122,7 +122,8 @@ metrics = yaml.load("""
 - row: 1
 - title: Error Count rates by subsystem/id
   target:
-  - expr: rate(p4_error_count{subsystem!~"[0-9].*"}[1m])
+  - expr: rate(p4_error_count{sdpinst="$sdpinst",serverid="$serverid",subsystem!~"[0-9].*"}[1m])
+    legend: subsys {{subsystem}}, level {{level}}, id {{error_id}}
 
 - row: 1
 - title: P4 cmds by program - count (rate/10min)
@@ -136,34 +137,30 @@ metrics = yaml.load("""
 
 - section: Replication
 - row: 1
-- title: Replica Journal number
+- title: Replica Journal number (from servers -J on master)
   target:
   - expr: p4_replica_curr_jnl{sdpinst="$sdpinst",serverid="$serverid"}
-- title: Replica Journal Pos
+    legend: "{{servername}}"
+- title: Replica Journal Pos (from servers -J on master)
   target:
   - expr: p4_replica_curr_pos{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: "{{servername}}"
 
 - row: 1
-- title: Replica Lag p4d_ha_chi
+- title: Replica Lag for sample_replica from sample_master (Update for your site)
   target:
   - expr: >-
-      p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="master-1666"} -
+      p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="sample_master"} -
       ignoring (serverid, servername)
-      p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="p4d_ha_chi"}
-- title: Replica Lag p4d_fs_brk
-  target:
-  - expr: >-
-      p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="master-1666"} -
-      ignoring(serverid, servername)
-      p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="p4d_fs_brk"}
+      p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="sample_replica"}
 
 - row: 1
-- title: Pull queue size
+- title: Pull queue size on replica
   target:
   - expr: p4_pull_queue{sdpinst="$sdpinst"}
-- title: rtv_repl_behind_bytes p4d_fs_brk
+- title: rtv_repl_behind_bytes sample_replica (Update for your site)
   target:
-  - expr: p4_rtv_rpl_behind_bytes{instance="gemini:9100", job="node_exporter", sdpinst="1", serverid="p4d_fs_brk"}
+  - expr: p4_rtv_rpl_behind_bytes{instance="gemini:9100", job="node_exporter", sdpinst="1", serverid="sample_replica"}
 
 - row: 1
 - title: Pull queue errors
@@ -317,7 +314,7 @@ metrics = yaml.load("""
   - expr: p4_locks_cliententity_write{sdpinst="$sdpinst",serverid="$serverid"}
 
 - row: 1
-- title: Processes waiting on meta_read
+- title: Processes waiting on meta_read locks
   target:
   - expr: p4_locks_meta_read{sdpinst="$sdpinst",serverid="$serverid"}
 - title: Processes waiting on meta_write
