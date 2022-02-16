@@ -25,9 +25,10 @@
 #
 
 node_exporter_url="http://localhost:9100"
-logfile="push_metrics.log"
+metrics_logfile="/p4/1/logs/push_metrics.log"
 
 function msg () { echo -e "$*"; }
+function log () { dt=$(date '+%Y-%m-%d %H:%M:%S'); echo -e "$dt: $*" >> "$metrics_logfile"; msg "$dt: $*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
 
 function usage
@@ -49,7 +50,7 @@ push_metrics.sh -h
 
 Takes node_exporter metrics and pushes them to pushgateway instance centrally.
 
-This is not normally required on customer machines.
+This is not normally required on customer machines. It assumes an SDP setup.
 "
 }
 
@@ -85,6 +86,7 @@ metrics_instance=$(grep metrics_instance "$ConfigFile" | awk -F= '{print $2}')
 metrics_customer=$(grep metrics_customer "$ConfigFile" | awk -F= '{print $2}')
 metrics_user=$(grep metrics_user "$ConfigFile" | awk -F= '{print $2}')
 metrics_passwd=$(grep metrics_passwd "$ConfigFile" | awk -F= '{print $2}')
+metrics_logfile=$(grep metrics_logfile "$ConfigFile" | awk -F= '{print $2}')
 
 metrics_host=${metrics_host:-Unset}
 metrics_job=${metrics_job:-Unset}
@@ -92,6 +94,7 @@ metrics_instance=${metrics_instance:-Unset}
 metrics_customer=${metrics_customer:-Unset}
 metrics_user=${metrics_user:-Unset}
 metrics_passwd=${metrics_passwd:-Unset}
+metrics_logfile=${metrics_logfile:-/p4/1/logs/push_metrics.log}
 if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Unset || $metrics_instance == Unset || $metrics_customer == Unset ]]; then
    echo -e "\\nError: Required parameters not supplied.\\n"
    echo "You must set the variables metrics_host, metrics_user, metrics_passwd, metrics_instance, metrics_custmer in $ConfigFile."
@@ -108,16 +111,16 @@ STATUS=1
 while [ $STATUS -ne 0 ]; do
     sleep 1
     ((iterations=$iterations+1))
-    msg "Pushing metrics"
+    log "Pushing metrics"
     result=$(curl --retry 5 --user "$metrics_user:$metrics_passwd" --data-binary @_push.log "$metrics_host/metrics/job/$metrics_job/instance/$metrics_instance/customer/$metrics_customer")
     STATUS=0
-    msg "Checking result: $result"
+    log "Checking result: $result"
     if [[ "$result" = '{"message":"invalid username or password"}' ]]; then
         STATUS=1
-        msg "Retrying due to temporary password failure"
+        log "Retrying due to temporary password failure"
     fi
     if [ "$iterations" -ge "$max_iterations" ]; then
-        msg "Push loop iterations exceeded"
+        log "Push loop iterations exceeded"
         exit 1
     fi
 done
