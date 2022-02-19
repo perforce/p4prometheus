@@ -79,6 +79,7 @@ Once Grafana is installed the following dashboards are recommended:
 * https://grafana.com/grafana/dashboards/12278 - P4 Stats
 * https://grafana.com/grafana/dashboards/15509 - P4 Stats (non-SDP)
 * https://grafana.com/grafana/dashboards/405 - Node Exporter Server Info
+* https://grafana.com/grafana/dashboards/1860 - Node Exporter Full
 * https://grafana.com/grafana/dashboards?search=node%20exporter
 
 They can be imported from Grafana dashboard management page. Alternatively see below for experimental 
