@@ -85,6 +85,8 @@ Once Grafana is installed the following dashboards are recommended:
 They can be imported from Grafana dashboard management page. Alternatively see below for experimental 
 script to create dashboards which is easier to customize.
 
+See an example of link:https://brian-candler.medium.com/interpreting-prometheus-metrics-for-linux-disk-i-o-utilization-4db53dfedcfc[interpreting prometheus metrics]
+
 For Windows see [Windows Installation](#windows-installation) since WMI Exporter is used instead of Node Exporter.
 
 If first time with Grafana, the default user/pwd: `admin`/`admin`
