@@ -87,7 +87,7 @@ script to create dashboards which is easier to customize.
 
 See an example of [interpreting Linux prometheus performance metrics](https://brian-candler.medium.com/interpreting-prometheus-metrics-for-linux-disk-i-o-utilization-4db53dfedcfc)
 
-For Windows see [Windows Installation](#windows-installation) since WMI Exporter is used instead of Node Exporter.
+For Windows see [Windows Installation](#windows-installation) since Windows Exporter is used instead of Node Exporter.
 
 If first time with Grafana, the default user/pwd: `admin`/`admin`
 
@@ -925,8 +925,10 @@ It is important that the user account used has a long login ticket specified.
 
 ## Installing Programs as Services
 
-To install as a service using for example [NSSM - Non Sucking Service Manager!](https://nssm.cc/) to wrap the Prometheus/WMI Exporter/P4Prometheus binaries downloaded above.
+To install as a service using for example [NSSM - Non Sucking Service Manager!](https://nssm.cc/) to wrap the Prometheus/Windows Exporter/P4Prometheus binaries downloaded above.
 
 Note that `Windows Exporter` has an MSI installer which will install it as a service automatically (if run with Windows Admin privileges). See the [Installation section](https://github.com/prometheus-community/windows_exporter) for more details and options.
+
+You may wish to use `regedit.exe` to find the installed service (it just "does it") and tweak any parameters you want to add.
 
 Note recommendation above regarding getting things working on command line first (e.g. with debug options).
