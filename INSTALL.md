@@ -96,25 +96,26 @@ If first time with Grafana, the default user/pwd: `admin`/`admin`
 Download the following files:
 
 * [create_dashboard.py](scripts/create_dashboard.py) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/create_dashboard.py)
-* [upload_grafana_dashboard.sh](scripts/upload_grafana_dashboard.sh) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/upload_grafana_dashboard.sh)
+* [dashboard.yaml](scripts/dashboard.yaml) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/dashboard.yaml)
 
-Create a [Grafana API token](https://grafana.com/docs/grafana/latest/http_api/auth/#create-api-token) for your Grafana installation.
+Create a [Grafana API key token](https://grafana.com/docs/grafana/latest/http_api/auth/#create-api-token) for your Grafana installation.
 
-    pip3 install grafanalib
-
-    python3 create_dashboard.py > dash.json
+    pip3 install grafanalib requests
 
 Set environment variables:
 
-    export GRAFANA_SERVER=p4monitor:3000
+    export GRAFANA_SERVER=https://p4monitor:3000
     export GRAFANA_API_KEY="<API key created above>"
 
-Upload the dashboard:
+Review the `dashboard.yaml` file and adjust to your local site names where appropriate.
 
-    ./upload_grafana_dashboard.sh dash.json
+    vi dashboard.yaml
 
-If you want to tweak and re-upload the dashboard, you will need to delete the dashboard from within the Grafana interface 
-as it re-uses the ID.
+Create and upload the dashboard:
+
+    ./create_dashboard.py --title "P4Prometheus" --url $GRAFANA_SERVER --api-key $GRAFANA_API_KEY
+
+You can re-upload the dashboard with the same title (it will create a new version).
 
 # Install Prometheus
 
