@@ -11,7 +11,7 @@ Define environment variables: GRAFANA_SERVER and GRAFANA_API_KEY, e.g.
 
     https://grafana.com/docs/grafana/latest/http_api/auth/#create-api-token
 
-    export GRAFANA_SERVER=p4monitor:3000
+    export GRAFANA_SERVER=http://p4monitor:3000
     export GRAFANA_API_KEY=asdf23vsd23
 
     ./upload_grafana_dashboard.sh </path/to/dashboard.json>
@@ -50,5 +50,6 @@ DASHBOARD=$1
 # Upload the JSON to Grafana
 curl -X POST \
   -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $GRAFANA_API_KEY" \
   -d @${DASHBOARD} \
-  "http://api_key:$GRAFANA_API_KEY@$GRAFANA_SERVER/api/dashboards/db" -w "\n" | tee -a "$logfile"
+  "$GRAFANA_SERVER/api/dashboards/db" -w "\n" | tee -a "$logfile"
