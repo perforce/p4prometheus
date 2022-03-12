@@ -11,11 +11,11 @@ fi
 # ============================================================
 # Configuration section
 
-VER_NODE_EXPORTER="1.2.2"
-VER_PROMETHEUS="2.29.1"
-VER_ALERTMANAGER="0.22.2"
-VER_PUSHGATEWAY="1.4.0"
-VER_VICTORIA_METRICS="1.64.1"
+VER_NODE_EXPORTER="1.3.1"
+VER_PROMETHEUS="2.33.5"
+VER_ALERTMANAGER="0.23.0"
+VER_PUSHGATEWAY="1.4.2"
+VER_VICTORIA_METRICS="1.74.0"
 
 # ============================================================
 

@@ -129,7 +129,7 @@ Run the following as root:
     sudo chown prometheus:prometheus /etc/prometheus
     sudo chown prometheus:prometheus /var/lib/prometheus
 
-    export PVER="2.23.0"
+    export PVER="2.33.5"
     wget https://github.com/prometheus/prometheus/releases/download/v$PVER/prometheus-$PVER.linux-amd64.tar.gz
 
     tar xvf prometheus-$PVER.linux-amd64.tar.gz 
@@ -226,7 +226,7 @@ It is API compatible and thus a drop in for querying. It is configured as a Prom
 
 Run the following as root:
 
-    export PVER="1.48.0"
+    export PVER="1.74.0"
     wget https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v$PVER/victoria-metrics-v$PVER.tar.gz
     wget https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v$PVER/vmutils-v$PVER.tar.gz
 
@@ -316,7 +316,7 @@ Run the following as root:
 
     useradd --no-create-home --shell /bin/false node_exporter
 
-    export PVER="1.1.1"
+    export PVER="1.3.1"
     wget https://github.com/prometheus/node_exporter/releases/download/v$PVER/node_exporter-$PVER.linux-amd64.tar.gz
 
     tar xvf node_exporter-$PVER.linux-amd64.tar.gz 
@@ -392,7 +392,7 @@ Get latest release download link: https://github.com/perforce/p4prometheus/relea
 
 Run the following as `root` (using link copied from above page):
 
-    export PVER=0.7.3
+    export PVER=0.7.5
     wget https://github.com/perforce/p4prometheus/releases/download/v$PVER/p4prometheus.linux-amd64.gz
 
     gunzip p4prometheus.linux-amd64.gz
@@ -584,7 +584,7 @@ Setup is very similar to the above.
     sudo chown alertmanager:alertmanager /etc/alertmanager
     sudo chown alertmanager:alertmanager /var/lib/alertmanager
 
-    export PVER="0.21.0"
+    export PVER="0.23.0"
     wget https://github.com/prometheus/alertmanager/releases/download/v$PVER/alertmanager-$PVER.linux-amd64.tar.gz
 
     tar xvf alertmanager-$PVER.linux-amd64.tar.gz 
