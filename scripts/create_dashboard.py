@@ -95,14 +95,12 @@ class CreateDashboard():
             raise Exception('Could not read config file %s: %s' % (self.options.config, str(e)))
 
         templateList = []
-        if self.options.use_sdp:
-            templateList.append(G.Template(
-                    default="1",
-                    dataSource="default",
-                    name="sdpinst",
-                    label="SDPInstance",
-                    query="label_values(sdpinst)"))
+        serverid_query = "label_values(serverid)"
+        sdpinst_query = "label_values(sdpinst)"
+        # Customer first variable if required
         if self.options.customer:
+            serverid_query = 'label_values(p4_prom_log_lines_read{customer=~"$customer"}, serverid)'
+            sdpinst_query = 'label_values(p4_prom_log_lines_read{customer=~"$customer"}, sdpinst)'
             templateList.append(G.Template(
                     default="1",
                     dataSource="default",
@@ -114,7 +112,14 @@ class CreateDashboard():
                     dataSource="default",
                     name="serverid",
                     label="ServerID",
-                    query="label_values(serverid)"))
+                    query=serverid_query))
+        if self.options.use_sdp:
+            templateList.append(G.Template(
+                    default="1",
+                    dataSource="default",
+                    name="sdpinst",
+                    label="SDPInstance",
+                    query=sdpinst_query))
 
         dashboard = G.Dashboard(
             title=self.options.title,
