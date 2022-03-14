@@ -289,6 +289,27 @@ monitor_versions () {
     mv "$tmpfname" "$fname"
 }
 
+monitor_ssl () {
+    # P4D certificate
+    fname="$metrics_root/p4_ssl_info${sdpinst_suffix}-${SERVER_ID}.prom"
+    tmpfname="$fname.$$"
+
+    certExpiry=$(grep "Server cert expires:" $tmp_info_data | sed -e 's/Server cert expires: //')
+    if [[ -z "$certExpiry" ]]; then
+        return
+    fi
+    # Builtin date utility will parse for us
+    certExpirySecs=$(date -d "$certExpiry" +%s)
+
+    rm -f "$tmpfname"
+    echo "# HELP p4_ssl_cert_expires P4D SSL certificate expiry epoch seconds" >> "$tmpfname"
+    echo "# TYPE p4_ssl_cert_expires gauge" >> "$tmpfname"
+    echo "p4_ssl_cert_expires{${serverid_label}${sdpinst_label}} $certExpirySecs" >> "$tmpfname"
+
+    chmod 644 "$tmpfname"
+    mv "$tmpfname" "$fname"
+}
+
 monitor_change () {
     # Latest changelist counter as single counter value
     fname="$metrics_root/p4_change${sdpinst_suffix}-${SERVER_ID}.prom"
@@ -638,6 +659,7 @@ monitor_pull
 monitor_realtime
 monitor_license
 monitor_versions
+monitor_ssl
 update_data_file
 
 # Make sure all readable by node_exporter or other user
