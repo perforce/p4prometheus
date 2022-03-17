@@ -85,9 +85,25 @@ class CreateDashboard():
         parser.add_argument('--customer', action='store_true', help="Specify that customer variable is defined and included")
         parser.add_argument('--no-sdp', action='store_true', default=False, help="Whether this is SDP instance or not - default is SDP")
         parser.add_argument('-a', '--api-key', help="Grafana API key token")
+        parser.add_argument('--datasource', help="Grafana datasource name (otherwise uses default)")
+        parser.add_argument('--list-datasources', action='store_true', default=False, 
+                            help="Calls Grafana API to list datasources - output can be used with --datasource. " +
+                            " This command will not upload anything.")
         parser.add_argument('-u', '--url', help="Grafana url base, e.g. http://server or https://server")
 
     def run(self):
+        
+        if self.options.list_datasources:
+            if not self.options.url or not self.options.api_key:
+                raise Exception("You must specify --url and --api-key when you specify --list-datasources")
+            headers = {"Authorization": "Bearer " + self.options.api_key, "Content-Type": "application/json"}
+            url = self.options.url + "/api/datasources"
+            response = requests.get(url, headers=headers)
+            for j in response.json():
+                if 'name' in j and 'uid' in j:
+                    print("Name: %s, uid: %s" % (j['name'], j['uid']))
+            return
+
         try:
             with open(self.options.config) as f:
                 self.config = yaml.load(f, Loader=yaml.FullLoader)
@@ -126,6 +142,10 @@ class CreateDashboard():
             templating=G.Templating(list=templateList)
         )
 
+        dataSource = 'default'
+        if self.options.datasource:
+            dataSource = self.options.datasource
+
         for metric in self.config:
             if 'section' in metric:
                 dashboard.rows.append(G.Row(title=metric['section'], showTitle=True))
@@ -140,7 +160,7 @@ class CreateDashboard():
                 if 'yformat' in metric:
                     yAxis = G.single_y_axis(format=metric['yformat'])
                 graph = G.Graph(title=metric['title'],
-                                dataSource='default',
+                                dataSource=dataSource,
                                 maxDataPoints=1000,
                                 legend=G.Legend(show=True, alignAsTable=True,
                                                 min=True, max=True, avg=True, current=True, total=True,
