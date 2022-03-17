@@ -39,6 +39,8 @@ Depends on 'curl' and 'jq' being in the path.
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
+FILE_LIST=monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh check_for_updates.sh create_dashboard.py dashboard.yaml upload_grafana_dashboard.sh
+
 # Command Line Processing
  
 declare -i shiftArgs=0
@@ -84,7 +86,7 @@ github_date=$(curl "$github_url" | jq '.[] | .commit.committer.date')
 
 if [[ "$last_github_sha" != "$github_sha" ]]; then
     msg "Updating scripts"
-    for fname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh; do
+    for fname in $FILE_LIST; do
         [[ -f "$fname" ]] && mv "$fname" "$fname.bak" 
         msg "downloading $fname"
         wget "$github_download_url/$fname"
