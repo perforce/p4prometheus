@@ -60,8 +60,8 @@ There are two scripts which automate the manual installation steps listed below.
 assume an SDP structure.
 
 Checkout  following files:
-* [install_p4prom.sh](scripts/install_p4prom.sh) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance
-* [install_prom_graf.sh](scripts/install_prom_graf.sh) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
+* [install_p4prom.sh](scripts/install_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance
+* [install_prom_graf.sh](scripts/install_prom_graf.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
 
 # Package Install of Grafana
 
@@ -95,8 +95,8 @@ If first time with Grafana, the default user/pwd: `admin`/`admin`
 
 Download the following files:
 
-* [create_dashboard.py](scripts/create_dashboard.py) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/create_dashboard.py)
-* [dashboard.yaml](scripts/dashboard.yaml) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/dashboard.yaml)
+* [create_dashboard.py](scripts/create_dashboard.py) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/create_dashboard.py)
+* [dashboard.yaml](scripts/dashboard.yaml) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/dashboard.yaml)
 
 Create a [Grafana API key token](https://grafana.com/docs/grafana/latest/http_api/auth/#create-api-token) for your Grafana installation.
 
@@ -506,13 +506,13 @@ Check that metrics are being written:
 
 Download the following files (or use [Automated Script Installation](#automated-script-installation)):
 
-* [monitor_metrics.sh](scripts/monitor_metrics.sh) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_metrics.sh)
-* [monitor_wrapper.sh](scripts/monitor_wrapper.sh) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_wrapper.sh)
-* [monitor_metrics.py](scripts/monitor_metrics.py) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_metrics.py)
+* [monitor_metrics.sh](scripts/monitor_metrics.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_metrics.sh)
+* [monitor_wrapper.sh](scripts/monitor_wrapper.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_wrapper.sh)
+* [monitor_metrics.py](scripts/monitor_metrics.py) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_metrics.py)
 
 There is a convenience script to keep things up-to-date in future:
 
-* [check_for_updates.sh](scripts/check_for_updates.sh) or [right click > copy link - and use with wget](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/check_for_updates.sh). It relies on the `jq` utility to parse GitHub and update the above scripts if new releases have been made.
+* [check_for_updates.sh](scripts/check_for_updates.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/check_for_updates.sh). It relies on the `jq` utility to parse GitHub and update the above scripts if new releases have been made.
 
 Configure them for your metrics directory (e.g. `/hxlogs/metrics`)
 

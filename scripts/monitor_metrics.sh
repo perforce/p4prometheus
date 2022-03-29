@@ -197,6 +197,7 @@ monitor_license () {
     # ... licenseExpires 1677628800
     # ... licenseTimeRemaining 34431485
     # ... supportExpires 1677628800
+    # Note that sometimes you only get supportExpires - we calculate licenseTimeRemaining in that case
     fname="$metrics_root/p4_license${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
     tmp_license_data="$metrics_root/tmp_license"
@@ -224,6 +225,10 @@ monitor_license () {
         licenseTimeRemaining=$(grep licenseTimeRemaining $tmp_license_data | awk '{print $3}')
         supportExpires=$(grep supportExpires $tmp_license_data | awk '{print $3}')
         licenseInfo=$(grep "Server license: " "$tmp_info_data" | sed -e "s/Server license: //" | sed -Ee "s/\(expires [^\)]+\)//" | sed -Ee "s/\(support [^\)]+\)//" )
+        if [[ -z $licenseTimeRemaining && ! -z $supportExpires ]]; then
+            dt=$(date +%s)
+            licenseTimeRemaining=$(($supportExpires - $dt))
+        fi
         # Trim trailing spaces
         licenseInfo=$(echo $licenseInfo | sed -Ee 's/[ ]+$//')
         licenseIP=$(grep "Server license-ip: " "$tmp_info_data" | sed -e "s/Server license-ip: //")
@@ -239,9 +244,11 @@ monitor_license () {
     echo "# HELP p4_licensed_user_limit P4D Licensed User Limit" >> "$tmpfname"
     echo "# TYPE p4_licensed_user_limit gauge" >> "$tmpfname"
     echo "p4_licensed_user_limit{${serverid_label}${sdpinst_label}} $userLimit" >> "$tmpfname"
-    echo "# HELP p4_license_expires P4D License expiry (epoch secs)" >> "$tmpfname"
-    echo "# TYPE p4_license_expires gauge" >> "$tmpfname"
-    echo "p4_license_expires{${serverid_label}${sdpinst_label}} $licenseExpires" >> "$tmpfname"
+    if [[ ! -z $licenseExpires ]]; then
+        echo "# HELP p4_license_expires P4D License expiry (epoch secs)" >> "$tmpfname"
+        echo "# TYPE p4_license_expires gauge" >> "$tmpfname"
+        echo "p4_license_expires{${serverid_label}${sdpinst_label}} $licenseExpires" >> "$tmpfname"
+    fi
     echo "# HELP p4_license_time_remaining P4D License time remaining (secs)" >> "$tmpfname"
     echo "# TYPE p4_license_time_remaining gauge" >> "$tmpfname"
     echo "p4_license_time_remaining{${serverid_label}${sdpinst_label}} $licenseTimeRemaining" >> "$tmpfname"
@@ -579,62 +586,79 @@ monitor_realtime () {
     tmpfname="$fname.$$"
 
     rm -f "$tmpfname"
+    echo "" > "$tmpfname"
 
     origname="rtv.db.lockwait"
     mname="p4_${origname//./_}"
-    echo "# HELP $mname P4 realtime lockwait counter" >> "$tmpfname"
-    echo "# TYPE $mname gauge" >> "$tmpfname"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ ! -z $count ]]; then
+        echo "# HELP $mname P4 realtime lockwait counter" >> "$tmpfname"
+        echo "# TYPE $mname gauge" >> "$tmpfname"
+        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    fi
 
     origname="rtv.db.ckp.active"
     mname="p4_${origname//./_}"
-    echo "# HELP $mname P4 realtime checkpoint active indicator" >> "$tmpfname"
-    echo "# TYPE $mname gauge" >> "$tmpfname"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ ! -z $count ]]; then
+        echo "# HELP $mname P4 realtime checkpoint active indicator" >> "$tmpfname"
+        echo "# TYPE $mname gauge" >> "$tmpfname"
+        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    fi
 
     origname="rtv.db.ckp.records"
     mname="p4_${origname//./_}"
-    echo "# HELP $mname P4 realtime checkpoint records counter" >> "$tmpfname"
-    echo "# TYPE $mname gauge" >> "$tmpfname"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ ! -z $count ]]; then
+        echo "# HELP $mname P4 realtime checkpoint records counter" >> "$tmpfname"
+        echo "# TYPE $mname gauge" >> "$tmpfname"
+        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    fi
 
     origname="rtv.db.io.records"
     mname="p4_${origname//./_}"
-    echo "# HELP $mname P4 realtime IO records counter" >> "$tmpfname"
-    echo "# TYPE $mname counter" >> "$tmpfname"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ ! -z $count ]]; then
+        echo "# HELP $mname P4 realtime IO records counter" >> "$tmpfname"
+        echo "# TYPE $mname counter" >> "$tmpfname"
+        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    fi
 
     origname="rtv.rpl.behind.bytes"
     mname="p4_${origname//./_}"
-    echo "# HELP $mname P4 realtime replica bytes lag counter" >> "$tmpfname"
-    echo "# TYPE $mname gauge" >> "$tmpfname"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ ! -z $count ]]; then
+        echo "# HELP $mname P4 realtime replica bytes lag counter" >> "$tmpfname"
+        echo "# TYPE $mname gauge" >> "$tmpfname"
+        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    fi
 
     origname="rtv.rpl.behind.journals"
     mname="p4_${origname//./_}"
-    echo "# HELP $mname P4 realtime replica journal lag counter" >> "$tmpfname"
-    echo "# TYPE $mname gauge" >> "$tmpfname"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ ! -z $count ]]; then
+        echo "# HELP $mname P4 realtime replica journal lag counter" >> "$tmpfname"
+        echo "# TYPE $mname gauge" >> "$tmpfname"
+        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    fi
 
     origname="rtv.svr.sessions.active"
     mname="p4_${origname//./_}"
-    echo "# HELP $mname P4 realtime server active sessions counter" >> "$tmpfname"
-    echo "# TYPE $mname gauge" >> "$tmpfname"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ ! -z $count ]]; then
+        echo "# HELP $mname P4 realtime server active sessions counter" >> "$tmpfname"
+        echo "# TYPE $mname gauge" >> "$tmpfname"
+        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    fi
 
     origname="rtv.svr.sessions.total"
     mname="p4_${origname//./_}"
-    echo "# HELP $mname P4 realtime server total sessions counter" >> "$tmpfname"
-    echo "# TYPE $mname counter" >> "$tmpfname"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ ! -z $count ]]; then
+        echo "# HELP $mname P4 realtime server total sessions counter" >> "$tmpfname"
+        echo "# TYPE $mname counter" >> "$tmpfname"
+        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    fi
 
     chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
