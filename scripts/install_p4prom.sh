@@ -17,7 +17,7 @@ fi
 metrics_root=/hxlogs/metrics
 metrics_link=/p4/metrics
 
-VER_NODE_EXPORTER="1.1.2"
+VER_NODE_EXPORTER="1.3.1"
 VER_P4PROMETHEUS="0.7.5"
 
 # ============================================================
@@ -64,8 +64,10 @@ Examples:
  
 declare -i shiftArgs=0
 declare -i UseSDP=1
+declare -i SELinuxEnabled=0
 declare -i InstallPushgateway=0
 declare OsUser=""
+declare P4LOG=""
 
 set +u
 while [[ $# -gt 0 ]]; do
@@ -76,6 +78,7 @@ while [[ $# -gt 0 ]]; do
         (-u) OsUser="$2"; shiftArgs=1;;
         (-push) InstallPushgateway=1;;
         (-nosdp) UseSDP=0;;
+        (-l) P4LOG="$2"; shiftArgs=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
     esac
@@ -99,7 +102,7 @@ wget=$(which wget)
 
 if command -v getenforce > /dev/null; then
     selinux=$(getenforce)
-    [[ "$selinux" == "Enforcing" ]] && bail "SELinux in use - please set to Permissive to run this script"
+    [[ "$selinux" == "Enforcing" ]] && SELinuxEnabled=1
 fi
 
 # [[ -d "$metrics_root" ]] || bail "Specified metrics directory '$metrics_root' does not exist!"
@@ -128,6 +131,7 @@ if [[ $UseSDP -eq 1 ]]; then
     p4prom_config_dir="/p4/common/config"
     p4prom_bin_dir="/p4/common/site/bin"
 else
+    SDP_INSTANCE=""
     p4port=${Port:-$P4PORT}
     p4user=${User:-$P4USER}
     OSUSER="$OsUser"
@@ -165,6 +169,12 @@ install_node_exporter () {
     tar xvf node_exporter-$PVER.linux-amd64.tar.gz 
     msg "Installing node_exporter"
     mv node_exporter-$PVER.linux-amd64/node_exporter /usr/local/bin/
+
+    if [[ $SELinuxEnabled -eq 1 ]]; then
+        bin_file=/usr/local/bin/node_exporter
+        semanage fcontext -a -t bin_t $bin_file
+        restorecon -vF $bin_file
+    fi
 
     mkdir -p "$metrics_root"
     chown "$OSUSER:$OSGROUP" "$metrics_root"
@@ -215,6 +225,12 @@ install_p4prometheus () {
     chmod +x p4prometheus.linux-amd64
 
     mv p4prometheus.linux-amd64 /usr/local/bin/p4prometheus
+
+    if [[ $SELinuxEnabled -eq 1 ]]; then
+        bin_file=/usr/local/bin/p4prometheus
+        semanage fcontext -a -t bin_t $bin_file
+        restorecon -vF $bin_file
+    fi
 
 cat << EOF > $p4prom_config_file
 # ----------------------
@@ -352,7 +368,7 @@ EOF
 
     config_file="$p4prom_config_dir/.push_metrics.cfg"
     cat << EOF > $config_file
-# Set these values as appropriate
+# Set these values as appropriate according to HRA Procedures document
 metrics_host=https://monitor.hra.p4demo.com:9091
 metrics_user=customerid_CHANGEME
 metrics_passwd=MySecurePassword_CHANGEME

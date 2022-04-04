@@ -71,9 +71,11 @@ if [[ $(id -u) -ne 0 ]]; then
    exit 1
 fi
 
+declare -i SELinuxEnabled=0
+
 if command -v getenforce > /dev/null; then
     selinux=$(getenforce)
-    [[ "$selinux" == "Enforcing" ]] && bail "SELinux in use - please set to Permissive to run this script: setenforce Permissive"
+    [[ "$selinux" == "Enforcing" ]] && SELinuxEnabled=1
 fi
 
 download_and_untar () {
@@ -143,18 +145,22 @@ install_alertmanager () {
     chown $userid:$userid /var/lib/alertmanager
 
     cd /tmp || bail "failed to cd"
-     PVER="$VER_ALERTMANAGER"
+    PVER="$VER_ALERTMANAGER"
     fname="alertmanager-$PVER.linux-amd64.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/alertmanager/releases/download/v$PVER/$fname"
 
     mv alertmanager-$PVER.linux-amd64 alertmanager-files
 
-    cp alertmanager-files/alertmanager /usr/local/bin/
-    cp alertmanager-files/amtool /usr/local/bin/
-    chown $userid:$userid /usr/local/bin/alertmanager
-    chown $userid:$userid /usr/local/bin/amtool
-    chmod 755 /usr/local/bin/alertmanager
-    chmod 755 /usr/local/bin/amtool
+    for base_file in alertmanager amtool; do
+        bin_file=/usr/local/bin/$base_file
+        cp alertmanager-files/$base_file /usr/local/bin/
+        chown $userid:$userid $bin_file
+        chmod 755 $bin_file
+        if [[ $SELinuxEnabled -eq 1 ]]; then
+            semanage fcontext -a -t bin_t $bin_file
+            restorecon -vF $bin_file
+        fi
+    done
 
     cat << EOF > /etc/systemd/system/alertmanager.service
 [Unit]
@@ -224,6 +230,11 @@ install_node_exporter () {
     download_and_untar "$fname" "https://github.com/prometheus/node_exporter/releases/download/v$PVER/$fname"
 
     mv node_exporter-$PVER.linux-amd64/node_exporter /usr/local/bin/
+    if [[ $SELinuxEnabled -eq 1 ]]; then
+        bin_file=/usr/local/bin/node_exporter
+        semanage fcontext -a -t bin_t $bin_file
+        restorecon -vF $bin_file
+    fi
 
     cat << EOF > /etc/systemd/system/node_exporter.service
 [Unit]
@@ -261,14 +272,15 @@ install_victoria_metrics () {
         download_and_untar "$fname" "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v$PVER/$fname"
     done
 
-    chown $userid:$userid victoria-metrics-prod vm*
-    mv victoria-metrics-prod /usr/local/bin/
-    mv vmagent-prod /usr/local/bin/
-    mv vmalert-prod /usr/local/bin/
-    mv vmauth-prod /usr/local/bin/
-    mv vmbackup-prod /usr/local/bin/
-    mv vmrestore-prod /usr/local/bin/
-    mv vmctl-prod /usr/local/bin/
+    for base_file in victoria-metrics-prod vmagent-prod vmalert-prod vmauth-prod vmbackup-prod vmrestore-prod vmctl-prod; do
+        bin_file=/usr/local/bin/$base_file
+        mv $base_file /usr/local/bin/
+        chown $userid:$userid $bin_file
+        if [[ $SELinuxEnabled -eq 1 ]]; then
+            semanage fcontext -a -t bin_t $bin_file
+            restorecon -vF $bin_file
+        fi
+    done
 
     cat << EOF > /etc/systemd/system/victoria-metrics.service
 [Unit]
@@ -316,12 +328,16 @@ install_prometheus () {
 
     mv prometheus-$PVER.linux-amd64 prometheus-files
 
-    cp prometheus-files/prometheus /usr/local/bin/
-    cp prometheus-files/promtool /usr/local/bin/
-    chown $userid:$userid /usr/local/bin/prometheus
-    chown $userid:$userid /usr/local/bin/promtool
-    chmod 755 /usr/local/bin/prometheus
-    chmod 755 /usr/local/bin/promtool
+    for base_file in prometheus promtool; do
+        bin_file=/usr/local/bin/$base_file
+        cp prometheus-files/$base_file /usr/local/bin/
+        chown $userid:$userid $bin_file
+        chmod 755 $bin_file
+        if [[ $SELinuxEnabled -eq 1 ]]; then
+            semanage fcontext -a -t bin_t $bin_file
+            restorecon -vF $bin_file
+        fi
+    done
 
     cp -r prometheus-files/consoles /etc/prometheus
     cp -r prometheus-files/console_libraries /etc/prometheus
@@ -429,6 +445,11 @@ install_pushgateway () {
     download_and_untar "$fname" "https://github.com/prometheus/pushgateway/releases/download/v$PVER/$fname"
 
     mv pushgateway-$PVER.linux-amd64/pushgateway /usr/local/bin/
+    if [[ $SELinuxEnabled -eq 1 ]]; then
+        bin_file=/usr/local/bin/pushgateway
+        semanage fcontext -a -t bin_t $bin_file
+        restorecon -vF $bin_file
+    fi
 
     cat << EOF > /etc/systemd/system/pushgateway.service
 [Unit]
