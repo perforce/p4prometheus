@@ -39,7 +39,7 @@ Depends on 'curl' and 'jq' being in the path.
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-FILE_LIST=monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh check_for_updates.sh create_dashboard.py dashboard.yaml upload_grafana_dashboard.sh
+FILE_LIST="monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh check_for_updates.sh create_dashboard.py dashboard.yaml upload_grafana_dashboard.sh"
 
 # Command Line Processing
  
