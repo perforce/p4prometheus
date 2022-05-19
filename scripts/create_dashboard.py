@@ -84,6 +84,7 @@ class CreateDashboard():
         parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help="Dashboard config YAML file. Default: " + DEFAULT_CONFIG)
         parser.add_argument('--customer', action='store_true', help="Specify that customer variable is defined and included")
         parser.add_argument('--no-sdp', action='store_true', default=False, help="Whether this is SDP instance or not - default is SDP")
+        parser.add_argument('--filter-labels', action='store_true', default=False, help="Whether to filter labels by SDP or not")
         parser.add_argument('-a', '--api-key', help="Grafana API key token")
         parser.add_argument('--datasource', help="Grafana datasource name (otherwise uses default)")
         parser.add_argument('--list-datasources', action='store_true', default=False, 
@@ -117,12 +118,27 @@ class CreateDashboard():
         if self.options.customer:
             serverid_query = 'label_values(p4_prom_log_lines_read{customer=~"$customer"}, serverid)'
             sdpinst_query = 'label_values(p4_prom_log_lines_read{customer=~"$customer"}, sdpinst)'
+            if self.options.filter_labels:
+                if self.options.use_sdp:
+                    serverid_query = 'label_values(p4_prom_log_lines_read{customer=~"$customer",sdpinst!=""}, serverid)'
+                    sdpinst_query = 'label_values(p4_prom_log_lines_read{customer=~"$customer",sdpinst!=""}, sdpinst)'
+                else:
+                    serverid_query = "label_values(p4_prom_log_lines_read{sdpinst=""}, serverid)"
+                    sdpinst_query = "label_values(p4_prom_log_lines_read{sdpinst=""}, sdpinst)"
             templateList.append(G.Template(
                     default="1",
                     dataSource="default",
                     name="customer",
                     label="Customer",
                     query="label_values(customer)"))
+        else:
+            if self.options.filter_labels:
+                if self.options.use_sdp:
+                    serverid_query = 'label_values(p4_prom_log_lines_read{sdpinst!=""}, serverid)'
+                    sdpinst_query = 'label_values(p4_prom_log_lines_read{sdpinst!=""}, sdpinst)'
+                else:
+                    serverid_query = 'label_values(p4_prom_log_lines_read{sdpinst=""}, serverid)'
+                    sdpinst_query = 'label_values(p4_prom_log_lines_read{sdpinst=""}, sdpinst)'
         templateList.append(G.Template(
                     default="",
                     dataSource="default",
