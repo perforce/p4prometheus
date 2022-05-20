@@ -266,6 +266,45 @@ monitor_license () {
     mv "$tmpfname" "$fname"
 }
 
+monitor_filesys () {
+    # Log current filesys.*.min settings
+    # p4 configure show can give 2 values, or just the (default)
+    #   filesys.P4ROOT.min=5G (configure)
+    #   filesys.P4ROOT.min=250M (default)
+    fname="$metrics_root/p4_filesys${sdpinst_suffix}-${SERVER_ID}.prom"
+    tmpfname="$fname.$$"
+    tmp_filesys_data="$metrics_root/tmp_filesys"
+    # Update every 60 mins
+    [[ ! -f "$tmp_filesys_data" || $(find "$tmp_filesys_data" -mmin +60) ]] || return
+    configurables="filesys.depot.min filesys.P4ROOT.min filesys.P4JOURNAL.min filesys.P4LOG.min filesys.TEMP.min"
+
+    echo "" > "$tmp_filesys_data"
+    for c in $configurables
+    do
+        $p4 configure show "$c" >> "$tmp_filesys_data"
+    done
+    [[ $? -ne 0 ]] && return
+
+    rm -f "$tmpfname"
+
+    for c in $configurables
+    do
+        configuredValue=$(egrep "$c=.*configure" $tmp_filesys_data | awk '{print $1}' | awk -F= '{print $2}')
+        defaultValue=$(egrep "$c=.*default" $tmp_filesys_data | awk '{print $1}' | awk -F= '{print $2}')
+        value="$configuredValue"
+        [[ -z "$configuredValue" ]] && value="$defaultValue"
+        # Convert "." -> "_" for metrics labels
+        cname="${c//./_}"
+        filesys_label=",$cname=\"${value:-none}\""
+        echo "# HELP $cname Minimum space for filesystem" >> "$tmpfname"
+        echo "# TYPE $cname gauge" >> "$tmpfname"
+        echo "p4_filesys{${serverid_label}${sdpinst_label}${filesys_label}} 1" >> "$tmpfname"
+    done
+
+    chmod 644 "$tmpfname"
+    mv "$tmpfname" "$fname"
+}
+
 monitor_versions () {
     # P4D and SDP Versions
     fname="$metrics_root/p4_version_info${sdpinst_suffix}-${SERVER_ID}.prom"
@@ -682,6 +721,7 @@ monitor_errors
 monitor_pull
 monitor_realtime
 monitor_license
+monitor_filesys
 monitor_versions
 monitor_ssl
 update_data_file
