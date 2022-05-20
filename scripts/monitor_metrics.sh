@@ -286,6 +286,8 @@ monitor_filesys () {
     [[ $? -ne 0 ]] && return
 
     rm -f "$tmpfname"
+    echo "# HELP p4_filesys_min Minimum space for filesystem" >> "$tmpfname"
+    echo "# TYPE p4_filesys_min gauge" >> "$tmpfname"
 
     for c in $configurables
     do
@@ -305,8 +307,6 @@ monitor_filesys () {
         filesys="${c/filesys./}"
         filesys="${filesys/.min/}"
         filesys_label=",filesys=\"${filesys:-none}\""
-        echo "# HELP p4_filesys_min Minimum space for filesystem" >> "$tmpfname"
-        echo "# TYPE p4_filesys_min gauge" >> "$tmpfname"
         echo "p4_filesys_min{${serverid_label}${sdpinst_label}${filesys_label}} $bytes" >> "$tmpfname"
     done
 
