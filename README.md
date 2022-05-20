@@ -155,6 +155,7 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_license_support_expires |  | P4D License support expiry (epoch secs) |
 | p4_license_info | info | P4D License info (if present) |
 | p4_license_IP | IP | P4D License IP address (if present) |
+| p4_filesys_min | filesys | Value of P4D configurable filesys.*.min |
 | p4_p4d_build_info | version | P4D Version/build info |
 | p4_p4d_server_type | services | P4D server type/services |
 | p4_ssl_cert_expires | | P4D SSL certificate expiry epoch seconds |

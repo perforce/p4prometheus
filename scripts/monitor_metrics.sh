@@ -293,12 +293,21 @@ monitor_filesys () {
         defaultValue=$(egrep "$c=.*default" $tmp_filesys_data | awk '{print $1}' | awk -F= '{print $2}')
         value="$configuredValue"
         [[ -z "$configuredValue" ]] && value="$defaultValue"
-        # Convert "." -> "_" for metrics labels
-        cname="${c//./_}"
-        filesys_label=",$cname=\"${value:-none}\""
-        echo "# HELP $cname Minimum space for filesystem" >> "$tmpfname"
-        echo "# TYPE $cname gauge" >> "$tmpfname"
-        echo "p4_filesys{${serverid_label}${sdpinst_label}${filesys_label}} 1" >> "$tmpfname"
+        # Use ask to dehumanise 1G or 500m
+        bytes=$(echo "$value" | awk 'BEGIN{IGNORECASE = 1}
+            function printpower(n,b,p) {printf "%u\n", n*b^p; next}
+            /[0-9]$/{print $1;next};
+            /K$/{printpower($1, 2, 10)};
+            /M$/{printpower($1, 2, 20)};
+            /G$/{printpower($1, 2, 30)};
+            /T$/{printpower($1, 2, 40)};')
+        # filesys.P4ROOT.min -> P4ROOT
+        filesys="${c/filesys./}"
+        filesys="${filesys/.min/}"
+        filesys_label=",filesys=\"${filesys:-none}\""
+        echo "# HELP p4_filesys_min Minimum space for filesystem" >> "$tmpfname"
+        echo "# TYPE p4_filesys_min gauge" >> "$tmpfname"
+        echo "p4_filesys_min{${serverid_label}${sdpinst_label}${filesys_label}} $bytes" >> "$tmpfname"
     done
 
     chmod 644 "$tmpfname"
