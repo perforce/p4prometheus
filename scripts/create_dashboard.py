@@ -111,6 +111,10 @@ class CreateDashboard():
         except Exception as e:
             raise Exception('Could not read config file %s: %s' % (self.options.config, str(e)))
 
+        dataSource = 'default'
+        if self.options.datasource:
+            dataSource = self.options.datasource
+
         templateList = []
         serverid_query = "label_values(serverid)"
         sdpinst_query = "label_values(sdpinst)"
@@ -127,7 +131,7 @@ class CreateDashboard():
                     sdpinst_query = "label_values(p4_prom_log_lines_read{sdpinst=""}, sdpinst)"
             templateList.append(G.Template(
                     default="1",
-                    dataSource="default",
+                    dataSource=dataSource,
                     name="customer",
                     label="Customer",
                     query="label_values(customer)"))
@@ -141,14 +145,14 @@ class CreateDashboard():
                     sdpinst_query = 'label_values(p4_prom_log_lines_read{sdpinst=""}, sdpinst)'
         templateList.append(G.Template(
                     default="",
-                    dataSource="default",
+                    dataSource=dataSource,
                     name="serverid",
                     label="ServerID",
                     query=serverid_query))
         if self.options.use_sdp:
             templateList.append(G.Template(
                     default="1",
-                    dataSource="default",
+                    dataSource=dataSource,
                     name="sdpinst",
                     label="SDPInstance",
                     query=sdpinst_query))
@@ -157,10 +161,6 @@ class CreateDashboard():
             title=self.options.title,
             templating=G.Templating(list=templateList)
         )
-
-        dataSource = 'default'
-        if self.options.datasource:
-            dataSource = self.options.datasource
 
         for metric in self.config:
             if 'section' in metric:
