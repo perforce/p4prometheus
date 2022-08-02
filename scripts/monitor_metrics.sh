@@ -132,9 +132,19 @@ else
     fi
 fi
 
-# Get server id
-SERVER_ID=$($p4 serverid | awk '{print $3}')
-SERVER_ID=${SERVER_ID:-noserverid}
+# Get server id. Usually server.id files are a single line containing the
+# ServerID value. However, a server.id file will have a second line if a
+# 'p4 failover' was done containing an error message displayed to users
+# during the failover, and also preventing the service from starting
+# post-failover (to avoid split brain). For purposes of this check, we care
+# only about the ServerID value contained on the first line, so we use
+# 'head -1' on the server.id file.
+if [[ -r "${P4ROOT:-UnsetP4ROOT}/server.id" ]]; then
+   SERVER_ID=$(head -1 "$P4ROOT/server.id" 2>/dev/null)
+else
+   SERVER_ID=$($p4 serverid 2>/dev/null | awk '{print $3}')
+fi
+[[ -n "$SERVER_ID" ]] || SERVER_ID=UnsetServerID
 serverid_label="serverid=\"$SERVER_ID\""
 
 # Set data vars
