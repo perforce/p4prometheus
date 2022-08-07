@@ -60,6 +60,8 @@ monitor_metrics.sh -h
        # Add full manual page documentation here.
       true
    fi
+
+   exit 2
 }
 
 : Command Line Processing
@@ -70,14 +72,14 @@ declare -i UseSDP=1
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
-        (-h) usage -h && exit 0;;
-        # (-man) usage -man;;
+        (-h) usage -h;;
+        (-man) usage -man;;
         (-p) Port=$2; shiftArgs=1;;
         (-u) User=$2; shiftArgs=1;;
         (-m) metrics_root=$2; shiftArgs=1;;
         (-d) data_file=$2; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
-        (-*) usage -h "Unknown command line option ($1)." && exit 1;;
+        (-*) usage -h "Unknown command line option ($1).";;
         (*) export SDP_INSTANCE=$1;;
     esac
  
