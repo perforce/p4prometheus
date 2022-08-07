@@ -27,6 +27,7 @@ function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
 function usage
 {
+   declare style=${1:--h}
    declare errorMessage=${2:-Unset}
  
    if [[ "$errorMessage" != Unset ]]; then
@@ -58,6 +59,12 @@ Examples:
 ./install_p4prom.sh -nosdp -m /p4metrics -u perforce
 
 "
+   if [[ "$style" == -man ]]; then
+       # Add full manual page documentation here.
+      true
+   fi
+
+   exit 2
 }
 
 # Command Line Processing
@@ -72,14 +79,14 @@ declare P4LOG=""
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
-        (-h) usage -h  && exit 1;;
-        # (-man) usage -man;;
+        (-h) usage -h;;
+        (-man) usage -man;;
         (-m) metrics_root=$2; shiftArgs=1;;
         (-u) OsUser="$2"; shiftArgs=1;;
         (-push) InstallPushgateway=1;;
         (-nosdp) UseSDP=0;;
         (-l) P4LOG="$2"; shiftArgs=1;;
-        (-*) usage -h "Unknown command line option ($1)." && exit 1;;
+        (-*) usage -h "Unknown command line option ($1).";;
         (*) export SDP_INSTANCE=$1;;
     esac
  
@@ -97,8 +104,7 @@ if [[ $(id -u) -ne 0 ]]; then
    exit 1
 fi
 
-wget=$(which wget)
-[[ $? -eq 0 ]] || bail "Failed to find wget in path"
+[[ -n "$(command -v wget)" ]] || bail "Failed to find wget in PATH."
 
 if command -v getenforce > /dev/null; then
     selinux=$(getenforce)
@@ -126,6 +132,7 @@ if [[ $UseSDP -eq 1 ]]; then
     source /p4/common/bin/p4_vars "$SDP_INSTANCE" ||\
     { echo -e "\\nError: Failed to load SDP environment.\\n"; exit 1; }
 
+    # shellcheck disable=SC2153
     p4="$P4BIN -u $P4USER -p $P4PORT"
     $p4 info -s || bail "Can't connect to P4PORT: $P4PORT"
     p4prom_config_dir="/p4/common/config"

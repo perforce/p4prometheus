@@ -24,6 +24,7 @@ function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
 function usage
 {
+   declare style=${1:--h}
    declare errorMessage=${2:-Unset}
  
    if [[ "$errorMessage" != Unset ]]; then
@@ -41,6 +42,12 @@ or
   -push Means install pushgateway (otherwise it won't be installed)
 
 "
+   if [[ "$style" == -man ]]; then
+       # Add full manual page documentation here.
+      true
+   fi
+
+   exit 2
 }
 
 # Command Line Processing
@@ -51,10 +58,10 @@ declare -i InstallPushgateway=0
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
-        (-h) usage -h && exit 1;;
+        (-h) usage -h;;
         (-push) InstallPushgateway=1;;
-        # (-man) usage -man;;
-        (-*) usage -h "Unknown command line option ($1)." && exit 1;;
+        (-man) usage -man;;
+        (-*) usage -h "Unknown command line option ($1).";;
     esac
  
     # Shift (modify $#) the appropriate number of times.
