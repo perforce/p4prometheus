@@ -223,7 +223,7 @@ monitor_license () {
     no_license=$(grep -c "Server license: none" "$tmp_info_data")
     # Update every 60 mins
     [[ ! -f "$tmp_license_data" || $(find "$tmp_license_data" -mmin +60) ]] || return
-    $p4 license -u  "$tmp_license_data" 2>&1 || return
+    $p4 license -u > "$tmp_license_data" 2>&1 || return
 
     userCount=0
     userLimit=0
