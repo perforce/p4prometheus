@@ -24,7 +24,7 @@ HELPINFO
 }
 
 function msg () { echo -e "$*"; }
-function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
+function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
 # -------------------------------------------------------------------------
 if [ -z "$1" ];then
@@ -51,5 +51,5 @@ DASHBOARD=$1
 curl -X POST \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $GRAFANA_API_KEY" \
-  -d @${DASHBOARD} \
+  -d "@${DASHBOARD}" \
   "$GRAFANA_SERVER/api/dashboards/db" -w "\n" | tee -a "$logfile"

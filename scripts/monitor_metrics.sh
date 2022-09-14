@@ -15,7 +15,7 @@
 # Note we use a tempfile for each metric to avoid partial reads. Textfile collector only looks for files
 # ending in .prom so we do a final rename when ready
 
-if [[ -z "${BASH_VERSINFO}" ]] || [[ -z "${BASH_VERSINFO[0]}" ]] || [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
+if [[ -z "${BASH_VERSINFO[0]}" ]] || [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
     echo "This script requires Bash version >= 4";
     exit 1;
 fi
@@ -37,7 +37,7 @@ data_file=/p4/monitor_metrics.dat
 # ============================================================
 
 function msg () { echo -e "$*"; }
-function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
+function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
 function usage
 {
@@ -56,6 +56,12 @@ monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ] | [-m <metri
  
 monitor_metrics.sh -h
 "
+   if [[ "$style" == -man ]]; then
+       # Add full manual page documentation here.
+      true
+   fi
+
+   exit 2
 }
 
 : Command Line Processing
@@ -66,14 +72,14 @@ declare -i UseSDP=1
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
-        (-h) usage -h && exit 0;;
-        # (-man) usage -man;;
+        (-h) usage -h;;
+        (-man) usage -man;;
         (-p) Port=$2; shiftArgs=1;;
         (-u) User=$2; shiftArgs=1;;
         (-m) metrics_root=$2; shiftArgs=1;;
         (-d) data_file=$2; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
-        (-*) usage -h "Unknown command line option ($1)." && exit 1;;
+        (-*) usage -h "Unknown command line option ($1).";;
         (*) export SDP_INSTANCE=$1;;
     esac
  
@@ -105,9 +111,9 @@ if [[ $UseSDP -eq 1 ]]; then
     source /p4/common/bin/p4_vars "$SDP_INSTANCE" ||\
     { echo -e "\\nError: Failed to load SDP environment.\\n"; exit 1; }
 
+    # shellcheck disable=SC2153
     p4="$P4BIN -u $P4USER -p $P4PORT"
-    $p4 info -s > "$tmp_info_data"
-    [[ $? -eq 0 ]] || bail "Can't connect to P4PORT: $P4PORT"
+    $p4 info -s > "$tmp_info_data" || bail "Can't connect to P4PORT: $P4PORT"
     sdpinst_label=",sdpinst=\"$SDP_INSTANCE\""
     sdpinst_suffix="-$SDP_INSTANCE"
     p4logfile="$P4LOG"
@@ -116,14 +122,13 @@ else
     p4port=${Port:-$P4PORT}
     p4user=${User:-$P4USER}
     p4="p4 -u $p4user -p $p4port"
-    $p4 info -s > "$tmp_info_data"
-    [[ $? -eq 0 ]] || bail "Can't connect to P4PORT: $p4port"
+    $p4 info -s > "$tmp_info_data" || bail "Can't connect to P4PORT: $p4port"
     sdpinst_label=""
     sdpinst_suffix=""
     tmp_config_data="$metrics_root/tmp_config_show.dat"
     $p4 configure show > "$tmp_config_data"
     p4logfile=$(grep P4LOG "$tmp_config_data" | sed -e 's/P4LOG=//' -e 's/ .*//')
-    errors_file=$(egrep "serverlog.file.*errors.csv" "$tmp_config_data" | cut -d= -f2 | sed -e 's/ (.*//')
+    errors_file=$(grep -E "serverlog.file.*errors.csv" "$tmp_config_data" | cut -d= -f2 | sed -e 's/ (.*//')
     check_for_replica=$(grep -c 'Replica of:' "$tmp_info_data")
     if [[ "$check_for_replica" -eq "0" ]]; then
         P4REPLICA="FALSE"
@@ -159,7 +164,7 @@ load_data_file () {
     [[ -f "$data_file" ]] || { echo "data_file not found"; return ; } 
     
     # Read in the data file information
-    while read filetype mod_time line_count
+    while read -r filetype mod_time line_count
     do
         case "$filetype" in
         'p4log')
@@ -171,7 +176,7 @@ load_data_file () {
             p4err_lc_last=$line_count
         ;;
         esac
-    done < $data_file
+    done < "$data_file"
     echo "data file loaded:"
     echo "[p4log][last timestamp: ${p4log_ts_last}][last linecount: ${p4log_lc_last}]"
     echo "[p4err][last timestamp: ${p4err_ts_last}][last linecount: ${p4err_lc_last}]"
@@ -185,6 +190,7 @@ monitor_uptime () {
     uptime=$(grep uptime "$tmp_info_data" | awk '{print $3}')
     [[ -z "$uptime" ]] && uptime="0:0:0"
     uptime=${uptime//:/ }
+    # shellcheck disable=SC2206
     arr=($uptime)
     hours=${arr[0]}
     mins=${arr[1]}
@@ -193,9 +199,11 @@ monitor_uptime () {
     # Ensure base 10 arithmetic used to avoid overflow errors
     uptime_secs=$(((10#$hours * 3600) + (10#$mins * 60) + 10#$secs))
     rm -f "$tmpfname"
-    echo "# HELP p4_server_uptime P4D Server uptime (seconds)" >> "$tmpfname"
-    echo "# TYPE p4_server_uptime counter" >> "$tmpfname"
-    echo "p4_server_uptime{${serverid_label}${sdpinst_label}} $uptime_secs" >> "$tmpfname"
+    {
+        echo "# HELP p4_server_uptime P4D Server uptime (seconds)"
+        echo "# TYPE p4_server_uptime counter"
+        echo "p4_server_uptime{${serverid_label}${sdpinst_label}} $uptime_secs"
+    } >> "$tmpfname"
     chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
 }
@@ -215,8 +223,7 @@ monitor_license () {
     no_license=$(grep -c "Server license: none" "$tmp_info_data")
     # Update every 60 mins
     [[ ! -f "$tmp_license_data" || $(find "$tmp_license_data" -mmin +60) ]] || return
-    $p4 license -u 2>&1 > "$tmp_license_data"
-    [[ $? -ne 0 ]] && return
+    $p4 license -u > "$tmp_license_data" 2>&1 || return
 
     userCount=0
     userLimit=0
@@ -229,18 +236,18 @@ monitor_license () {
     licenseIP_label=""
 
     if [[ $no_license -ne 1 ]]; then
-        userCount=$(grep userCount $tmp_license_data | awk '{print $3}')
-        userLimit=$(grep userLimit $tmp_license_data | awk '{print $3}')
-        licenseExpires=$(grep licenseExpires $tmp_license_data | awk '{print $3}')
-        licenseTimeRemaining=$(grep licenseTimeRemaining $tmp_license_data | awk '{print $3}')
-        supportExpires=$(grep supportExpires $tmp_license_data | awk '{print $3}')
+        userCount=$(grep userCount "$tmp_license_data" | awk '{print $3}')
+        userLimit=$(grep userLimit "$tmp_license_data" | awk '{print $3}')
+        licenseExpires=$(grep licenseExpires "$tmp_license_data" | awk '{print $3}')
+        licenseTimeRemaining=$(grep licenseTimeRemaining "$tmp_license_data" | awk '{print $3}')
+        supportExpires=$(grep supportExpires "$tmp_license_data" | awk '{print $3}')
         licenseInfo=$(grep "Server license: " "$tmp_info_data" | sed -e "s/Server license: //" | sed -Ee "s/\(expires [^\)]+\)//" | sed -Ee "s/\(support [^\)]+\)//" )
-        if [[ -z $licenseTimeRemaining && ! -z $supportExpires ]]; then
+        if [[ -z "$licenseTimeRemaining" && -n "$supportExpires" ]]; then
             dt=$(date +%s)
-            licenseTimeRemaining=$(($supportExpires - $dt))
+            licenseTimeRemaining=$((supportExpires - dt))
         fi
         # Trim trailing spaces
-        licenseInfo=$(echo $licenseInfo | sed -Ee 's/[ ]+$//')
+        licenseInfo=$(echo "$licenseInfo" | sed -Ee 's/[ ]+$//')
         licenseIP=$(grep "Server license-ip: " "$tmp_info_data" | sed -e "s/Server license-ip: //")
     fi
 
@@ -248,37 +255,48 @@ monitor_license () {
     licenseIP_label=",IP=\"${licenseIP:-none}\""
 
     rm -f "$tmpfname"
-    echo "# HELP p4_licensed_user_count P4D Licensed User count" >> "$tmpfname"
-    echo "# TYPE p4_licensed_user_count gauge" >> "$tmpfname"
-    echo "p4_licensed_user_count{${serverid_label}${sdpinst_label}} $userCount" >> "$tmpfname"
-    echo "# HELP p4_licensed_user_limit P4D Licensed User Limit" >> "$tmpfname"
-    echo "# TYPE p4_licensed_user_limit gauge" >> "$tmpfname"
-    echo "p4_licensed_user_limit{${serverid_label}${sdpinst_label}} $userLimit" >> "$tmpfname"
-    if [[ ! -z $licenseExpires ]]; then
-        echo "# HELP p4_license_expires P4D License expiry (epoch secs)" >> "$tmpfname"
-        echo "# TYPE p4_license_expires gauge" >> "$tmpfname"
-        echo "p4_license_expires{${serverid_label}${sdpinst_label}} $licenseExpires" >> "$tmpfname"
+    {
+        echo "# HELP p4_licensed_user_count P4D Licensed User count"
+        echo "# TYPE p4_licensed_user_count gauge"
+        echo "p4_licensed_user_count{${serverid_label}${sdpinst_label}} $userCount"
+        echo "# HELP p4_licensed_user_limit P4D Licensed User Limit"
+        echo "# TYPE p4_licensed_user_limit gauge"
+        echo "p4_licensed_user_limit{${serverid_label}${sdpinst_label}} $userLimit"
+    } >> "$tmpfname"
+    if [[ -n "$licenseExpires" ]]; then
+        {
+            echo "# HELP p4_license_expires P4D License expiry (epoch secs)"
+            echo "# TYPE p4_license_expires gauge"
+            echo "p4_license_expires{${serverid_label}${sdpinst_label}} $licenseExpires"
+        } >> "$tmpfname"
     fi
-    echo "# HELP p4_license_time_remaining P4D License time remaining (secs)" >> "$tmpfname"
-    echo "# TYPE p4_license_time_remaining gauge" >> "$tmpfname"
-    echo "p4_license_time_remaining{${serverid_label}${sdpinst_label}} $licenseTimeRemaining" >> "$tmpfname"
-    if [[ ! -z $supportExpires ]]; then
-        echo "# HELP p4_license_support_expires P4D License support expiry (epoch secs)" >> "$tmpfname"
-        echo "# TYPE p4_license_support_expires gauge" >> "$tmpfname"
-        echo "p4_license_support_expires{${serverid_label}${sdpinst_label}} $supportExpires" >> "$tmpfname"
+    {
+        echo "# HELP p4_license_time_remaining P4D License time remaining (secs)"
+        echo "# TYPE p4_license_time_remaining gauge"
+        echo "p4_license_time_remaining{${serverid_label}${sdpinst_label}} $licenseTimeRemaining"
+    } >> "$tmpfname"
+    if [[ -n "$supportExpires" ]]; then
+        {
+            echo "# HELP p4_license_support_expires P4D License support expiry (epoch secs)"
+            echo "# TYPE p4_license_support_expires gauge"
+            echo "p4_license_support_expires{${serverid_label}${sdpinst_label}} $supportExpires"
+        } >> "$tmpfname"
     fi
-    echo "# HELP p4_license_info P4D License info" >> "$tmpfname"
-    echo "# TYPE p4_license_info gauge" >> "$tmpfname"
-    echo "p4_license_info{${serverid_label}${sdpinst_label}${licenseInfo_label}} 1" >> "$tmpfname"
-    echo "# HELP p4_license_IP P4D Licensed IP" >> "$tmpfname"
-    echo "# TYPE p4_license_IP" >> "$tmpfname"
-    echo "p4_license_IP{${serverid_label}${sdpinst_label}${licenseIP_label}} 1" >> "$tmpfname"
+    {
+        echo "# HELP p4_license_info P4D License info"
+        echo "# TYPE p4_license_info gauge"
+        echo "p4_license_info{${serverid_label}${sdpinst_label}${licenseInfo_label}} 1"
+        echo "# HELP p4_license_IP P4D Licensed IP"
+        echo "# TYPE p4_license_IP"
+        echo "p4_license_IP{${serverid_label}${sdpinst_label}${licenseIP_label}} 1"
+    } >> "$tmpfname"
 
     chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
 }
 
 monitor_filesys () {
+    local -i configurablesOK
     # Log current filesys.*.min settings
     # p4 configure show can give 2 values, or just the (default)
     #   filesys.P4ROOT.min=5G (configure)
@@ -291,20 +309,23 @@ monitor_filesys () {
     configurables="filesys.depot.min filesys.P4ROOT.min filesys.P4JOURNAL.min filesys.P4LOG.min filesys.TEMP.min"
 
     echo "" > "$tmp_filesys_data"
+    configurablesOK=1
     for c in $configurables
     do
-        $p4 configure show "$c" >> "$tmp_filesys_data"
+        $p4 configure show "$c" >> "$tmp_filesys_data" || configurablesOK=0
     done
-    [[ $? -ne 0 ]] && return
+    [[ "$configurablesOK" -eq 1 ]] || return
 
     rm -f "$tmpfname"
-    echo "# HELP p4_filesys_min Minimum space for filesystem" >> "$tmpfname"
-    echo "# TYPE p4_filesys_min gauge" >> "$tmpfname"
+    {
+        echo "# HELP p4_filesys_min Minimum space for filesystem"
+        echo "# TYPE p4_filesys_min gauge"
+    } >> "$tmpfname"
 
     for c in $configurables
     do
-        configuredValue=$(egrep "$c=.*configure" $tmp_filesys_data | awk '{print $1}' | awk -F= '{print $2}')
-        defaultValue=$(egrep "$c=.*default" $tmp_filesys_data | awk '{print $1}' | awk -F= '{print $2}')
+        configuredValue=$(grep -E "$c=.*configure" "$tmp_filesys_data" | awk '{print $1}' | awk -F= '{print $2}')
+        defaultValue=$(grep -E "$c=.*default" "$tmp_filesys_data" | awk '{print $1}' | awk -F= '{print $2}')
         value="$configuredValue"
         [[ -z "$configuredValue" ]] && value="$defaultValue"
         # Use ask to dehumanise 1G or 500m
@@ -331,25 +352,29 @@ monitor_versions () {
     fname="$metrics_root/p4_version_info${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
 
-    p4dVersion=$(grep "Server version:" $tmp_info_data | sed -e 's/Server version: //' | sed -Ee 's/ \([0-9/]+\)//')
+    p4dVersion=$(grep "Server version:" "$tmp_info_data" | sed -e 's/Server version: //' | sed -Ee 's/ \([0-9/]+\)//')
     p4dVersion_label=",version=\"${p4dVersion:-unknown}\""
-    p4dServices=$(grep "Server services:" $tmp_info_data | sed -e 's/Server services: //')
+    p4dServices=$(grep "Server services:" "$tmp_info_data" | sed -e 's/Server services: //')
     p4dServices_label=",services=\"${p4dServices:-unknown}\""
 
     rm -f "$tmpfname"
-    echo "# HELP p4_p4d_build_info P4D Version/build info" >> "$tmpfname"
-    echo "# TYPE p4_p4d_build_info gauge" >> "$tmpfname"
-    echo "p4_p4d_build_info{${serverid_label}${sdpinst_label}${p4dVersion_label}} 1" >> "$tmpfname"
-    echo "# HELP p4_p4d_server_type P4D server type/services" >> "$tmpfname"
-    echo "# TYPE p4_p4d_server_type gauge" >> "$tmpfname"
-    echo "p4_p4d_server_type{${serverid_label}${sdpinst_label}${p4dServices_label}} 1" >> "$tmpfname"
+    {
+        echo "# HELP p4_p4d_build_info P4D Version/build info"
+        echo "# TYPE p4_p4d_build_info gauge"
+        echo "p4_p4d_build_info{${serverid_label}${sdpinst_label}${p4dVersion_label}} 1"
+        echo "# HELP p4_p4d_server_type P4D server type/services"
+        echo "# TYPE p4_p4d_server_type gauge"
+        echo "p4_p4d_server_type{${serverid_label}${sdpinst_label}${p4dServices_label}} 1"
+    } >> "$tmpfname"
 
     if [[ $UseSDP -eq 1 && -f "/p4/sdp/Version" ]]; then
         SDPVersion=$(cat "/p4/sdp/Version")
         SDPVersion_label=",version=\"${SDPVersion:-unknown}\""
-        echo "# HELP p4_sdp_version SDP Version" >> "$tmpfname"
-        echo "# TYPE p4_sdp_version gauge" >> "$tmpfname"
-        echo "p4_sdp_version{${serverid_label}${sdpinst_label}${SDPVersion_label}} 1" >> "$tmpfname"
+        {
+            echo "# HELP p4_sdp_version SDP Version"
+            echo "# TYPE p4_sdp_version gauge"
+            echo "p4_sdp_version{${serverid_label}${sdpinst_label}${SDPVersion_label}} 1"
+        } >> "$tmpfname"
     fi
 
     chmod 644 "$tmpfname"
@@ -361,7 +386,7 @@ monitor_ssl () {
     fname="$metrics_root/p4_ssl_info${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
 
-    certExpiry=$(grep "Server cert expires:" $tmp_info_data | sed -e 's/Server cert expires: //')
+    certExpiry=$(grep "Server cert expires:" "$tmp_info_data" | sed -e 's/Server cert expires: //')
     if [[ -z "$certExpiry" ]]; then
         return
     fi
@@ -369,9 +394,11 @@ monitor_ssl () {
     certExpirySecs=$(date -d "$certExpiry" +%s)
 
     rm -f "$tmpfname"
-    echo "# HELP p4_ssl_cert_expires P4D SSL certificate expiry epoch seconds" >> "$tmpfname"
-    echo "# TYPE p4_ssl_cert_expires gauge" >> "$tmpfname"
-    echo "p4_ssl_cert_expires{${serverid_label}${sdpinst_label}} $certExpirySecs" >> "$tmpfname"
+    {
+        echo "# HELP p4_ssl_cert_expires P4D SSL certificate expiry epoch seconds"
+        echo "# TYPE p4_ssl_cert_expires gauge"
+        echo "p4_ssl_cert_expires{${serverid_label}${sdpinst_label}} $certExpirySecs"
+    } >> "$tmpfname"
 
     chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
@@ -381,12 +408,14 @@ monitor_change () {
     # Latest changelist counter as single counter value
     fname="$metrics_root/p4_change${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-    curr_change=$($p4 counters 2>&1 | egrep '^change =' | awk '{print $3}')
-    if [[ ! -z "$curr_change" ]]; then
+    curr_change=$($p4 counters 2>&1 | grep -E '^change =' | awk '{print $3}')
+    if [[ -n "$curr_change" ]]; then
         rm -f "$tmpfname"
-        echo "# HELP p4_change_counter P4D change counter" >> "$tmpfname"
-        echo "# TYPE p4_change_counter counter" >> "$tmpfname"
-        echo "p4_change_counter{${serverid_label}${sdpinst_label}} $curr_change" >> "$tmpfname"
+        {
+            echo "# HELP p4_change_counter P4D change counter"
+            echo "# TYPE p4_change_counter counter"
+            echo "p4_change_counter{${serverid_label}${sdpinst_label}} $curr_change"
+        } >> "$tmpfname"
         chmod 644 "$tmpfname"
         mv "$tmpfname" "$fname"
     fi
@@ -400,16 +429,18 @@ monitor_processes () {
 
     $p4 monitor show > "$monfile" 2> /dev/null
     rm -f "$tmpfname"
-    echo "# HELP p4_monitor_by_cmd P4 running processes" >> "$tmpfname"
-    echo "# TYPE p4_monitor_by_cmd counter" >> "$tmpfname"
-    awk '{print $5}' "$monfile" | sort | uniq -c | while read count cmd
+    {
+        echo "# HELP p4_monitor_by_cmd P4 running processes"
+        echo "# TYPE p4_monitor_by_cmd counter"
+    } >> "$tmpfname"
+    awk '{print $5}' "$monfile" | sort | uniq -c | while read -r count cmd
     do
         echo "p4_monitor_by_cmd{${serverid_label}${sdpinst_label},cmd=\"$cmd\"} $count" >> "$tmpfname"
     done
 
     echo "# HELP p4_monitor_by_user P4 running processes" >> "$tmpfname"
     echo "# TYPE p4_monitor_by_user counter" >> "$tmpfname"
-    awk '{print $3}' "$monfile" | sort | uniq -c | while read count user
+    awk '{print $3}' "$monfile" | sort | uniq -c | while read -r count user
     do
         echo "p4_monitor_by_user{${serverid_label}${sdpinst_label},user=\"$user\"} $count" >> "$tmpfname"
     done
@@ -419,9 +450,11 @@ monitor_processes () {
     else
         proc="p4d"
     fi
-    echo "# HELP p4_process_count P4 ps running processes" >> "$tmpfname"
-    echo "# TYPE p4_process_count counter" >> "$tmpfname"
-    pcount=$(ps ax | grep "$proc " | grep -v "grep $proc" | wc -l)
+    {
+        echo "# HELP p4_process_count P4 ps running processes"
+        echo "# TYPE p4_process_count counter"
+    } >> "$tmpfname"
+    pcount=$(pgrep -u "$P4USER" "$proc" | wc -l)
     echo "p4_process_count{${serverid_label}${sdpinst_label}} $pcount" >> "$tmpfname"
 
     chmod 644 "$tmpfname"
@@ -444,12 +477,12 @@ monitor_completed_cmds () {
     fi
 
     # Get the current timestamp and linecount
-    p4log_ts_curr=$(stat -c %Y $p4logfile)
-    p4log_lc_curr=$(wc -l $p4logfile | awk '{print $1}')
+    p4log_ts_curr=$(stat -c %Y "$p4logfile")
+    p4log_lc_curr=$(wc -l "$p4logfile" | awk '{print $1}')
     # Update the data file
     echo "Updating data file:"
     echo "[p4log][curr timestamp: ${p4log_ts_curr}][curr linecount: ${p4log_lc_curr}]"
-    echo "p4log $p4log_ts_curr $p4log_lc_curr" >> $tmpdatafile
+    echo "p4log $p4log_ts_curr $p4log_lc_curr" >> "$tmpdatafile"
 
     # If the logfile current timestamp is less then the last timestamp delete prom and return
     [[ $p4log_ts_curr -gt $p4log_ts_last ]] || { rm -f "$fname"; return ; }
@@ -461,9 +494,11 @@ monitor_completed_cmds () {
         num_cmds=$(grep -c ' completed ' "$p4logfile")
     fi
     rm -f "$tmpfname"
-    echo "#HELP p4_completed_cmds Completed p4 commands" >> "$tmpfname"
-    echo "#TYPE p4_completed_cmds counter" >> "$tmpfname"
-    echo "p4_completed_cmds{${serverid_label}${sdpinst_label}} $num_cmds" >> "$tmpfname"
+    {
+        echo "#HELP p4_completed_cmds Completed p4 commands"
+        echo "#TYPE p4_completed_cmds counter"
+        echo "p4_completed_cmds{${serverid_label}${sdpinst_label}} $num_cmds"
+    } >> "$tmpfname"
     chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
 }
@@ -476,41 +511,45 @@ monitor_checkpoint () {
     # both write to checkpoint.log!
     # The strings searched for have been present in SDP logs for years now...
 
-    [[ $UseSDP -eq 0 ]] && return   # Not valid if SDP not in use
+    [[ "$UseSDP" -eq 0 ]] && return   # Not valid if SDP not in use
     
     fname="$metrics_root/p4_checkpoint${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
 
     rm -f "$tmpfname"
-    echo "#HELP p4_sdp_checkpoint_log_time Time of last checkpoint log" >> "$tmpfname"
-    echo "#TYPE p4_sdp_checkpoint_log_time gauge" >> "$tmpfname"
+    {
+        echo "#HELP p4_sdp_checkpoint_log_time Time of last checkpoint log"
+        echo "#TYPE p4_sdp_checkpoint_log_time gauge"
+    } >> "$tmpfname"
 
     # Look for latest checkpoint log which has Start/End (avoids run in progress and rotate_journal logs)
     ckp_log=""
-#    for f in $(ls -t /p4/$SDP_INSTANCE/logs/checkpoint.log*);
-    for f in $(find -L /p4/$SDP_INSTANCE/logs -type f -name checkpoint.log* -exec ls -t {} +)
+    # shellcheck disable=SC2044
+    for f in $(find -L "/p4/$SDP_INSTANCE/logs" -type f -name "checkpoint.log*" -exec ls -t {} +)
     do
-        if [[ `grep -cE "Start p4_$SDP_INSTANCE Checkpoint|End p4_$SDP_INSTANCE Checkpoint" $f` -eq 2 ]]; then
+        if [[ $(grep -cE "Start p4_$SDP_INSTANCE Checkpoint|End p4_$SDP_INSTANCE Checkpoint" "$f") -eq 2 ]]; then
             ckp_log="$f"
             break
         fi;
     done
     ckp_time=0
-    if [[ ! -z "$ckp_log" ]]; then
+    if [[ -n "$ckp_log" ]]; then
         ckp_time=$(date -r "$ckp_log" +"%s")
     fi
-    echo "p4_sdp_checkpoint_log_time{${serverid_label}${sdpinst_label}} $ckp_time" >> "$tmpfname"
 
-    echo "#HELP p4_sdp_checkpoint_duration Time taken for last checkpoint/restore action" >> "$tmpfname"
-    echo "#TYPE p4_sdp_checkpoint_duration gauge" >> "$tmpfname"
+    {
+        echo "p4_sdp_checkpoint_log_time{${serverid_label}${sdpinst_label}} $ckp_time"
+        echo "#HELP p4_sdp_checkpoint_duration Time taken for last checkpoint/restore action"
+        echo "#TYPE p4_sdp_checkpoint_duration gauge"
+    } >> "$tmpfname"
 
     ckp_duration=0
-    if [[ ! -z "$ckp_log" && $ckp_time -gt 0 ]]; then
+    if [[ -n "$ckp_log" && "$ckp_time" -gt 0 ]]; then
         dt=$(grep "Start p4_$SDP_INSTANCE Checkpoint" "$ckp_log" | sed -e 's/\/p4.*//')
         start_time=$(date -d "$dt" +"%s")
         dt=$(grep "End p4_$SDP_INSTANCE Checkpoint" "$ckp_log" | sed -e 's/\/p4.*//')
         end_time=$(date -d "$dt" +"%s")
-        ckp_duration=$(($end_time - $start_time))
+        ckp_duration=$((end_time - start_time))
     fi
     echo "p4_sdp_checkpoint_duration{${serverid_label}${sdpinst_label}} $ckp_duration" >> "$tmpfname"
 
@@ -525,22 +564,24 @@ monitor_replicas () {
 
     valid_servers=""
     # Read like this to set global variables in loop
-    while read svr_id type services
+    while read -r svr_id services
     do
         if [[ $services =~ standard|replica|commit-server|edge-server|forwarding-replica|build-server|standby|forwarding-standby ]]; then
             valid_servers="$valid_servers $svr_id"
         fi
-    done < <($p4 -F "%serverID% %type% %services%" servers)
+    done < <($p4 -F "%serverID% %services%" servers)
     declare -A svr_jnl
     declare -A svr_pos
-    while read svr_id jnl pos
+    while read -r svr_id jnl pos
     do
         svr_jnl[$svr_id]=$jnl
         svr_pos[$svr_id]=$pos
     done < <($p4 -F "%serverID% %appliedJnl% %appliedPos%" servers -J)
 
-    echo "#HELP p4_replica_curr_jnl Current journal for server" >> "$tmpfname"
-    echo "#TYPE p4_replica_curr_jnl counter" >> "$tmpfname"
+    {
+        echo "#HELP p4_replica_curr_jnl Current journal for server"
+        echo "#TYPE p4_replica_curr_jnl counter"
+    } >> "$tmpfname"
     for s in $valid_servers
     do
         curr_jnl=${svr_jnl[$s]:-0}
@@ -548,8 +589,10 @@ monitor_replicas () {
         echo "p4_replica_curr_jnl{${serverid_label}${sdpinst_label},servername=\"$s\"} $curr_jnl" >> "$tmpfname"
     done
 
-    echo "#HELP p4_replica_curr_pos Current journal for server" >> "$tmpfname"
-    echo "#TYPE p4_replica_curr_pos counter" >> "$tmpfname"
+    {
+        echo "#HELP p4_replica_curr_pos Current journal for server"
+        echo "#TYPE p4_replica_curr_pos counter"
+    } >> "$tmpfname"
     for s in $valid_servers
     do
         curr_pos=${svr_pos[$s]:-0}
@@ -584,11 +627,14 @@ monitor_errors () {
     indError=$((indID-1))
 
     rm -f "$tmpfname"
-    echo "#HELP p4_error_count Server errors by id" >> "$tmpfname"
-    echo "#TYPE p4_error_count counter" >> "$tmpfname"
-    while read count ss_id error_id level
+    {
+        echo "#HELP p4_error_count Server errors by id"
+        echo "#TYPE p4_error_count counter"
+    } >> "$tmpfname"
+
+    while read -r count ss_id error_id level
     do
-        if [[ ! -z ${ss_id:-} ]]; then
+        if [[ -n ${ss_id:-} ]]; then
             subsystem=${subsystems[$ss_id]}
             [[ -z "$subsystem" ]] && subsystem=$ss_id
             echo "p4_error_count{${serverid_label}${sdpinst_label},subsystem=\"$subsystem\",error_id=\"$error_id\",level=\"$level\"} $count" >> "$tmpfname"
@@ -608,13 +654,19 @@ monitor_pull () {
     pullfile="/tmp/pull.out"
     $p4 pull -l > "$pullfile" 2> /dev/null 
     rm -f "$tmpfname"
-    echo "# HELP p4_pull_errors P4 pull transfers failed count" >> "$tmpfname"
-    echo "# TYPE p4_pull_errors counter" >> "$tmpfname"
-    count=$(grep -cEa "failed\.$" "$pullfile")
-    echo "p4_pull_errors{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
 
-    echo "# HELP p4_pull_queue P4 pull files in queue count" >> "$tmpfname"
-    echo "# TYPE p4_pull_queue counter" >> "$tmpfname"
+    {
+        echo "# HELP p4_pull_errors P4 pull transfers failed count"
+        echo "# TYPE p4_pull_errors counter"
+    } >> "$tmpfname"
+
+    count=$(grep -cEa "failed\.$" "$pullfile")
+    {
+        echo "p4_pull_errors{${serverid_label}${sdpinst_label}} $count"
+        echo "# HELP p4_pull_queue P4 pull files in queue count"
+        echo "# TYPE p4_pull_queue counter"
+    } >> "$tmpfname"
+
     count=$(grep -cvEa "failed\.$" "$pullfile")
     echo "p4_pull_queue{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
 
@@ -625,8 +677,9 @@ monitor_pull () {
 monitor_realtime () {
     # p4d --show-realtime - only for 2021.1 or greater
     # Intially only available for SDP
-    [[ $UseSDP -eq 1 ]] || return
-    p4dver=$($P4DBIN -V |grep Rev.|awk -F / '{print $3}' )
+    [[ "$UseSDP" -eq 1 ]] || return
+    p4dver=$("$P4DBIN" -V |grep Rev.|awk -F / '{print $3}' )
+    # shellcheck disable=SC2072
     [[ "$p4dver" > "2020.0" ]] || return
 
     realtimefile="/tmp/show-realtime.out"
@@ -650,81 +703,97 @@ monitor_realtime () {
     origname="rtv.db.lockwait"
     mname="p4_${origname//./_}"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    if [[ ! -z $count ]]; then
-        metric_count=$(($metric_count + 1))
-        echo "# HELP $mname P4 realtime lockwait counter" >> "$tmpfname"
-        echo "# TYPE $mname gauge" >> "$tmpfname"
-        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ -n "$count" ]]; then
+        metric_count=$((metric_count + 1))
+        {
+            echo "# HELP $mname P4 realtime lockwait counter"
+            echo "# TYPE $mname gauge"
+            echo "$mname{${serverid_label}${sdpinst_label}} $count"
+        } >> "$tmpfname"
     fi
 
     origname="rtv.db.ckp.active"
     mname="p4_${origname//./_}"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    if [[ ! -z $count ]]; then
-        metric_count=$(($metric_count + 1))
-        echo "# HELP $mname P4 realtime checkpoint active indicator" >> "$tmpfname"
-        echo "# TYPE $mname gauge" >> "$tmpfname"
-        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ -n "$count" ]]; then
+        metric_count=$((metric_count + 1))
+        {
+            echo "# HELP $mname P4 realtime checkpoint active indicator"
+            echo "# TYPE $mname gauge"
+            echo "$mname{${serverid_label}${sdpinst_label}} $count"
+        } >> "$tmpfname"
     fi
 
     origname="rtv.db.ckp.records"
     mname="p4_${origname//./_}"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    if [[ ! -z $count ]]; then
-        metric_count=$(($metric_count + 1))
-        echo "# HELP $mname P4 realtime checkpoint records counter" >> "$tmpfname"
-        echo "# TYPE $mname gauge" >> "$tmpfname"
-        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ -n "$count" ]]; then
+        metric_count=$((metric_count + 1))
+        {
+            echo "# HELP $mname P4 realtime checkpoint records counter"
+            echo "# TYPE $mname gauge"
+            echo "$mname{${serverid_label}${sdpinst_label}} $count"
+        } >> "$tmpfname"
     fi
 
     origname="rtv.db.io.records"
     mname="p4_${origname//./_}"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    if [[ ! -z $count ]]; then
-        metric_count=$(($metric_count + 1))
-        echo "# HELP $mname P4 realtime IO records counter" >> "$tmpfname"
-        echo "# TYPE $mname counter" >> "$tmpfname"
-        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ -n "$count" ]]; then
+        metric_count=$((metric_count + 1))
+        {
+            echo "# HELP $mname P4 realtime IO records counter"
+            echo "# TYPE $mname counter"
+            echo "$mname{${serverid_label}${sdpinst_label}} $count"
+        } >> "$tmpfname"
     fi
 
     origname="rtv.rpl.behind.bytes"
     mname="p4_${origname//./_}"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    if [[ ! -z $count ]]; then
-        metric_count=$(($metric_count + 1))
-        echo "# HELP $mname P4 realtime replica bytes lag counter" >> "$tmpfname"
-        echo "# TYPE $mname gauge" >> "$tmpfname"
-        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ -n "$count" ]]; then
+        metric_count=$((metric_count + 1))
+        {
+            echo "# HELP $mname P4 realtime replica bytes lag counter"
+            echo "# TYPE $mname gauge"
+            echo "$mname{${serverid_label}${sdpinst_label}} $count"
+        } >> "$tmpfname"
     fi
 
     origname="rtv.rpl.behind.journals"
     mname="p4_${origname//./_}"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    if [[ ! -z $count ]]; then
-        metric_count=$(($metric_count + 1))
-        echo "# HELP $mname P4 realtime replica journal lag counter" >> "$tmpfname"
-        echo "# TYPE $mname gauge" >> "$tmpfname"
-        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ -n "$count" ]]; then
+        metric_count=$((metric_count + 1))
+        {
+            echo "# HELP $mname P4 realtime replica journal lag counter"
+            echo "# TYPE $mname gauge"
+            echo "$mname{${serverid_label}${sdpinst_label}} $count"
+        } >> "$tmpfname"
     fi
 
     origname="rtv.svr.sessions.active"
     mname="p4_${origname//./_}"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    if [[ ! -z $count ]]; then
-        metric_count=$(($metric_count + 1))
-        echo "# HELP $mname P4 realtime server active sessions counter" >> "$tmpfname"
-        echo "# TYPE $mname gauge" >> "$tmpfname"
-        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ -n $count ]]; then
+        metric_count=$((metric_count + 1))
+        {
+            echo "# HELP $mname P4 realtime server active sessions counter"
+            echo "# TYPE $mname gauge"
+            echo "$mname{${serverid_label}${sdpinst_label}} $count"
+        } >> "$tmpfname"
     fi
 
     origname="rtv.svr.sessions.total"
     mname="p4_${origname//./_}"
     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-    if [[ ! -z $count ]]; then
-        metric_count=$(($metric_count + 1))
-        echo "# HELP $mname P4 realtime server total sessions counter" >> "$tmpfname"
-        echo "# TYPE $mname counter" >> "$tmpfname"
-        echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    if [[ -n "$count" ]]; then
+        metric_count=$((metric_count + 1))
+        {
+            echo "# HELP $mname P4 realtime server total sessions counter"
+            echo "# TYPE $mname counter"
+            echo "$mname{${serverid_label}${sdpinst_label}} $count"
+        } >> "$tmpfname"
     fi
 
     if [[ $metric_count -gt 0 ]]; then
@@ -735,9 +804,9 @@ monitor_realtime () {
 
 update_data_file () {
     echo "Updating data file:"
-    cat $tmpdatafile
-    rm -f $data_file
-    mv $tmpdatafile $data_file
+    cat "$tmpdatafile"
+    rm -f "$data_file"
+    mv "$tmpdatafile" "$data_file"
 }
 
 load_data_file
@@ -757,4 +826,4 @@ monitor_ssl
 update_data_file
 
 # Make sure all readable by node_exporter or other user
-chmod 644 $metrics_root/*.prom
+chmod 644 "$metrics_root"/*.prom

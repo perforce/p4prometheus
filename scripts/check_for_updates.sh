@@ -11,7 +11,7 @@ github_url="https://api.github.com/repos/perforce/p4prometheus/commits?per_page=
 github_download_url="https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts"
 
 function msg () { echo -e "$*"; }
-function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
+function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
 function usage
 {
@@ -35,6 +35,12 @@ Uses the github API and stores a local file with current status.
 
 Depends on 'curl' and 'jq' being in the path.
 "
+   if [[ "$style" == -man ]]; then
+       # Add full manual page documentation here.
+      true
+   fi
+
+   exit 2
 }
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
@@ -49,10 +55,10 @@ ConfigFile=".update_config"
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
-        (-h) usage -h && exit 0;;
-        # (-man) usage -man;;
+        (-h) usage -h;;
+        (-man) usage -man;;
         (-c) ConfigFile=$2; shiftArgs=1;;
-        (-*) usage -h "Unknown command line option ($1)." && exit 1;;
+        (-*) usage -h "Unknown command line option ($1).";;
     esac
  
     # Shift (modify $#) the appropriate number of times.
@@ -67,18 +73,15 @@ set -u
 cd "$SCRIPT_DIR" || bail "Can't cd to $SCRIPT_DIR"
 
 # Check for dependencies
-
-curl=$(which curl)
-[[ $? -eq 0 ]] || bail "Failed to find curl in path"
-jq=$(which jq)
-[[ $? -eq 0 ]] || bail "Failed to find jq in path"
+[[ -n "$(command -v curl)" ]] || bail "Failed to find curl in PATH."
+[[ -n "$(command -v jq)" ]] || bail "Failed to find jq in PATH."
 
 last_github_sha=""
-last_github_date=""
+#last_github_date=""
 
 if [[ -e "$ConfigFile" ]]; then
     last_github_sha=$(grep last_github_sha "$ConfigFile" | cut -d= -f2)
-    last_github_date=$(grep last_github_date "$ConfigFile" | cut -d= -f2)
+    #last_github_date=$(grep last_github_date "$ConfigFile" | cut -d= -f2)
 fi
 
 github_sha=$(curl "$github_url" | jq '.[] | .sha')

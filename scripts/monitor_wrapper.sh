@@ -24,7 +24,7 @@
 metrics_root=/p4/metrics
 
 function msg () { echo -e "$*"; }
-function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
+function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
 function usage
 {
@@ -43,6 +43,12 @@ monitor_wrapper.sh [<instance> | -nosdp] [-p <port>] | [-u <user>] | [-m <metric
  
 monitor_wrapper.sh -h
 "
+   if [[ "$style" == -man ]]; then
+       # Add full manual page documentation here.
+      true
+   fi
+
+   exit 2
 }
 
 # Command Line Processing
@@ -54,12 +60,12 @@ set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
         (-h) usage -h;;
-        # (-man) usage -man;;
+        (-man) usage -man;;
         (-p) Port=$2; shiftArgs=1;;
         (-u) User=$2; shiftArgs=1;;
         (-m) metrics_root=$2; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
-        (-*) usage -h "Unknown command line option ($1)." && exit 1;;
+        (-*) usage -h "Unknown command line option ($1).";;
         (*) export SDP_INSTANCE=$1;;
     esac
  
@@ -84,6 +90,8 @@ if [[ $UseSDP -eq 1 ]]; then
         echo "You must supply the Perforce SDP instance as a parameter to this script or use flag: -nosdp."
         exit 1
     fi
+
+    # shellcheck disable=SC1091
     source /p4/common/bin/p4_vars "$SDP_INSTANCE"
 else
     p4port=${Port:-$P4PORT}

@@ -29,7 +29,7 @@ metrics_logfile="/p4/1/logs/push_metrics.log"
 
 function msg () { echo -e "$*"; }
 function log () { dt=$(date '+%Y-%m-%d %H:%M:%S'); echo -e "$dt: $*" >> "$metrics_logfile"; msg "$dt: $*"; }
-function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
+function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
 function usage
 {
@@ -52,6 +52,12 @@ Takes node_exporter metrics and pushes them to pushgateway instance centrally.
 
 This is not normally required on customer machines. It assumes an SDP setup.
 "
+
+   if [[ "$style" == -man ]]; then
+       # Add full manual page documentation here.
+      true
+   fi
+   exit 2
 }
 
 # Command Line Processing
@@ -62,10 +68,10 @@ ConfigFile=/p4/common/config/.push_metrics.cfg
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
-        (-h) usage -h && exit 0;;
-        # (-man) usage -man;;
+        (-h) usage -h;;
+        (-man) usage -man;;
         (-c) ConfigFile=$2; shiftArgs=1;;
-        (-*) usage -h "Unknown command line option ($1)." && exit 1;;
+        (-*) usage -h "Unknown command line option ($1).";;
     esac
  
     # Shift (modify $#) the appropriate number of times.
@@ -110,7 +116,7 @@ max_iterations=10
 STATUS=1
 while [ $STATUS -ne 0 ]; do
     sleep 1
-    ((iterations=$iterations+1))
+    iterations=$((iterations+1))
     log "Pushing metrics"
     result=$(curl --retry 5 --user "$metrics_user:$metrics_passwd" --data-binary @_push.log "$metrics_host/metrics/job/$metrics_job/instance/$metrics_instance/customer/$metrics_customer")
     STATUS=0
