@@ -15,6 +15,9 @@ On your commit/master or any perforce edge/replica server machines, install:
   - monitor_metrics.sh
   - monitor_wrapper.sh and monitor_metrics.py
 
+On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc, install:
+  - node_exporter
+
 *Table of Contents:*
 
 - [Installation Details for P4Prometheus and Other Components](#installation-details-for-p4prometheus-and-other-components)
@@ -56,16 +59,23 @@ The metrics available within Grafana are documented in [P4Prometheus README](REA
 
 # Automated Script Installation
 
-There are two scripts which automate the manual installation steps listed below. At the moment these scripts
-assume an SDP structure.
+There are scripts which automate the manual installation steps listed below. The scripts can be used with SDP
+structure or not as desired.
 
 Checkout  following files:
-* [install_p4prom.sh](scripts/install_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance
-* [install_prom_graf.sh](scripts/install_prom_graf.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
+* [install_p4prom.sh](scripts/install_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance (`node_exporter`, `p4prometheus`, monitoring scripts)
+* [install_prom_graf.sh](scripts/install_prom_graf.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for the monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
+* [install_node.sh](scripts/install_node.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_node.sh) - the installer for monitoring a server hosting other tools such as Swarm, Hansoft, HTH (Helix TeamHub) etc. Just installs `node_exporter`
+
+Example of use (as root):
+
+    wget https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh
+    chmod +x install_p4prom.sh
+    ./install_p4prom.sh -h
 
 # Package Install of Grafana
 
-This should be done on the monitoring server only.
+This should be done on the monitoring server only. If not using [automated scripts](#automated-script-installation) then follow these instructions.
 
 Use the appropriate link below depending if you using `apt` or `yum`:
 
@@ -74,7 +84,7 @@ Use the appropriate link below depending if you using `apt` or `yum`:
 
 ## Setup of Grafana dashboards
 
-Once Grafana is installed the following dashboards are recommended:
+Once Grafana is installed (and Prometheus/Victoria Metrics) the following dashboards are recommended:
 
 * https://grafana.com/grafana/dashboards/12278 - P4 Stats
 * https://grafana.com/grafana/dashboards/15509 - P4 Stats (non-SDP)
@@ -119,7 +129,7 @@ You can re-upload the dashboard with the same title (it will create a new versio
 
 # Install Prometheus
 
-This must be done on the monitoring server only.
+This must be done on the monitoring server only. If not using [automated scripts](#automated-script-installation) then follow these instructions.
 
 Run the following as root:
 
@@ -173,7 +183,7 @@ EOF
 
 ## Prometheus config
 
-It is important you edit and adjust the `targets` value appropriately to scrape from your commit/edge/replica servers (and localhost).
+It is important you edit and adjust the `targets` value appropriately below (see `#####` section) to scrape from your commit/edge/replica servers (and localhost).
 
 See later section on enabling Alertmanager if required.
 
@@ -204,7 +214,9 @@ scrape_configs:
 
   - job_name: 'node_exporter'
     static_configs:
+    ############################################################
     # CONFIGURE THESE VALUES AS APPROPRIATE FOR YOUR SERVERS!!!!
+    ############################################################
     - targets: 
         - p4hms:9100
         - p4main:9100
@@ -215,12 +227,12 @@ EOF
 
 Make sure user has access:
 
-  sudo chown prometheus:prometheus /etc/prometheus/prometheus.yml
+    sudo chown prometheus:prometheus /etc/prometheus/prometheus.yml
 
 ## Install victoria metrics (optional but recommended)
 
 This is a high performing component (up to 20x faster) and good for long term storage (data compression is up to 70x)
-so that much more data can be stored in the same space.
+so that much more data can be stored in the same space. If not using [automated scripts](#automated-script-installation) then follow these instructions.
 
 It is API compatible and thus a drop in for querying. It is configured as a Prometheus writer so is continually kept up-to-date.
 
@@ -517,7 +529,7 @@ There is a convenience script to keep things up-to-date in future:
 Configure them for your metrics directory (e.g. `/hxlogs/metrics`)
 
 Please note that `monitor_metrics.py` (which is called by `monitor_wrapper.sh`) runs `lslocks` and 
-cross references locsk found with `p4 monitor show` output. This is incredibly useful for
+cross references locks found with `p4 monitor show` output. This is incredibly useful for
 determining processes which are blocked by other processes. It is hard to discover this information
 if you are not collecting the data at the time!
 
