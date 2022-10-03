@@ -148,6 +148,9 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_error_count | subsystem, error_id, level | Server errors by id - for sudden spurts of errors |
 | p4_pull_errors |  | P4 pull transfers failed count - to monitor replication status |
 | p4_pull_queue |  | P4 pull files in queue count - for replication |
+| p4_pull_replica_journals_behind |  | How many journals replica is behind |
+| p4_pull_replication_error |  | Set to 1 if replication error detected or 0 if working |
+| p4_pull_replica_lag |  | How many bytes replica is behind in current journal (-1 = error) |
 | p4_licensed_user_count |  | P4D Licensed User count |
 | p4_licensed_user_limit |  | P4D Licensed User Limit |
 | p4_license_expires |  | P4D License expiry (epoch secs) |

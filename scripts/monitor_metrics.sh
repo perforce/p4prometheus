@@ -605,18 +605,104 @@ monitor_pull () {
 
     fname="$metrics_root/p4_pull${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-    pullfile="/tmp/pull.out"
-    $p4 pull -l > "$pullfile" 2> /dev/null 
+    tmp_pull_queue="$metrics_root/pullq.out"
+    $p4 pull -l > "$tmp_pull_queue" 2> /dev/null 
     rm -f "$tmpfname"
-    echo "# HELP p4_pull_errors P4 pull transfers failed count" >> "$tmpfname"
-    echo "# TYPE p4_pull_errors counter" >> "$tmpfname"
-    count=$(grep -cEa "failed\.$" "$pullfile")
-    echo "p4_pull_errors{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
 
-    echo "# HELP p4_pull_queue P4 pull files in queue count" >> "$tmpfname"
-    echo "# TYPE p4_pull_queue counter" >> "$tmpfname"
-    count=$(grep -cvEa "failed\.$" "$pullfile")
-    echo "p4_pull_queue{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
+    count=$(grep -cEa "failed\.$" "$tmp_pull_queue")
+    {
+        echo "# HELP p4_pull_errors P4 pull transfers failed count"
+        echo "# TYPE p4_pull_errors counter"
+        echo "p4_pull_errors{${serverid_label}${sdpinst_label}} $count"
+    } >> "$tmpfname"
+
+    count=$(grep -cvEa "failed\.$" "$tmp_pull_queue")
+    {
+        echo "# HELP p4_pull_queue P4 pull files in queue count"
+        echo "# TYPE p4_pull_queue counter"
+        echo "p4_pull_queue{${serverid_label}${sdpinst_label}} $count"
+    } >> "$tmpfname"
+
+#     $ p4 pull -lj
+#     Current replica journal state is:       Journal 1237,  Sequence 2680510310.
+#     Current master journal state is:        Journal 1237,  Sequence 2680510310.
+#     The statefile was last modified at:     2022/03/29 14:15:16.
+#     The replica server time is currently:   2022/03/29 14:15:18 +0000 GMT
+
+#     $ p4 pull -lj
+#     Perforce password (P4PASSWD) invalid or unset.
+#     Perforce password (P4PASSWD) invalid or unset.
+#     Current replica journal state is:       Journal 1237,  Sequence 2568249374.
+#     Current master journal state is:        Journal 1237,  Sequence -1.
+#     Current master journal state is:        Journal 0,      Sequence -1.
+#     The statefile was last modified at:     2022/03/29 13:05:46.
+#     The replica server time is currently:   2022/03/29 14:13:21 +0000 GMT
+
+# perforce@gemini20:/p4 p4 -Ztag pull -lj
+# ... replicaJournalCounter 12671
+# ... replicaJournalNumber 12671
+# ... replicaJournalSequence 17984845
+# ... replicaStatefileModified 1664718313
+# ... replicaTime 1664718339
+# ... masterJournalNumber 12671
+# ... masterJournalSequence 17985009
+# ... masterJournalNumberLEOF 12671
+# ... masterJournalSequenceLEOF 17984845
+
+# perforce@gemini20:/p4 p4 -Ztag pull -lj
+# Perforce password (P4PASSWD) invalid or unset.
+# Perforce password (P4PASSWD) invalid or unset.
+# ... replicaJournalCounter 12671
+# ... replicaJournalNumber 12671
+# ... replicaJournalSequence 17984845
+# ... replicaStatefileModified 1664718313
+# ... replicaTime 1664718339
+# ... masterJournalNumber 12671
+# ... masterJournalSequence -1
+# ... currentJournalNumber 0
+# ... currentJournalSequence -1
+# ... masterJournalNumberLEOF 12671
+# ... masterJournalSequenceLEOF -1
+# ... currentJournalNumberLEOF 0
+# ... currentJournalSequenceLEOF -1
+
+    tmp_pull_stats="$metrics_root/pull-lj.out"
+    $p4 -zTag pull -lj > "$tmp_pull_stats" 2> /dev/null 
+
+    replica_jnl_file=$(grep "replicaJournalCounter " "$tmp_pull_stats" | awk '{print $3}' )
+    master_jnl_file=$(grep "masterJournalNumber " "$tmp_pull_stats" | awk '{print $3}' )
+    journals_behind=$((master_jnl_file - replica_jnl_file))
+
+    {
+        echo "# HELP p4_pull_replica_journals_behind Count of how many journals behind replica is"
+        echo "# TYPE p4_pull_replica_journals_behind gauge"
+        echo "p4_pull_replica_journals_behind{${serverid_label}${sdpinst_label}} $journals_behind"
+    }  >> "$tmpfname"
+
+    replica_jnl_seq=$(grep "replicaJournalSequence " "$tmp_pull_stats" | awk '{print $3}' )
+    master_jnl_seq=$(grep "replicaJournalSequence " "$tmp_pull_stats" | awk '{print $3}' )
+    {
+        echo "# HELP p4_pull_replication_error Set to 1 if replication error"
+        echo "# TYPE p4_pull_replication_error gauge"
+    } >>  "$tmpfname"
+    if [[ $master_jnl_seq -lt 0 ]]; then
+        echo "p4_pull_replication_error{${serverid_label}${sdpinst_label}} 1" >> "$tmpfname"
+    else
+        echo "p4_pull_replication_error{${serverid_label}${sdpinst_label}} 0" >> "$tmpfname"
+    fi
+
+    {
+        echo "# HELP p4_pull_replica_lag Replica lag count (bytes)"
+        echo "# TYPE p4_pull_replica_lag gauge"
+    } >>  "$tmpfname"
+
+    if [[ $master_jnl_seq -lt 0 ]]; then
+        echo "p4_pull_replica_lag{${serverid_label}${sdpinst_label}} -1" >> "$tmpfname"
+    else
+        # Ensure base 10 arithmetic used to avoid overflow errors
+        lag_count=$((10#$master_jnl_seq - 10#$replica_jnl_seq))
+        echo "p4_pull_replica_lag{${serverid_label}${sdpinst_label}} $lag_count" >> "$tmpfname"
+    fi
 
     chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
