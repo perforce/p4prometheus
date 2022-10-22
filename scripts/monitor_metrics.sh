@@ -291,7 +291,7 @@ monitor_filesys () {
         defaultValue=$(egrep "$c=.*default" $tmp_filesys_data | awk '{print $1}' | awk -F= '{print $2}')
         value="$configuredValue"
         [[ -z "$configuredValue" ]] && value="$defaultValue"
-        # Use ask to dehumanise 1G or 500m
+        # Use awk to dehumanise 1G or 500m
         bytes=$(echo "$value" | awk 'BEGIN{IGNORECASE = 1}
             function printpower(n,b,p) {printf "%u\n", n*b^p; next}
             /[0-9]$/{print $1;next};

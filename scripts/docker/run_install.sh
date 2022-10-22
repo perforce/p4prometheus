@@ -19,4 +19,27 @@ sed -i 's@server_id:.*@server_id: test.server@' "$config_file"
 
 # echo test.server > /opt/perforce/servers/test/server.id
 
+# Need to restart as the config file won't have been valid
 systemctl restart p4prometheus
+
+sleep 1
+
+p4 info
+p4 depots
+
+sleep 1
+
+sudo -u perforce crontab -l > /tmp/c.out
+
+# Extract the script to run and run it
+script=$(grep monitor_metrics /tmp/c.out | sed -e 's@.*/etc@/etc@' | sed -e "s/ >.*//")
+sudo -u perforce $script
+
+# Restart where we can see output
+systemctl stop node_exporter
+nohup /usr/local/bin/node_exporter --collector.textfile.directory=/p4metrics > /tmp/node.out &
+
+sleep 3
+p4 configure show
+
+py.test -v test_nosdp.py
