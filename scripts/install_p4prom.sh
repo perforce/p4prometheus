@@ -41,13 +41,13 @@ install_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>] 
 
 install_p4prom.sh -h
 
-    -push     Means install pushgateway cronjob and config file.
     <metrics_root> is the directory where metrics will be written - default: $metrics_root
     <metrics_link> is an alternative link to metrics_root where metrics will be written - default: $metrics_link
                 Typically only used for SDP installations.
     <osuser>    Operating system user, e.g. perforce, under which p4d process is running
+    -push     Means install pushgateway cronjob and config file. Not relevant for most installations.
 
-Specify either the SDP instance (e.g. 1), or -nosdp
+IMPORTANT: Specify either the SDP instance (e.g. 1), or -nosdp
 
 WARNING: If using -nosdp, then please ensure P4PORT and P4USER are appropriately set and that you can connect
     to your server (e.g. you have done a 'p4 trust' if required, and logged in already)
@@ -232,6 +232,9 @@ install_p4prometheus () {
         restorecon -vF $bin_file
     fi
 
+    mkdir -p "$p4prom_config_dir" "$p4prom_bin_dir"
+    chown "$OSUSER:$OSGROUP" "$p4prom_config_dir" "$p4prom_bin_dir"
+
 cat << EOF > $p4prom_config_file
 # ----------------------
 # sdp_instance: SDP instance - typically integer, but can be
@@ -315,6 +318,11 @@ EOF
 
 install_monitor_metrics () {
 
+    if [[ $UseSDP -eq 1 ]]; then
+        cron_args="$SDP_INSTANCE"
+    else
+        cron_args="-p $P4PORT -u $P4USER -nosdp -m $metrics_root"
+    fi
     mon_installer="/tmp/_install_mon.sh"
     cat << EOF > $mon_installer
 # Download latest versions
@@ -330,25 +338,30 @@ done
 
 # Install in crontab if required
 scriptname="monitor_metrics.sh"
-if ! crontab -l | grep -q "\$scriptname" ;then
-    entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname $SDP_INSTANCE > /dev/null 2>&1 ||:"
-    (crontab -l && echo "\$entry1") | crontab -
+mytab="/tmp/mycron"
+crontab -l > \$mytab
+if ! grep -q "\$scriptname" "\$mytab" ;then
+    entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname $cron_args > /dev/null 2>&1 ||:"
+    echo "\$entry1" >> "\$mytab"
 fi
 scriptname="monitor_wrapper.sh"
-if ! crontab -l | grep -q "\$scriptname" ;then
-    entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname $SDP_INSTANCE > /dev/null 2>&1 ||:"
-    (crontab -l && echo "\$entry1") | crontab -
+if ! grep -q "\$scriptname" "\$mytab" ;then
+    entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname $cron_args > /dev/null 2>&1 ||:"
+    echo "\$entry1" >> "\$mytab"
 fi
+crontab "\$mytab"
 
 EOF
 
     if [[ $InstallPushgateway -eq 1 ]]; then
         cat << EOF >> "$mon_installer"
 scriptname="push_metrics.sh"
-if ! crontab -l | grep -q "\$scriptname" ;then
+if ! grep -q "\$scriptname" "\$mytab" ;then
     entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname -c $p4prom_config_dir/.push_metrics.cfg > /dev/null 2>&1 ||:"
-    (crontab -l && echo "\$entry1") | crontab -
+    echo "\$entry1" >> "\$mytab"
 fi
+crontab "\$mytab"
+
 EOF
     fi
 

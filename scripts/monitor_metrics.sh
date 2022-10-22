@@ -31,9 +31,23 @@ fi
 # ============================================================
 # Configuration section
 
-# This might also be /hxlogs/metrics or passed as a parameter (with -m flag)
+# In an SDP env, this might also be /hxlogs/metrics - see install_p4prom.sh
+# In a non-SDP env, this directory might be passed as a parameter (with -m flag) or configure here as, e.g.
+#   /p4metrics or /var/p4metrics
+# It is IMPORTANT that your config file for the node_exporter service is correctly configured
+# with parameter specifying the same directory as here:  
+#   --collector.textfile.directory=/p4metrics
+# The directory permissions are also important. Whatever directory you specify must:
+#   - have read access for OS user running node_exporter service (e.g. run chmod 755 on the dir and any parent dir)
+#   - have write access for OS user running this monitor_metrics.sh (e.g. chown <user> )
+# So in a non-SDP env, it might be simplest to create a single top level dir. /p4metrics or similar 
+
 metrics_root=/p4/metrics
-data_file=/p4/monitor_metrics.dat
+
+# For non SDP, if the 'p4' executable is not in your $PATH, then specify full path here. SDP will update it.
+
+P4BIN=p4
+
 # ============================================================
 
 function msg () { echo -e "$*"; }
@@ -50,7 +64,7 @@ function usage
  
    echo "USAGE for monitor_metrics.sh:
  
-monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ] | [-m <metrics_dir>] [-d <data_file>]
+monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ] | [-m <metrics_dir>]
  
    or
  
@@ -71,7 +85,6 @@ while [[ $# -gt 0 ]]; do
         (-p) Port=$2; shiftArgs=1;;
         (-u) User=$2; shiftArgs=1;;
         (-m) metrics_root=$2; shiftArgs=1;;
-        (-d) data_file=$2; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
@@ -105,6 +118,7 @@ if [[ $UseSDP -eq 1 ]]; then
     source /p4/common/bin/p4_vars "$SDP_INSTANCE" ||\
     { echo -e "\\nError: Failed to load SDP environment.\\n"; exit 1; }
 
+    # Note that P4BIN is defined by SDP by sourcing above file, as are P4USER, P4PORT
     p4="$P4BIN -u $P4USER -p $P4PORT"
     $p4 info -s > "$tmp_info_data"
     [[ $? -eq 0 ]] || bail "Can't connect to P4PORT: $P4PORT"
@@ -115,7 +129,7 @@ if [[ $UseSDP -eq 1 ]]; then
 else
     p4port=${Port:-$P4PORT}
     p4user=${User:-$P4USER}
-    p4="p4 -u $p4user -p $p4port"
+    p4="$P4BIN -u $p4user -p $p4port"
     $p4 info -s > "$tmp_info_data"
     [[ $? -eq 0 ]] || bail "Can't connect to P4PORT: $p4port"
     sdpinst_label=""
@@ -146,36 +160,6 @@ else
 fi
 [[ -n "$SERVER_ID" ]] || SERVER_ID=UnsetServerID
 serverid_label="serverid=\"$SERVER_ID\""
-
-# Set data vars
-tmpdatafile="${data_file}.tmp"
-p4log_ts_last=0
-p4log_lc_last=0
-p4err_ts_last=0
-p4err_lc_last=0 
-
-load_data_file () {
-    # Loads the data from the data file if it exists, otherwise sets all vars to 0
-    [[ -f "$data_file" ]] || { echo "data_file not found"; return ; } 
-    
-    # Read in the data file information
-    while read filetype mod_time line_count
-    do
-        case "$filetype" in
-        'p4log')
-            p4log_ts_last=$mod_time
-            p4log_lc_last=$line_count
-        ;;
-        'p4err')
-            p4err_ts_last=$mod_time
-            p4err_lc_last=$line_count
-        ;;
-        esac
-    done < $data_file
-    echo "data file loaded:"
-    echo "[p4log][last timestamp: ${p4log_ts_last}][last linecount: ${p4log_lc_last}]"
-    echo "[p4err][last timestamp: ${p4err_ts_last}][last linecount: ${p4err_lc_last}]"
-}
 
 monitor_uptime () {
     # Server uptime as a simple seconds parameter - parsed from p4 info:
@@ -428,46 +412,6 @@ monitor_processes () {
     mv "$tmpfname" "$fname"
 }
 
-monitor_completed_cmds () {
-    # Metric for completed commands by parsing log file - auto-skipped for large log files
-    local num_cmds=0
-    fname="$metrics_root/p4_completed_cmds${sdpinst_suffix}-${SERVER_ID}.prom"
-    tmpfname="$fname.$$"
-
-    # If the logfile doesnt exist delete prom and return
-    [[ -f "$p4logfile" ]] || { rm -f "$fname"; return ; }
-
-    # This test is skipped if the log file is bigger than 1GB for performance reasons
-    fsize=$(du -k "$p4logfile" | cut -f 1)
-    if [[ "$fsize" -gt 1000000 ]]; then
-        return
-    fi
-
-    # Get the current timestamp and linecount
-    p4log_ts_curr=$(stat -c %Y $p4logfile)
-    p4log_lc_curr=$(wc -l $p4logfile | awk '{print $1}')
-    # Update the data file
-    echo "Updating data file:"
-    echo "[p4log][curr timestamp: ${p4log_ts_curr}][curr linecount: ${p4log_lc_curr}]"
-    echo "p4log $p4log_ts_curr $p4log_lc_curr" >> $tmpdatafile
-
-    # If the logfile current timestamp is less then the last timestamp delete prom and return
-    [[ $p4log_ts_curr -gt $p4log_ts_last ]] || { rm -f "$fname"; return ; }
-
-    # If the linecount current is greater then the last, then set the lines to read in
-    if [[ $p4log_lc_curr -gt $p4log_lc_last ]]; then
-        num_cmds=$(sed -n "$p4log_lc_last,$p4log_lc_curr"p "$p4logfile" | grep -c ' completed ')
-    else
-        num_cmds=$(grep -c ' completed ' "$p4logfile")
-    fi
-    rm -f "$tmpfname"
-    echo "#HELP p4_completed_cmds Completed p4 commands" >> "$tmpfname"
-    echo "#TYPE p4_completed_cmds counter" >> "$tmpfname"
-    echo "p4_completed_cmds{${serverid_label}${sdpinst_label}} $num_cmds" >> "$tmpfname"
-    chmod 644 "$tmpfname"
-    mv "$tmpfname" "$fname"
-}
-
 monitor_checkpoint () {
     # Metric for when SDP checkpoint last ran and how long it took.
     # Not as easy as it might first appear because:
@@ -713,6 +657,7 @@ monitor_realtime () {
     # Intially only available for SDP
     [[ $UseSDP -eq 1 ]] || return
     p4dver=$($P4DBIN -V |grep Rev.|awk -F / '{print $3}' )
+    # shellcheck disable=SC2072
     [[ "$p4dver" > "2020.0" ]] || return
 
     realtimefile="/tmp/show-realtime.out"
@@ -819,18 +764,9 @@ monitor_realtime () {
     fi
 }
 
-update_data_file () {
-    echo "Updating data file:"
-    cat $tmpdatafile
-    rm -f $data_file
-    mv $tmpdatafile $data_file
-}
-
-load_data_file
 monitor_uptime
 monitor_change
 monitor_processes
-monitor_completed_cmds
 monitor_checkpoint
 monitor_replicas
 monitor_errors
@@ -840,7 +776,6 @@ monitor_license
 monitor_filesys
 monitor_versions
 monitor_ssl
-update_data_file
 
 # Make sure all readable by node_exporter or other user
 chmod 644 $metrics_root/*.prom
