@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM ubuntu:20.04 AS p4promtestbase
 MAINTAINER Robert Cowham "rcowham@perforce.com"
 
 RUN apt -y update; \
@@ -33,12 +33,24 @@ RUN echo "deb http://package.perforce.com/apt/ubuntu  focal  release" > /etc/apt
     wget -qO - https://package.perforce.com/perforce.pubkey | sudo apt-key add -; \
     apt-get -y update; \
     apt-get -y install cron; \
-    apt-get -y install gawk; \
-    apt-get -y install helix-p4d
+    apt-get -y install gawk
 
 RUN pip3 install pytest-testinfra
+ADD install_p4prom.sh /root/
+
+# -----------------------------
+FROM p4promtestbase AS p4promtest-nonsdp
+
+RUN apt-get -y install helix-p4d
 
 ADD docker/setup_nonsdp.sh /root/
 ADD docker/run_install.sh /root/
-ADD install_p4prom.sh /root/
-ADD test/test_nosdp.py /root/
+ADD tests/test_nosdp.py /root/
+
+# -----------------------------
+FROM p4promtestbase AS p4promtest-sdp
+
+ADD docker/setup_sdp.sh /root/
+RUN /root/setup_sdp.sh
+ADD docker/run_install.sh /root/
+ADD tests/test_sdp.py /root/

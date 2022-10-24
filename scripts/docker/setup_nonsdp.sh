@@ -16,14 +16,14 @@ echo perforce:Password | chpasswd
 #
 # Helpful profile for perforce user login profile - for manual testing mainly
 #
-# BASH_PROF=/p4/.bash_profile
-# cat <<"EOF" >$BASH_PROF
-# export PATH=/sdp/Server/Unix/p4/common/bin:$PATH
-# export P4CONFIG=.p4config
-# export P4P4PORT=1666
-# PS1='\u@\h:\w$ '
-# EOF
-# chown perforce:perforce $BASH_PROF
+BASH_PROF=/opt/perforce/.bash_profile
+cat <<"EOF" >$BASH_PROF
+export PATH=/sdp/Server/Unix/p4/common/bin:$PATH
+export P4CONFIG=.p4config
+export P4P4PORT=1666
+PS1='\u@\h:\w$ '
+EOF
+chown perforce:perforce $BASH_PROF
 
 server_root=/opt/perforce/servers/test
 mkdir -p $server_root
