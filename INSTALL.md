@@ -701,6 +701,7 @@ groups:
     annotations:
       summary: "Endpoint {{ $labels.instance }} too few log lines"
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been below target for more than 1 minutes."
+
   - alert: Replication Slow HA
     expr: >
       p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="master"}
@@ -712,6 +713,7 @@ groups:
     annotations:
       summary: "Endpoint {{ $labels.instance }} replication warning"
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 1 minutes."
+
   - alert: Replication Slow London
     expr: >
       p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="master"}
@@ -723,6 +725,7 @@ groups:
     annotations:
       summary: "Endpoint {{ $labels.instance }} replication warning"
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 1 minutes."
+
   - alert: Checkpoint slow
     expr: p4_sdp_checkpoint_duration{sdpinst="1",serverid="master"} > 50 * 60
     for: 5m
@@ -731,6 +734,7 @@ groups:
     annotations:
       summary: "Endpoint {{ $labels.instance }} checkpoint job duration longer than expected"
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 1 minutes."
+
   - alert: Checkpoint not taken 
     expr: time() - p4_sdp_checkpoint_log_time{sdpinst="1",serverid="master"} > 25 * 60 * 60
     for: 5m
@@ -739,6 +743,7 @@ groups:
     annotations:
       summary: "Endpoint {{ $labels.instance }} checkpoint not taken in 25 hours warning"
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 1 minutes."
+
   - alert: P4D service not running
     expr: node_systemd_unit_state{state="active",name="p4d_1.service"} != 1
     for: 5m
@@ -747,7 +752,8 @@ groups:
     annotations:
       summary: "Endpoint {{ $labels.instance }} p4d service not running"
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for 5 minutes."
-  - alert: DiskspaceLow
+
+  - alert: Diskspace Low
     expr: node_filesystem_free_bytes{mountpoint=~"/hx.*"} / node_filesystem_size_bytes{mountpoint=~"/hx.*"} * 100 < 10
     for: 5m
     labels:
@@ -755,7 +761,8 @@ groups:
     annotations:
       summary: "Endpoint {{ $labels.instance }} disk space below 10%"
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been below limit for 5 minutes."
-  - alert: DiskspaceLowPrediction
+
+  - alert: Diskspace Low Prediction
     expr: >
         predict_linear(node_filesystem_free_bytes{mountpoint=~"/hx.*"}[1h], 2 * 24 * 3600) < 0
         and on (instance, mountpoint)
@@ -768,6 +775,43 @@ groups:
     annotations:
       summary: "Endpoint {{ $labels.instance }} disk space predicting to fill up in 48  hours based on current usage trend and is less than 10% free and < 10G free"
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been true 30 minutes."
+
+  - alert: P4D license expiry
+    expr: p4_license_time_remaining{instance!~".*edge.*"} < 14 * 24 * 60 * 60
+    for: 6h
+    labels:
+      severity: "low"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} license due to expire in < 14 days"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been low for 6 hours."
+
+  - alert: App Memory Usage High
+    expr: >
+        (100 * (
+            node_memory_MemTotal_bytes -
+            node_memory_MemFree_bytes -
+            node_memory_Buffers_bytes -
+            node_memory_Cached_bytes -
+            node_memory_SwapCached_bytes -
+            node_memory_Slab_bytes -
+            node_memory_PageTables_bytes -
+            node_memory_VmallocUsed_bytes)
+            / node_memory_MemTotal_bytes) > 70.0
+    for: 10m
+    labels:
+      severity: "warning"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} App Memory usage above 70%"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true 10 minutes."
+
+  - alert: SSL Expires
+    expr: p4_ssl_cert_expires - time() < 14 * 24 * 3600
+    for: 12h
+    labels:
+      severity: "warning"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} SSL certificate expiry warning"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been below target for more than 12 hours."
 
 ```
 
