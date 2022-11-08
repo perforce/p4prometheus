@@ -22,20 +22,21 @@
 #
 # Extra fields:
 #   type: gauge # Note default is counter
-#   yformat: s  # good for setting time values (seconds/hours/weeks/...), or byte values, e.g. 'decbytes'
-# 
+#   yformat: s  # good for setting time values (seconds/hours/weeks/...)
+#            decbytes - byte values
+#            percent - 1-100%
 #========================================================================
 # Expected customisations:
 # * Check the hardcoded values for replication in 'expr' and adjust for your environment:
-#   Anything with the value '(Update for your site)'
+#   Anything with the value '(_UPDATE_FOR_YOUR_SITE_)'
 #   E.g.
 #
-# - title: Replica Lag for sample_replica from sample_master (Update for your site)
+# - title: Replica Lag for SAMPLE_REPLICA from SAMPLE_MASTER (_UPDATE_FOR_YOUR_SITE_)
 #   target:
 #   - expr: >-
-#       p4_replica_curr_pos{instance="sample_master_instance",job="node_exporter",sdpinst="1",servername="sample_master"} -
+#       p4_replica_curr_pos{instance="SAMPLE_MASTER_instance",sdpinst="1",servername="SAMPLE_MASTER"} -
 #       ignoring (serverid, servername)
-#       p4_replica_curr_pos{instance="sample_master_instance",job="node_exporter",sdpinst="1",servername="sample_replica"}
+#       p4_replica_curr_pos{instance="SAMPLE_MASTER_instance",sdpinst="1",servername="SAMPLE_REPLICA"}
 
 #========================================================================
 
@@ -47,6 +48,28 @@
 # p4_cmd_user_cumulative_seconds
 # p4_cmd_user_detail_counter
 # p4_cmd_user_detail_cumulative_seconds
+
+- section: Disk Space (_UPDATE_FOR_YOUR_SITE_ - check mountpoints)
+- row: 1
+- title: Free Space Alert - filesys.*.min
+  target:
+  - expr: node_filesystem_free_bytes{mountpoint="/hxmetadata"} - on (customer, instance) p4_filesys_min{filesys="P4ROOT"}
+    legend: "hxmetadata above min"
+  - expr: node_filesystem_free_bytes{mountpoint="/hxlogs"} - on (customer, instance) p4_filesys_min{filesys="P4LOG"}
+    legend: "hxlogs above min"
+  - expr: node_filesystem_free_bytes{mountpoint="/hxdepots"} - on (customer, instance) p4_filesys_min{filesys="depot"}
+    legend: "hxdepots above min"
+  - expr: p4_filesys_min{customer="$customer", filesys=~"depots|P4ROOT|P4LOG"}
+    legend: "min {{filesys}}"
+  yformat: decbytes
+
+- title: Filesystem percentage used (_UPDATE_FOR_YOUR_SITE_ - check mountpoints)
+  target:
+  - expr: >-
+      100.0 - 100 *(node_filesystem_avail_bytes{mountpoint=~"/hx.*"})
+          / (node_filesystem_size_bytes{mountpoint=~"/hx.*"})
+    legend: "{{mountpoint}}"
+  yformat: percent
 
 - section: Monitor Tracking
 - row: 1
@@ -82,7 +105,6 @@
   - expr: p4_server_uptime{sdpinst="$sdpinst"}
   yformat: s
 
-- row: 1
 - title: $serverid time since last SDP checkpoint
   target:
   - expr: time() - p4_sdp_checkpoint_log_time{sdpinst="$sdpinst",serverid="$serverid"}
@@ -141,25 +163,37 @@
     legend: "{{servername}}"
 
 - row: 1
-- title: Replica Lag for sample_replica from sample_master (Update for your site)
+- title: Replica Lag for SAMPLE_REPLICA from SAMPLE_MASTER (_UPDATE_FOR_YOUR_SITE_)
   target:
   - expr: >-
-      p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="sample_master"} -
+      p4_replica_curr_pos{instance="SOME_INSTANCE",sdpinst="1",servername="SAMPLE_MASTER"} -
       ignoring (serverid, servername)
-      p4_replica_curr_pos{instance="p4poke-chi:9100",job="node_exporter",sdpinst="1",servername="sample_replica"}
+      p4_replica_curr_pos{instance="SOME_INSTANCE",sdpinst="1",servername="SAMPLE_REPLICA"}
+
+- row: 1
+- title: Pull replica journals behind
+  target:
+  - expr: p4_pull_replica_journals_behind{sdpinst="$sdpinst"}
+- title: Replica lag (bytes)
+  target:
+  - expr: p4_pull_replica_lag{sdpinst="1"}
+  yformat: decbytes
 
 - row: 1
 - title: Pull queue size on replica
   target:
   - expr: p4_pull_queue{sdpinst="$sdpinst"}
-- title: rtv_repl_behind_bytes sample_replica (Update for your site)
+- title: rtv_repl_behind_bytes SAMPLE_REPLICA (_UPDATE_FOR_YOUR_SITE_)
   target:
-  - expr: p4_rtv_rpl_behind_bytes{instance="gemini:9100", job="node_exporter", sdpinst="1", serverid="sample_replica"}
+  - expr: p4_rtv_rpl_behind_bytes{instance="SOME_INSTANCE",  sdpinst="1", serverid="SAMPLE_REPLICA"}
 
 - row: 1
 - title: Pull queue errors
   target:
   - expr: p4_pull_errors{sdpinst="$sdpinst",serverid="$serverid"}
+- title: Replication errors
+  target:
+  - expr: p4_pull_replication_error{sdpinst="$sdpinst",serverid="$serverid"}
 
 - row: 1
 - title: Cmd counts per replica IP rate/min
@@ -172,7 +206,7 @@
     legend: "{{replica}}"
 
 - row: 1
-- title: Files synced (add/update/delete) /min
+- title: Files synced (add/update/delete) per min
   target:
   - expr: rate(p4_sync_files_added{sdpinst="$sdpinst",serverid="$serverid"}[1m])
     legend: "added"
@@ -180,7 +214,7 @@
     legend: "updated"
   - expr: rate(p4_sync_files_deleted{sdpinst="$sdpinst",serverid="$serverid"}[1m])
     legend: "deleted"
-- title: Bytes synced (add/update) /min
+- title: Bytes synced (add/update) per min
   target:
   - expr: rate(p4_sync_bytes_added{sdpinst="$sdpinst",serverid="$serverid"}[1m])
     legend: "added"

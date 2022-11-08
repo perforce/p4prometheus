@@ -19,7 +19,7 @@ DESCRIPTION:
 
     The resulting dashboard can be easily uploaded to Grafana by one one of these methods:
 
-    * directly using Grafana API and specifying url/api key token
+    * directly using Grafana API and specifying url/api key token (or putting in environment)
 
     * with associated script which takes json output file
 
@@ -28,23 +28,31 @@ DESCRIPTION:
     * outputting json to a file and copy and pasting it in to Grafana
 
 USAGE:
-    ./create_dashboard.py -h
+        ./create_dashboard.py -h
 
     Edit config file (default 'dashboard.yaml') and customize it.
     
     Create and upload the dashboard:
 
-    ./create_dashboard.py --title "P4Prometheus dashboard" -c dashboard.yaml --url http://p4monitor:3000 --api-key "Grafana-API-key"
+        ./create_dashboard.py --title "P4Prometheus dashboard" -c dashboard.yaml --url http://p4monitor:3000 --api-key "Grafana-API-key"
+
+    Using environment variables: 
+    
+        export GRAFANA_SERVER=https://p4monitor:3000
+        export GRAFANA_API_KEY="oe...=="
+
+        ./create_dashboard.py --title "P4Prometheus dashboard" -c dashboard.yaml
 
     Alternatively:
     
-    ./create_dashboard.py --title "P4Prometheus dashboard" -c dashboard.yaml > dash.json
-    ./upload_grafana_dashboard.sh
+        ./create_dashboard.py --title "P4Prometheus dashboard" -c dashboard.yaml > dash.json
+        ./upload_grafana_dashboard.sh
 
 """
 
 import textwrap
 import argparse
+import os
 import sys
 import io
 import yaml
@@ -85,15 +93,19 @@ class CreateDashboard():
         parser.add_argument('--customer', action='store_true', help="Specify that customer variable is defined and included")
         parser.add_argument('--no-sdp', action='store_true', default=False, help="Whether this is SDP instance or not - default is SDP")
         parser.add_argument('--filter-labels', action='store_true', default=False, help="Whether to filter labels by SDP or not")
-        parser.add_argument('-a', '--api-key', help="Grafana API key token")
+        parser.add_argument('-a', '--api-key', help="Grafana API key token - default $GRAFANA_API_KEY")
         parser.add_argument('--datasource', help="Grafana datasource name (otherwise uses default)")
         parser.add_argument('--list-datasources', action='store_true', default=False, 
                             help="Calls Grafana API to list datasources - output can be used with --datasource. " +
                             " This command will not upload anything.")
-        parser.add_argument('-u', '--url', help="Grafana url base, e.g. http://server or https://server")
+        parser.add_argument('-u', '--url', help="Grafana url base, e.g. http://server or https://server - default $GRAFANA_SERVER")
 
     def run(self):
         
+        if not self.options.url:
+            self.options.url = os.getenv('GRAFANA_SERVER')
+        if not self.options.api_key:
+            self.options.api_key = os.getenv('GRAFANA_API_KEY')
         if self.options.list_datasources:
             if not self.options.url or not self.options.api_key:
                 raise Exception("You must specify --url and --api-key when you specify --list-datasources")
@@ -162,16 +174,26 @@ class CreateDashboard():
             templating=G.Templating(list=templateList)
         )
 
+        # Default is 2 panels per row - so half width
+        # We set grid x and y
+        panelsInRow = x = y = 0
         for metric in self.config:
             if 'section' in metric:
                 dashboard.rows.append(G.Row(title=metric['section'], showTitle=True))
+                panelsInRow = x = y = 0
                 continue
             if 'row' in metric:
                 dashboard.rows.append(G.Row(title='', showTitle=False))
+                panelsInRow = x = y = 0
                 continue
             if 'type' in metric and metric['type'] == 'gauge':
                 pass
             else: # graph
+                panelsInRow += 1
+                if panelsInRow > 2:
+                    y += 30
+                if panelsInRow % 2 == 0:
+                    x = 12
                 yAxis = G.single_y_axis(format="short")
                 if 'yformat' in metric:
                     yAxis = G.single_y_axis(format=metric['yformat'])
@@ -181,18 +203,23 @@ class CreateDashboard():
                                 legend=G.Legend(show=True, alignAsTable=True,
                                                 min=True, max=True, avg=True, current=True, total=True,
                                                 sort='max', sortDesc=True),
-                                yAxes=yAxis)
+                                yAxes=yAxis,
+                                gridPos=G.GridPos(h=0, w=12, x=x, y=y)) # Half width panels
                 refId = 'A'
                 for targ in metric['target']:
                     texp = targ['expr']
-                    legend = "instance {{instance}}, serverid {{serverid}}"
+                    legend = ""
+                    if self.options.customer:
+                        legend = "{{customer}}, "
+                    legend += "instance {{instance}}, serverid {{serverid}}"
                     if 'legend' in targ:
                         legend += ' %s' % targ['legend']
-                    # Remove SDP
-                    if not self.options.use_sdp:
+                    if not self.options.use_sdp: # Remove the SDP tag
                         texp = texp.replace('sdpinst="$sdpinst",', '')
-                    if self.options.customer:
+                    if self.options.customer: # Add customer tag
                         texp = texp.replace('{', '{customer="$customer",')
+                    else:
+                        texp = texp.replace('on (customer, ', 'on (') # Remove customer from any on expressions
                     graph.targets.append(G.Target(expr=texp,
                                                   legendFormat=legend,
                                                   refId=refId))
