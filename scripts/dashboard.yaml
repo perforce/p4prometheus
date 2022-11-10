@@ -162,13 +162,14 @@
   - expr: p4_replica_curr_pos{sdpinst="$sdpinst",serverid="$serverid"}
     legend: "{{servername}}"
 
-- row: 1
-- title: Replica Lag for SAMPLE_REPLICA from SAMPLE_MASTER (_UPDATE_FOR_YOUR_SITE_)
-  target:
-  - expr: >-
-      p4_replica_curr_pos{instance="SOME_INSTANCE",sdpinst="1",servername="SAMPLE_MASTER"} -
-      ignoring (serverid, servername)
-      p4_replica_curr_pos{instance="SOME_INSTANCE",sdpinst="1",servername="SAMPLE_REPLICA"}
+# This is replaced by the metrics below - because this requires subtracting with named instances
+# - row: 1
+# - title: Replica Lag for SAMPLE_REPLICA from SAMPLE_MASTER (_UPDATE_FOR_YOUR_SITE_)
+#   target:
+#   - expr: >-
+#       p4_replica_curr_pos{sdpinst="$sdpinst",instance="SOME_MASTER_INSTANCE",servername="SAMPLE_MASTER"} -
+#       ignoring (serverid, servername)
+#       p4_replica_curr_pos{sdpinst="$sdpinst",instance="SOME_REPLICA_INSTANCE",servername="SAMPLE_REPLICA"}
 
 - row: 1
 - title: Pull replica journals behind
@@ -176,16 +177,16 @@
   - expr: p4_pull_replica_journals_behind{sdpinst="$sdpinst"}
 - title: Replica lag (bytes)
   target:
-  - expr: p4_pull_replica_lag{sdpinst="1"}
+  - expr: p4_pull_replica_lag{sdpinst="$sdpinst"}
   yformat: decbytes
 
 - row: 1
 - title: Pull queue size on replica
   target:
   - expr: p4_pull_queue{sdpinst="$sdpinst"}
-- title: rtv_repl_behind_bytes SAMPLE_REPLICA (_UPDATE_FOR_YOUR_SITE_)
+- title: rtv_repl_behind_bytes
   target:
-  - expr: p4_rtv_rpl_behind_bytes{instance="SOME_INSTANCE",  sdpinst="1", serverid="SAMPLE_REPLICA"}
+  - expr: p4_rtv_rpl_behind_bytes{instance="$sdpinst"}
 
 - row: 1
 - title: Pull queue errors
