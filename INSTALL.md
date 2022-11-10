@@ -956,7 +956,20 @@ When it is all working, you can wrap up and install each binary as a Service as 
 
 This used to be called "WMI Exporter".
 
-This takes a similar parameter to node_exporter: `--collector.textfile.directory` which must be correctly set and agree with the value used by P4prometheus.
+You can download a release, e.g. https://github.com/prometheus-community/windows_exporter/releases/download/v0.20.0/windows_exporter-0.20.0-amd64.msi 
+
+Note that when you run the .MSI file it may appear that it has done nothing - there are no dialogs etc! In fact it will have installed
+a service called `windows_exporter`. Look for it with `RegEdit.exe` under the key `HKLM\SYSTEM\CurrentControlSet\Services`.
+
+Edit the executable and add the similar parameter to node_exporter: `--collector.textfile.directory` which must be correctly set and agree with the value used by P4prometheus.
+
+Note that the default port is 9182.
+
+You can test in a similar way to on Linux:
+
+    curl http://localhost:9182/metrics
+
+and see what the output is.
 
 ## P4prometheus on Windows
 
