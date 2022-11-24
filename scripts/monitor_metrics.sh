@@ -518,26 +518,30 @@ monitor_errors () {
 
     # Log format differs according to p4d versions - first column
     ver=$(head -1 "$errors_file" | awk -F, '{print $1}')
-    indID=15
-    if [[ "$ver" == "4" ]]; then
-        indID=15
-    elif [[ "$ver" == "4.50" || "$ver" == "5.50" ]]; then
-        indID=17
+
+    # Output of logschema is:
+    # ... f_field 16
+    # ... f_name f_severity
+    line=$(p4 logschema "$ver" | grep -B1 f_severity | head -1)
+    if ! [[ $line =~ f_field ]]; then
+        return
     fi
-    indSS=$((indID+1))
-    indError=$((indID-1))
+    indSeverity=$(echo "$line" | awk '{print $3}')
+    indSeverity=$((indSeverity+1))    # 0->1 index
+    indSS=$((indSeverity+1))
+    indID=$((indSS+1))
 
     rm -f "$tmpfname"
     echo "#HELP p4_error_count Server errors by id" >> "$tmpfname"
     echo "#TYPE p4_error_count counter" >> "$tmpfname"
-    while read count ss_id error_id level
+    while read count level ss_id error_id
     do
         if [[ ! -z ${ss_id:-} ]]; then
             subsystem=${subsystems[$ss_id]}
             [[ -z "$subsystem" ]] && subsystem=$ss_id
             echo "p4_error_count{${serverid_label}${sdpinst_label},subsystem=\"$subsystem\",error_id=\"$error_id\",level=\"$level\"} $count" >> "$tmpfname"
         fi
-    done < <(awk -F, -v indID="$indID" -v indSS="$indSS" -v indError="$indError" '{printf "%s %s %s\n", $indID, $indSS, $indError}' "$errors_file" | sort | uniq -c)
+    done < <(awk -F, -v indID="$indID" -v indSS="$indSS" -v indSeverity="$indSeverity" '{printf "%s %s %s\n", $indID, $indSS, $indSeverity}' "$errors_file" | sort | uniq -c)
 
     chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
@@ -611,7 +615,7 @@ monitor_pull () {
 # ... currentJournalSequenceLEOF -1
 
     tmp_pull_stats="$metrics_root/pull-lj.out"
-    $p4 -zTag pull -lj > "$tmp_pull_stats" 2> /dev/null 
+    $p4 -Ztag pull -lj > "$tmp_pull_stats" 2> /dev/null 
 
     replica_jnl_file=$(grep "replicaJournalCounter " "$tmp_pull_stats" | awk '{print $3}' )
     master_jnl_file=$(grep "masterJournalNumber " "$tmp_pull_stats" | awk '{print $3}' )
@@ -624,7 +628,7 @@ monitor_pull () {
     }  >> "$tmpfname"
 
     replica_jnl_seq=$(grep "replicaJournalSequence " "$tmp_pull_stats" | awk '{print $3}' )
-    master_jnl_seq=$(grep "replicaJournalSequence " "$tmp_pull_stats" | awk '{print $3}' )
+    master_jnl_seq=$(grep "masterJournalSequence " "$tmp_pull_stats" | awk '{print $3}' )
     {
         echo "# HELP p4_pull_replication_error Set to 1 if replication error"
         echo "# TYPE p4_pull_replication_error gauge"
