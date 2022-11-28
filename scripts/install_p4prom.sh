@@ -45,7 +45,7 @@ install_p4prom.sh -h
     <metrics_link> is an alternative link to metrics_root where metrics will be written - default: $metrics_link
                 Typically only used for SDP installations.
     <osuser>    Operating system user, e.g. perforce, under which p4d process is running
-    -push     Means install pushgateway cronjob and config file. Not relevant for most installations.
+    -push     Means install pushgateway/report_data_instance cronjobs and config file. Not relevant for most installations.
 
 IMPORTANT: Specify either the SDP instance (e.g. 1), or -nosdp
 
@@ -351,21 +351,6 @@ if ! grep -q "\$scriptname" "\$mytab" ;then
 fi
 crontab "\$mytab"
 
-EOF
-
-    if [[ $InstallPushgateway -eq 1 ]]; then
-        cat << EOF >> "$mon_installer"
-scriptname="push_metrics.sh"
-if ! grep -q "\$scriptname" "\$mytab" ;then
-    entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname -c $p4prom_config_dir/.push_metrics.cfg > /dev/null 2>&1 ||:"
-    echo "\$entry1" >> "\$mytab"
-fi
-crontab "\$mytab"
-
-EOF
-    fi
-
-    cat << EOF >> "$mon_installer"
 # List things out for review
 echo "Crontab after updating - showing monitor entries:"
 crontab -l | grep /monitor_
@@ -400,9 +385,16 @@ if ! crontab -l | grep -q "\$scriptname" ;then
     entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname -c $config_file > /dev/null 2>&1 ||:"
     (crontab -l && echo "\$entry1") | crontab -
 fi
+
+scriptname="report_instance_data.sh"
+if ! crontab -l | grep -q "\$scriptname" ;then
+    entry1="0 23 * * * $p4prom_bin_dir/\$scriptname -c $config_file > /dev/null 2>&1 ||:"
+    (crontab -l && echo "\$entry1") | crontab -
+fi
+
 # List things out for review
 echo "Crontab after updating - showing push_metrics entries:"
-crontab -l | grep /push_metrics
+crontab -l | grep -E "/push_metrics|/report_instance"
 
 echo ""
 echo "===================================="
