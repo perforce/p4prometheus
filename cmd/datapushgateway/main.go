@@ -1,6 +1,7 @@
 // This is a companion to prometheus pushgateway
 // It is aimed to allow the saving of some arbitrary data specifying customer and instance names
 // The aim is to be wrapped by a script which checks in the result on a regular basis.
+// The client which is pusing data to this tool via curl is report_instance_data.sh
 package main
 
 import (
@@ -19,7 +20,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// We extract the bcrypted passwords from the config file for prometheus pushgateway
+// We extract the bcrypted passwords from the config file used for prometheus pushgateway
 // A very simple yaml structure.
 var usersPasswords = map[string][]byte{}
 
@@ -58,7 +59,7 @@ func readAuthFile(fname string) error {
 	}
 
 	for k, v := range users.Users {
-		fmt.Printf("%s: %s\n", k, v)
+		logger.Debugf("%s: %s\n", k, v)
 		usersPasswords[k] = []byte(v)
 	}
 	return nil
@@ -144,12 +145,12 @@ func main() {
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
 				log.Printf("Error reading body: %v", err)
-				http.Error(w, "can't read body", http.StatusBadRequest)
+				http.Error(w, "can't read body\n", http.StatusBadRequest)
 				return
 			}
 			logger.Debugf("Request Body: %s", string(body))
 			saveData(*dataDir, customer, instance, string(body))
-			w.Write([]byte("Data saved"))
+			w.Write([]byte("Data saved\n"))
 		} else {
 			w.Header().Set("WWW-Authenticate", `Basic realm="api"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)

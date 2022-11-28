@@ -1,11 +1,11 @@
 #!/bin/bash
-# aws_report_instance_data.sh
+# report_instance_data.sh
 # 
-# Collects basic AWS metadata about a customer environment.
+# Collects basic instance metadata about a customer environment (for AWS and Azure and ultimately other cloud envs)
 #
 # If used, put this job into perforce user crontab:
 #
-#   10 0 * * * /p4/common/site/bin/aws_report_instance_data.sh -c /p4/common/config/.push_metrics.cfg > /dev/null 2>&1 ||:
+#   10 0 * * * /p4/common/site/bin/report_instance_data.sh -c /p4/common/config/.push_metrics.cfg > /dev/null 2>&1 ||:
 #
 # You can specify a config file as above, with expected format the same as for push_metrics.sh
 #
@@ -110,7 +110,8 @@ if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Uns
 fi
 
 # Convert host from 9091 -> 9092 (pushgateway -> datapushgateway default)
-metrics_host=${metrics_host/91$/92}
+# TODO - make more configurable
+metrics_host=${metrics_host/9091/9092}
 
 # Collect various metrics
 
@@ -136,12 +137,35 @@ TempLog="$metrics_root/_instance_data.log"
 #   "version" : "2017-09-30"
 # }
 
-hostnamectl > $TempLog 2>&1
+rm -f $TempLog
+{
+    echo "Output of hostnamectl:"
+    echo "======================"
+    hostnamectl
+    echo ""
+} >> $TempLog 2>&1
 
 if [[ $IsAWS -eq 1 ]]; then
     TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-    Doc=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/dynamic/instance-identity/document)
-    echo "$Doc" >> $TempLog
+    Doc1=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/dynamic/instance-identity/document")
+    Doc2=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/tags/instance/")
+    {
+        echo "AWS Metadata"
+        echo "============"
+        echo "$Doc1"
+        echo ""
+        echo "AWS Tags:"
+        echo "========="
+        if echo $Doc2 | grep -q '404 - Not Found'; then
+            echo "Not available - check Instance permissions"
+        else
+            for t in $Doc2; do
+                v=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/tags/instance/$t")
+                echo "$t: $v"
+            done
+        fi
+        echo ""
+    } >> $TempLog 2>&1
 fi
 
 if [[ $IsAzure -eq 1 ]]; then
