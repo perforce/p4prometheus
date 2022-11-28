@@ -198,6 +198,10 @@ EOF
 
     push_installer="/tmp/_install_push.sh"
     cat << EOF > $push_installer
+if ! crontab -l ;then
+    echo "" | crontab
+fi
+
 scriptname="push_metrics.sh"
 if ! crontab -l | grep -q "\$scriptname" ;then
     entry1="*/1 * * * * $metrics_bin_dir/\$scriptname -c $config_file > /dev/null 2>&1 ||:"

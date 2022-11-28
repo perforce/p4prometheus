@@ -54,3 +54,9 @@ ADD docker/setup_sdp.sh /root/
 RUN /root/setup_sdp.sh
 ADD docker/run_install.sh /root/
 ADD tests/test_sdp.py /root/
+
+# -----------------------------
+FROM p4promtestbase AS p4promtest-no-p4
+
+ADD install_node.sh /root/
+# RUN /root/install_node.sh
