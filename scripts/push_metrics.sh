@@ -29,10 +29,8 @@
 # Configuration section
 
 node_exporter_url="http://localhost:9100"
+# The following may be overwritten in the config_file
 metrics_logfile="/p4/1/logs/push_metrics.log"
-
-# This might also be /hxlogs/metrics or passed as a parameter (with -m flag)
-declare metrics_root=/p4/metrics
 
 # ============================================================
 
@@ -110,7 +108,8 @@ if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Uns
    exit 1
 fi
 
-TempLog="$metrics_root/_push.log"
+pushd $(dirname "$metrics_logfile")
+TempLog="_push.log"
 curl "$node_exporter_url/metrics" > "$TempLog"
 
 # Loop while pushing as there seem to be temporary password failures quite frequently
@@ -134,3 +133,5 @@ while [ $STATUS -ne 0 ]; do
         exit 1
     fi
 done
+
+popd

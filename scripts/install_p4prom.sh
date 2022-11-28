@@ -328,7 +328,7 @@ install_monitor_metrics () {
 # Download latest versions
 mkdir -p $p4prom_bin_dir
 cd $p4prom_bin_dir
-for scriptname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh check_for_updates.sh; do
+for scriptname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh report_instance_data.sh check_for_updates.sh; do
     [[ -f "\$scriptname" ]] && rm "\$scriptname"
     echo "downloading \$scriptname"
     wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/\$scriptname"

@@ -166,30 +166,12 @@ install_push_gateway () {
 # Download latest versions
 mkdir -p $metrics_bin_dir
 cd $metrics_bin_dir
-for scriptname in push_metrics.sh check_for_updates.sh; do
+for scriptname in push_metrics.sh check_for_updates.sh report_instance_data.sh; do
     [[ -f "\$scriptname" ]] && rm "\$scriptname"
     echo "downloading \$scriptname"
     wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/\$scriptname"
     chmod +x "\$scriptname"
 done
-EOF
-
-    # Add push gateway to installer script if required
-    if [[ $InstallPushgateway -eq 1 ]]; then
-        cat << EOF >> "$mon_installer"
-scriptname="push_metrics.sh"
-if ! crontab -l | grep -q "\$scriptname" ;then
-    entry1="*/1 * * * * $metrics_bin_dir/\$scriptname -c $metrics_bin_dir/.push_metrics.cfg > /dev/null 2>&1 ||:"
-    (crontab -l && echo "\$entry1") | crontab -
-fi
-EOF
-    fi
-
-    cat << EOF >> "$mon_installer"
-# List things out for review
-echo "Crontab after updating - showing monitor entries:"
-crontab -l | grep /monitor_
-
 EOF
 
     chmod 755 "$mon_installer"
@@ -208,6 +190,8 @@ metrics_passwd=MySecurePassword_CHANGEME
 metrics_job=pushgateway
 metrics_instance=customerid-prod-hra_CHANGEME
 metrics_customer=customerid_CHANGEME
+metrics_logfile=$metrics_root/push_metrics.log
+report_instance_logfile=$metrics_root/report_instance.log
 # Modify the value below when everything above is ready - avoids getting bad metrics
 enabled=0
 EOF
@@ -219,9 +203,16 @@ if ! crontab -l | grep -q "\$scriptname" ;then
     entry1="*/1 * * * * $metrics_bin_dir/\$scriptname -c $config_file > /dev/null 2>&1 ||:"
     (crontab -l && echo "\$entry1") | crontab -
 fi
+
+scriptname="report_instance_data.sh"
+if ! crontab -l | grep -q "\$scriptname" ;then
+    entry1="0 23 * * * $metrics_bin_dir/\$scriptname -c $config_file > /dev/null 2>&1 ||:"
+    (crontab -l && echo "\$entry1") | crontab -
+fi
+
 # List things out for review
 echo "Crontab after updating - showing push_metrics entries:"
-crontab -l | grep /push_metrics
+crontab -l | grep -E "/push_metrics|/report_instance"
 
 echo ""
 echo "===================================="

@@ -18,10 +18,8 @@
 # ============================================================
 # Configuration section
 
-declare Log="/p4/1/logs/report_instance_data.log"
-
-# This might also be /hxlogs/metrics or passed as a parameter (with -m flag)
-declare metrics_root=/p4/metrics
+# May be overwritten in the config file.
+declare report_instance_logfile="/p4/1/logs/report_instance_data.log"
 
 # Default to AWS
 declare -i IsAWS=1
@@ -32,7 +30,7 @@ declare -i IsAzure=0
 declare ThisScript=${0##*/}
 
 function msg () { echo -e "$*"; }
-function log () { dt=$(date '+%Y-%m-%d %H:%M:%S'); echo -e "$dt: $*" >> "$Log"; msg "$dt: $*"; }
+function log () { dt=$(date '+%Y-%m-%d %H:%M:%S'); echo -e "$dt: $*" >> "$report_instance_logfile"; msg "$dt: $*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
 
 touch "$Log" || bail "Could not start logging; aborting."
@@ -48,13 +46,12 @@ function usage
  
    echo "USAGE for $ThisScript:
  
-$ThisScript -c <config_file> [-m <metrics_root>] [-aws|-azure]
+$ThisScript -c <config_file> [-aws|-azure]
  
    or
  
 $ThisScript -h
 
-    <metrics_root> is the directory where metrics are being written - default: $metrics_root
     -azure      Specifies to collect Azure specific data (default is AWS)
 
 Collects metadata about the current instance and pushes the data centrally.
@@ -74,7 +71,6 @@ while [[ $# -gt 0 ]]; do
         (-h) usage -h && exit 0;;
         # (-man) usage -man;;
         (-c) ConfigFile=$2; shiftArgs=1;;
-        (-m) metrics_root=$2; shiftArgs=1;;
         (-azure) IsAWS=0; IsAzure=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
     esac
@@ -96,13 +92,14 @@ metrics_customer=$(grep metrics_customer "$ConfigFile" | awk -F= '{print $2}')
 metrics_instance=$(grep metrics_instance "$ConfigFile" | awk -F= '{print $2}')
 metrics_user=$(grep metrics_user "$ConfigFile" | awk -F= '{print $2}')
 metrics_passwd=$(grep metrics_passwd "$ConfigFile" | awk -F= '{print $2}')
+report_instance_logfile=$(grep report_instance_logfile "$ConfigFile" | awk -F= '{print $2}')
 
 metrics_host=${metrics_host:-Unset}
 metrics_customer=${metrics_customer:-Unset}
 metrics_instance=${metrics_instance:-Unset}
 metrics_user=${metrics_user:-Unset}
 metrics_passwd=${metrics_passwd:-Unset}
-metadata_logfile=${metadata_logfile:-/p4/1/logs/report_instance_data.log}
+report_instance_logfile=${report_instance_logfile:-/p4/1/logs/report_instance_data.log}
 if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Unset || $metrics_customer == Unset || $metrics_instance == Unset ]]; then
    echo -e "\\nError: Required parameters not supplied.\\n"
    echo "You must set the variables metrics_host, metrics_user, metrics_passwd, metrics_customer, metrics_instance in $ConfigFile."
@@ -113,9 +110,10 @@ fi
 # TODO - make more configurable
 metrics_host=${metrics_host/9091/9092}
 
-# Collect various metrics
+# Collect various metrics into a tempt report file we post off
 
-TempLog="$metrics_root/_instance_data.log"
+pushd $(dirname "$metrics_logfile")
+TempLog="_instance_data.log"
 
 # For AWS:
 # curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/dynamic/instance-identity/document
@@ -181,7 +179,7 @@ STATUS=1
 while [ $STATUS -ne 0 ]; do
     sleep 1
     ((iterations=$iterations+1))
-    log "Pushing metrics"
+    log "Pushing data"
     result=$(curl --retry 5 --user "$metrics_user:$metrics_passwd" --data-binary "@$TempLog" "$metrics_host/data/?customer=$metrics_customer&instance=$metrics_instance")
     STATUS=0
     log "Checking result: $result"
@@ -194,3 +192,5 @@ while [ $STATUS -ne 0 ]; do
         exit 1
     fi
 done
+
+popd
