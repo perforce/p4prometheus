@@ -1,15 +1,15 @@
 #!/bin/bash
 # push_metrics.sh
 # 
-# Takes node_exporter metrics and pushes them to pushgateway instance centrally.
+# Takes node_exporter metrics and pushes them to a central pushgateway instance.
 #
-# If used, put this job into perforce user crontab, for SDP, e.g. where INSTANCE=1:
+# If used, put this job into perforce user crontab:
 #
 #   */1 * * * * /p4/common/site/bin/push_metrics.sh -c /p4/common/config/.push_metrics.cfg > /dev/null 2>&1 ||:
 #
 # You can specify a config file as above, with expected format:
 #
-#   metrics_host=https://monitorgw.hra.p4demo.com:9100
+#   metrics_host=https://monitorgw.hra.p4demo.com:9091
 #   metrics_user=customerid
 #   metrics_passwd=MySecurePassword
 #   metrics_job=pushgateway
@@ -24,8 +24,17 @@
 # can be read by the node_exporter user (and is setup via --collector.textfile.directory parameter)
 #
 
+
+# ============================================================
+# Configuration section
+
 node_exporter_url="http://localhost:9100"
 metrics_logfile="/p4/1/logs/push_metrics.log"
+
+# This might also be /hxlogs/metrics or passed as a parameter (with -m flag)
+declare metrics_root=/p4/metrics
+
+# ============================================================
 
 function msg () { echo -e "$*"; }
 function log () { dt=$(date '+%Y-%m-%d %H:%M:%S'); echo -e "$dt: $*" >> "$metrics_logfile"; msg "$dt: $*"; }
@@ -57,7 +66,7 @@ This is not normally required on customer machines. It assumes an SDP setup.
 # Command Line Processing
  
 declare -i shiftArgs=0
-ConfigFile=/p4/common/config/.push_metrics.cfg
+ConfigFile="/p4/common/config/.push_metrics.cfg"
 
 set +u
 while [[ $# -gt 0 ]]; do
@@ -97,11 +106,12 @@ metrics_passwd=${metrics_passwd:-Unset}
 metrics_logfile=${metrics_logfile:-/p4/1/logs/push_metrics.log}
 if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Unset || $metrics_instance == Unset || $metrics_customer == Unset ]]; then
    echo -e "\\nError: Required parameters not supplied.\\n"
-   echo "You must set the variables metrics_host, metrics_user, metrics_passwd, metrics_instance, metrics_custmer in $ConfigFile."
+   echo "You must set the variables metrics_host, metrics_user, metrics_passwd, metrics_instance, metrics_customer in $ConfigFile."
    exit 1
 fi
 
-curl "$node_exporter_url/metrics" > _push.log
+TempLog="$metrics_root/_push.log"
+curl "$node_exporter_url/metrics" > "$TempLog"
 
 # Loop while pushing as there seem to be temporary password failures quite frequently
 
@@ -112,7 +122,7 @@ while [ $STATUS -ne 0 ]; do
     sleep 1
     ((iterations=$iterations+1))
     log "Pushing metrics"
-    result=$(curl --retry 5 --user "$metrics_user:$metrics_passwd" --data-binary @_push.log "$metrics_host/metrics/job/$metrics_job/instance/$metrics_instance/customer/$metrics_customer")
+    result=$(curl --retry 5 --user "$metrics_user:$metrics_passwd" --data-binary "@$TempLog" "$metrics_host/metrics/job/$metrics_job/instance/$metrics_instance/customer/$metrics_customer")
     STATUS=0
     log "Checking result: $result"
     if [[ "$result" = '{"message":"invalid username or password"}' ]]; then
