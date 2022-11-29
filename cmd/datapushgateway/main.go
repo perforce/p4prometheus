@@ -66,12 +66,12 @@ func readAuthFile(fname string) error {
 }
 
 func saveData(dataDir string, customer string, instance string, data string) error {
-	newpath := filepath.Join(dataDir, customer, instance)
+	newpath := filepath.Join(dataDir, customer, "servers")
 	err := os.MkdirAll(newpath, os.ModePerm)
 	if err != nil {
 		return err
 	}
-	fname := filepath.Join(newpath, "details.md")
+	fname := filepath.Join(newpath, fmt.Sprintf("%s.md", instance))
 	f, err := os.Create(fname)
 	if err != nil {
 		logger.Errorf("Error opening %s: %v", fname, err)
