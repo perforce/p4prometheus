@@ -33,8 +33,6 @@ function msg () { echo -e "$*"; }
 function log () { dt=$(date '+%Y-%m-%d %H:%M:%S'); echo -e "$dt: $*" >> "$report_instance_logfile"; msg "$dt: $*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
 
-touch "$Log" || bail "Could not start logging; aborting."
-
 function usage
 {
    declare style=${1:--h}
