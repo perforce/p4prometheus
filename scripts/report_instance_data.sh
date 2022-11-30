@@ -142,6 +142,12 @@ rm -f $TempLog
     hostnamectl
     echo '```'
     echo ""
+    echo "# Output of crontab -l"
+    echo ""
+    echo '```'
+    crontab -l
+    echo '```'
+    echo ""
 } >> $TempLog 2>&1
 
 if [[ $IsAWS -eq 1 ]]; then
