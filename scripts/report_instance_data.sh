@@ -90,6 +90,7 @@ metrics_customer=$(grep metrics_customer "$ConfigFile" | awk -F= '{print $2}')
 metrics_instance=$(grep metrics_instance "$ConfigFile" | awk -F= '{print $2}')
 metrics_user=$(grep metrics_user "$ConfigFile" | awk -F= '{print $2}')
 metrics_passwd=$(grep metrics_passwd "$ConfigFile" | awk -F= '{print $2}')
+metrics_logfile=$(grep metrics_logfile "$ConfigFile" | awk -F= '{print $2}')
 report_instance_logfile=$(grep report_instance_logfile "$ConfigFile" | awk -F= '{print $2}')
 
 metrics_host=${metrics_host:-Unset}
