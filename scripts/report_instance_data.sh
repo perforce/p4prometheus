@@ -137,9 +137,9 @@ rm -f $TempLog
 {
     echo "# Output of hostnamectl"
     echo ""
-    echo "```"
+    echo '```'
     hostnamectl
-    echo "```"
+    echo '```'
     echo ""
 } >> $TempLog 2>&1
 
@@ -150,13 +150,13 @@ if [[ $IsAWS -eq 1 ]]; then
     {
         echo "# AWS Metadata"
         echo ""
-        echo "```"
+        echo '```'
         echo "$Doc1"
-        echo "```"
+        echo '```'
         echo ""
         echo "# AWS Tags"
         echo ""
-        echo "```"
+        echo '```'
         if echo $Doc2 | grep -q '404 - Not Found'; then
             echo "Not available - check Instance permissions"
         else
@@ -165,7 +165,7 @@ if [[ $IsAWS -eq 1 ]]; then
                 echo "$t: $v"
             done
         fi
-        echo "```"
+        echo '```'
         echo ""
     } >> $TempLog 2>&1
 fi
@@ -173,9 +173,9 @@ fi
 if [[ $IsAzure -eq 1 ]]; then
     Doc=$(curl -s -H Metadata:true --noproxy "*" "http://169.254.169.254/metadata/instance?api-version=2021-02-01" | python -m json.tool)
     {
-        echo "```"
+        echo '```'
         echo "$Doc"
-        echo "```"
+        echo '```'
     } >> $TempLog
 fi
 
