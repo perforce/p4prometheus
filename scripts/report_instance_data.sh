@@ -135,17 +135,14 @@ TempLog="_instance_data.log"
 # }
 
 rm -f $TempLog
+
+# Start creating report in Markdown format - being careful to quote backquotes properly!
+
 {
     echo "# Output of hostnamectl"
     echo ""
     echo '```'
     hostnamectl
-    echo '```'
-    echo ""
-    echo "# Output of crontab -l"
-    echo ""
-    echo '```'
-    crontab -l
     echo '```'
     echo ""
 } >> $TempLog 2>&1
@@ -185,6 +182,16 @@ if [[ $IsAzure -eq 1 ]]; then
         echo '```'
     } >> $TempLog
 fi
+
+{
+    echo ""
+    echo "# Output of crontab -l"
+    echo ""
+    echo '```'
+    crontab -l
+    echo '```'
+    echo ""
+} >> $TempLog 2>&1
 
 # Loop while pushing as there seem to be temporary password failures quite frequently
 
