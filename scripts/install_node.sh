@@ -145,7 +145,7 @@ User=$userid
 Group=$userid
 Type=simple
 ExecStart=/usr/local/bin/node_exporter --collector.systemd \
-  --collector.systemd.unit-include=(p4.*|node_exporter).service \
+  --collector.systemd.unit-include=node_exporter.service \
   --collector.textfile.directory=$metrics_root
 
 [Install]
