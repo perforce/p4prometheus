@@ -24,6 +24,7 @@ declare report_instance_logfile="/p4/1/logs/report_instance_data.log"
 # Default to AWS
 declare -i IsAWS=1
 declare -i IsAzure=0
+declare -i IsGCP=0
 
 # ============================================================
 
@@ -70,6 +71,7 @@ while [[ $# -gt 0 ]]; do
         # (-man) usage -man;;
         (-c) ConfigFile=$2; shiftArgs=1;;
         (-azure) IsAWS=0; IsAzure=1;;
+        (-gcp) IsAWS=0; IsGCP=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
     esac
  
@@ -177,6 +179,19 @@ fi
 if [[ $IsAzure -eq 1 ]]; then
     Doc=$(curl -s -H Metadata:true --noproxy "*" "http://169.254.169.254/metadata/instance?api-version=2021-02-01" | python -m json.tool)
     {
+        echo "# Azure Metadata"
+        echo ""
+        echo '```'
+        echo "$Doc"
+        echo '```'
+    } >> $TempLog
+fi
+
+if [[ $IsGCP -eq 1 ]]; then
+    Doc=$(curl "http://metadata.google.internal/computeMetadata/v1/?recursive=true&alt=text" -H "Metadata-Flavor: Google")
+    {
+        echo "# GCP Metadata"
+        echo ""
         echo '```'
         echo "$Doc"
         echo '```'
