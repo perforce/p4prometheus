@@ -783,3 +783,6 @@ monitor_ssl
 
 # Make sure all readable by node_exporter or other user
 chmod 644 $metrics_root/*.prom
+
+# Delete any temp files left over
+rm -f $metrics_root/*.prom.[0-9]*
