@@ -768,21 +768,25 @@ monitor_realtime () {
     fi
 }
 
+# Tidyup in case of errors
+function tidyup() {
+    # Make sure all readable by node_exporter or other user
+    chmod 644 $metrics_root/*.prom
+    # Delete any temp files left over
+    rm -f $metrics_root/*.prom.[0-9]*
+}
+# Catch errors and exit (e.g. unbound variable)
+trap tidyup ERR EXIT
+
 monitor_uptime
 monitor_change
 monitor_processes
-monitor_checkpoint
 monitor_replicas
-monitor_errors
 monitor_pull
 monitor_realtime
 monitor_license
 monitor_filesys
 monitor_versions
 monitor_ssl
-
-# Make sure all readable by node_exporter or other user
-chmod 644 $metrics_root/*.prom
-
-# Delete any temp files left over
-rm -f $metrics_root/*.prom.[0-9]*
+monitor_checkpoint
+monitor_errors
