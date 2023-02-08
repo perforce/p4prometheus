@@ -462,6 +462,36 @@ monitor_checkpoint () {
     mv "$tmpfname" "$fname"
 }
 
+monitor_checkpoint_nosdp () {
+    # Metric for when checkpoint last ran and how long it took.
+
+    [[ $UseSDP -eq 1 ]] && return   # Not valid if SDP in use
+
+    fname="$metrics_root/p4_checkpoint-${SERVER_ID}.prom"
+    tmpfname="$fname.$$"
+
+    rm -f "$tmpfname"
+    echo "#HELP p4_checkpoint_log_time Time of last checkpoint log" >> "$tmpfname"
+    echo "#TYPE p4_checkpoint_log_time gauge" >> "$tmpfname"
+
+    # Look for latest checkpoint log which has Start/End (avoids run in progress and rotate_journal logs)
+    ckp_md5=`find -L ${P4ROOT} -maxdepth 1 -type f -name 'checkpoint.*.md5' -exec ls -t {} + |head -n1`
+    ckp_log=`echo $ckp_md5 | sed 's/\.md5$//'`
+
+    ckp_starttime=`stat -c "%W" "$ckp_log"`
+    ckp_endtime=`stat -c "%Y" "$ckp_log"`
+    ckp_duration=$(($ckp_endtime - $ckp_starttime))
+
+    echo "p4_checkpoint_log_time{${serverid_label}} $ckp_starttime" >> "$tmpfname"
+
+    echo "#HELP p4_checkpoint_duration Time taken for last checkpoint/restore action" >> "$tmpfname"
+    echo "#TYPE p4_checkpoint_duration gauge" >> "$tmpfname"
+    echo "p4_checkpoint_duration{${serverid_label}} $ckp_duration" >> "$tmpfname"
+
+    chmod 644 "$tmpfname"
+    mv "$tmpfname" "$fname"
+}
+
 monitor_replicas () {
     # Metric for server replicas
     fname="$metrics_root/p4_replication${sdpinst_suffix}-${SERVER_ID}.prom"
@@ -789,4 +819,5 @@ monitor_filesys
 monitor_versions
 monitor_ssl
 monitor_checkpoint
+monitor_checkpoint_nosdp
 monitor_errors
