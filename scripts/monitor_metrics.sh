@@ -462,6 +462,63 @@ monitor_checkpoint () {
     mv "$tmpfname" "$fname"
 }
 
+monitor_journals () {
+    # Metrics for monitoring journals with `p4 journal`
+
+    fname="$metrics_root/p4_journals${sdpinst_suffix}-${SERVER_ID}.prom"
+    tmpfname="$fname.$$"
+
+    MAX_JOURNALS=20
+    rm -f "$tmpfname"
+    COUNT=0
+    OLDEST_JOURNAL=
+    LATEST_JOURNAL=
+    p4journals=`mktemp`
+    $p4 -F "%type% %start% %end% %jsize% %jnum% 0%failed%" journals -m $MAX_JOURNALS -F "type=journal|type=checkpoint" >$p4journals
+
+    echo "#HELP p4_journals_type Type of journal operation (1=journal, 2=checkpoint)" >> "$tmpfname"
+    echo "#TYPE p4_journals_type gauge" >> "$tmpfname"
+    echo "#HELP p4_journals_starttime Start Time of journal operation" >> "$tmpfname"
+    echo "#TYPE p4_journals_starttime gauge" >> "$tmpfname"
+    echo "#HELP p4_journals_finishtime Finish Time of journal operation" >> "$tmpfname"
+    echo "#TYPE p4_journals_finishtime gauge" >> "$tmpfname"
+    echo "#HELP p4_journals_size Size in bytes of journal operation output file" >> "$tmpfname"
+    echo "#TYPE p4_journals_size gauge" >> "$tmpfname"
+    echo "#HELP p4_journals_sequence Sequence number of journal operation output file" >> "$tmpfname"
+    echo "#TYPE p4_journals_sequence gauge" >> "$tmpfname"
+    echo "#HELP p4_journals_failed Failure status of journal operation" >> "$tmpfname"
+    echo "#TYPE p4_journals_failed gauge" >> "$tmpfname"
+
+    while read JOURNAL
+    do
+        COUNT=$(($COUNT + 1))
+
+        JTYPE=1
+        if [ "`echo $JOURNAL|cut -f1 -d' '`" == "checkpoint" ]; then JTYPE=2; fi
+        echo "p4_journals_type{${serverid_label}${sdpinst_label},position=\""${COUNT}\""} $JTYPE" >> "$tmpfname"
+
+        STARTTIME=`echo $JOURNAL|cut -f2 -d' '`
+        echo "p4_journals_starttime{${serverid_label}${sdpinst_label},position=\""${COUNT}\""} $STARTTIME" >> "$tmpfname"
+
+        FINISHTIME=`echo $JOURNAL|cut -f3 -d' '`
+        echo "p4_journals_finishtime{${serverid_label}${sdpinst_label},position=\""${COUNT}\""} $FINISHTIME" >> "$tmpfname"
+
+        SIZE=`echo $JOURNAL|cut -f4 -d' '`
+        echo "p4_journals_size{${serverid_label}${sdpinst_label},position=\""${COUNT}\""} $SIZE" >> "$tmpfname"
+
+        SEQUENCE=`echo $JOURNAL|cut -f5 -d' '`
+        echo "p4_journals_sequence{${serverid_label}${sdpinst_label},position=\""${COUNT}\""} $SEQUENCE" >> "$tmpfname"
+
+        FAILED=`echo $JOURNAL|cut -f6 -d' '`
+        echo "p4_journals_failed{${serverid_label}${sdpinst_label},position=\""${COUNT}\""} $FAILED" >> "$tmpfname"
+
+    done <$p4journals
+
+    rm $p4journals
+    chmod 644 "$tmpfname"
+    mv "$tmpfname" "$fname"
+}
+
 monitor_replicas () {
     # Metric for server replicas
     fname="$metrics_root/p4_replication${sdpinst_suffix}-${SERVER_ID}.prom"
@@ -789,4 +846,5 @@ monitor_filesys
 monitor_versions
 monitor_ssl
 monitor_checkpoint
+monitor_journals
 monitor_errors
