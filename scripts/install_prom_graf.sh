@@ -12,10 +12,10 @@ fi
 # Configuration section
 
 VER_NODE_EXPORTER="1.3.1"
-VER_PROMETHEUS="2.33.5"
-VER_ALERTMANAGER="0.23.0"
-VER_PUSHGATEWAY="1.4.2"
-VER_VICTORIA_METRICS="1.74.0"
+VER_PROMETHEUS="2.37.6"
+VER_ALERTMANAGER="0.25.0"
+VER_PUSHGATEWAY="1.5.1"
+VER_VICTORIA_METRICS="1.87.5"
 
 # ============================================================
 
@@ -25,13 +25,13 @@ function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 function usage
 {
    declare errorMessage=${2:-Unset}
- 
+
    if [[ "$errorMessage" != Unset ]]; then
       echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
    fi
- 
+
    echo "USAGE for install_prom_graf.sh:
- 
+
     install_prom_graf.sh [-push]
 
 or
@@ -44,7 +44,7 @@ or
 }
 
 # Command Line Processing
- 
+
 declare -i shiftArgs=0
 declare -i InstallPushgateway=0
 
@@ -56,7 +56,7 @@ while [[ $# -gt 0 ]]; do
         # (-man) usage -man;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
     esac
- 
+
     # Shift (modify $#) the appropriate number of times.
     shift; while [[ "$shiftArgs" -gt 0 ]]; do
         [[ $# -eq 0 ]] && usage -h "Incorrect number of arguments."
@@ -268,8 +268,8 @@ install_victoria_metrics () {
 
     cd /tmp || bail "failed to cd"
     PVER="$VER_VICTORIA_METRICS"
-    for fname in victoria-metrics-amd64-v$PVER.tar.gz vmutils-amd64-v$PVER.tar.gz; do
-        download_and_untar "$fname" "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v$PVER/$fname"
+    for fname in victoria-metrics-linux-amd64-v$PVER.tar.gz vmutils-linux-amd64-v$PVER.tar.gz; do
+        download_and_untar "$fname" "https://github.com/victoriametrics/victoriametrics/releases/download/v$PVER/$fname"
     done
 
     for base_file in victoria-metrics-prod vmagent-prod vmalert-prod vmauth-prod vmbackup-prod vmrestore-prod vmctl-prod; do
@@ -287,7 +287,7 @@ install_victoria_metrics () {
 Description=Victoria Metrics
 Wants=network-online.target
 After=network-online.target
- 
+
 [Service]
 User=prometheus
 Group=prometheus
@@ -295,7 +295,7 @@ Type=simple
 ExecStart=/usr/local/bin/victoria-metrics-prod \
     -storageDataPath /var/lib/victoria-metrics/ \
     -retentionPeriod=6
- 
+
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -349,7 +349,7 @@ install_prometheus () {
 Description=Prometheus
 Wants=network-online.target
 After=network-online.target
- 
+
 [Service]
 User=$userid
 Group=$userid
@@ -359,7 +359,7 @@ ExecStart=/usr/local/bin/prometheus \
  --storage.tsdb.path /var/lib/prometheus/ \
  --web.console.templates=/etc/prometheus/consoles \
  --web.console.libraries=/etc/prometheus/console_libraries
- 
+
 [Install]
 WantedBy=multi-user.target
 EOF
