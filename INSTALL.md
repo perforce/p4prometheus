@@ -50,7 +50,7 @@ On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc,
 - [Windows Installation](#windows-installation)
   - [Windows Exporter](#windows-exporter)
   - [P4prometheus on Windows](#p4prometheus-on-windows)
-  - [Running monitor_metrics.sh](#running-monitor_metricssh)
+  - [Running monitor\_metrics.sh](#running-monitor_metricssh)
   - [Installing Programs as Services](#installing-programs-as-services)
 
 # Metrics Available
@@ -687,65 +687,15 @@ Checking perforce_rules.yml
   SUCCESS: 8 rules found
 ```
 
-Please customize the below for things like `instance` and `servername` values and replica host names.
+Please customize the below for thresholds and similar. May need to remove SDP specific alerts (e.g. for checkpoints).
 
 ```yaml
 groups:
 - name: alert.rules
   rules:
-  - alert: NoLogs
-    expr: 100 > rate(p4_prom_log_lines_read{sdpinst="1",serverid="master"}[1m])
-    for: 1m
-    labels:
-      severity: "critical"
-    annotations:
-      summary: "Endpoint {{ $labels.instance }} too few log lines"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been below target for more than 1 minutes."
-
-  - alert: Replication Slow HA
-    expr: >
-      p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="master"}
-      - ignoring(serverid, servername)
-      p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="p4d_ha_bos"} > 5e+7
-    for: 10m
-    labels:
-      severity: "warning"
-    annotations:
-      summary: "Endpoint {{ $labels.instance }} replication warning"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 1 minutes."
-
-  - alert: Replication Slow London
-    expr: >
-      p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="master"}
-      - ignoring (serverid, servername) 
-      p4_replica_curr_pos{instance="p4master:9100",job="node_exporter",sdpinst="1",servername="p4d_fr_lon"} > 5e+7
-    for: 10m
-    labels:
-      severity: "warning"
-    annotations:
-      summary: "Endpoint {{ $labels.instance }} replication warning"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 1 minutes."
-
-  - alert: Checkpoint slow
-    expr: p4_sdp_checkpoint_duration{sdpinst="1",serverid="master"} > 50 * 60
-    for: 5m
-    labels:
-      severity: "warning"
-    annotations:
-      summary: "Endpoint {{ $labels.instance }} checkpoint job duration longer than expected"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 1 minutes."
-
-  - alert: Checkpoint not taken 
-    expr: time() - p4_sdp_checkpoint_log_time{sdpinst="1",serverid="master"} > 25 * 60 * 60
-    for: 5m
-    labels:
-      severity: "warning"
-    annotations:
-      summary: "Endpoint {{ $labels.instance }} checkpoint not taken in 25 hours warning"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 1 minutes."
 
   - alert: P4D service not running
-    expr: node_systemd_unit_state{state="active",name="p4d_1.service"} != 1
+    expr: node_systemd_unit_state{state="active",name="p4d_.*.service"} != 1
     for: 5m
     labels:
       severity: "warning"
@@ -753,38 +703,118 @@ groups:
       summary: "Endpoint {{ $labels.instance }} p4d service not running"
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for 5 minutes."
 
-  - alert: Diskspace Low
-    expr: node_filesystem_free_bytes{mountpoint=~"/hx.*"} / node_filesystem_size_bytes{mountpoint=~"/hx.*"} * 100 < 10
-    for: 5m
+  # Higher level warning if < 5 days
+  - alert: P4D urgent license expiry
+    expr: (p4_license_time_remaining{serverid!~".*edge.*"} / (24 * 60 * 60)) < 5
+    for: 6h
     labels:
       severity: "warning"
     annotations:
-      summary: "Endpoint {{ $labels.instance }} disk space below 10%"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been below limit for 5 minutes."
+      summary: 'Endpoint {{ $labels.instance }} license due to expire urgently (in {{ $value | printf "%.02f" }} days)'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been low for 6 hours."
 
-  - alert: Diskspace Low Prediction
-    expr: >
-        predict_linear(node_filesystem_free_bytes{mountpoint=~"/hx.*"}[1h], 2 * 24 * 3600) < 0
-        and on (instance, mountpoint)
-        node_filesystem_free_bytes{mountpoint=~"/hx.*"} / node_filesystem_size_bytes{mountpoint=~"/hx.*"} * 100 < 10 
-        and on (instance, mountpoint)
-        node_filesystem_free_bytes{mountpoint=~"/hx.*"} < 10 * 1024 * 1024 * 1024
-    for: 30m
-    labels:
-      severity: "high"
-    annotations:
-      summary: "Endpoint {{ $labels.instance }} disk space predicting to fill up in 48  hours based on current usage trend and is less than 10% free and < 10G free"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true 30 minutes."
-
+  # Low warning for less than 14 days
   - alert: P4D license expiry
-    expr: p4_license_time_remaining{instance!~".*edge.*"} < 14 * 24 * 60 * 60
+    expr: (p4_license_time_remaining{serverid!~".*edge.*"} / (24 * 60 * 60)) < 14
     for: 6h
     labels:
       severity: "low"
     annotations:
-      summary: "Endpoint {{ $labels.instance }} license due to expire in < 14 days"
+      summary: 'Endpoint {{ $labels.instance }} license due to expire (in {{ $value  | printf "%.02f" }} days)'
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been low for 6 hours."
 
+  - alert: P4D license data missing
+    expr: absent(p4_license_time_remaining{serverid!~".*edge.*"}) == 1
+    for: 1h
+    labels:
+      severity: "low"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} license metric p4_license_time_remaining missing"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been low for 1 hour."
+
+  - alert: NoLogs
+    expr: rate(p4_prom_log_lines_read{sdpinst="1",serverid="master"}[1m]) < 100
+    for: 10m
+    labels:
+      severity: "critical"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} too few log lines (rate per min {{ $value | printf "%.f" }})'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been below target for more than 10 minutes."
+
+  # Include this is you have replicas. Adjust the value as appropriate, e.g. 1GB or 5GB or whatever.
+  - alert: Replication Slow
+    expr: >
+      p4_pull_replica_lag > (1 * 1024 * 1024)
+    for: 10m
+    labels:
+      severity: "warning"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} replication lag is too great ({{ $value | humanize }})'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 10 minutes."
+
+  # Alert if checkpoint takes more than N minutes - adjust as appropriate. Note use of mins in error message.
+  - alert: Checkpoint slow
+    expr: (p4_sdp_checkpoint_duration{serverid=~".*master.*"} * 60) > 50
+    for: 5m
+    labels:
+      severity: "warning"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} checkpoint job duration ({{ $value | printf "%.02f" }} mins) longer than expected'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 1 minutes."
+
+  # SDP - we expect a checkpoint to happen every 24 hours - alert otherwise! Note value is / 3600 to get hours for message
+  - alert: Checkpoint Not Taken
+    expr: ((time() - p4_sdp_checkpoint_log_time{serverid=~".*master.*|.*edge.*"}) / (60 * 60)) > 25
+    for: 1h
+    labels:
+      severity: "warning"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} checkpoint not taken warning ({{ $value | printf "%.02f" }} hours since last checkpoint)'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 1 hour."
+
+  # Adjust the below if your mountpoints do not start with /hx (like /hxlogs etc)
+  - alert: Diskspace Percentage Used Above Threshold
+    expr: >
+        (100.0 - 100 * (
+             node_filesystem_avail_bytes{mountpoint=~"/hx.*"}
+             / on (instance, mountpoint) node_filesystem_size_bytes{mountpoint=~"/hx.*"}
+        )) > 95
+    labels:
+      severity: "high"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space percentage is {{$value | printf "%.02f"}} is above threshold'
+
+  # Adjust the below if your mountpoints are different!
+  - alert: Diskspace Below Threshold
+    expr: >
+        node_filesystem_free_bytes{mountpoint="/hxlogs"} -
+            on (instance) p4_filesys_min{filesys="P4LOG"} < 0 or
+        node_filesystem_free_bytes{mountpoint="/hxdepots"} -
+            on (instance) p4_filesys_min{filesys="depot"} < 0 or
+        node_filesystem_free_bytes{mountpoint="/hxmetadata"} -
+            on (instance) p4_filesys_min{filesys="P4ROOT"} < 0
+    labels:
+      severity: "high"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space is {{$value}} below filesys.*.min NOW!!!"
+
+  # Adjust the below if your mountpoints are different!
+  - alert: Diskspace Predicted Low
+    expr: >
+        predict_linear(node_filesystem_free_bytes{mountpoint="/hxdepots"}[1h], 2 * 24 * 3600) -
+           on (instance) p4_filesys_min{filesys="depot"} < 0 or
+        predict_linear(node_filesystem_free_bytes{mountpoint="/hxmetadata"}[1h], 2 * 24 * 3600) -
+           on (instance) p4_filesys_min{filesys="P4ROOT"} < 0 or
+        predict_linear(node_filesystem_free_bytes{mountpoint="/hxlogs"}[1h], 2 * 24 * 3600) -
+           on (instance) p4_filesys_min{filesys="P4LOGS"} < 0
+    for: 120m
+    labels:
+      severity: "warning"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space predicting to go below filesys.*.min (by {{$value | printf "%.02f" }}) in 48 hours based on current usage trend'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true 120 minutes."
+
+  # App memory is what's left over when you subtract out the other stuff!
   - alert: App Memory Usage High
     expr: >
         (100 * (
@@ -801,16 +831,17 @@ groups:
     labels:
       severity: "warning"
     annotations:
-      summary: "Endpoint {{ $labels.instance }} App Memory usage above 70%"
+      summary: 'Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} App Memory usage above 70% (actual {{$value | printf "%.02f"}}%)'
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been true 10 minutes."
 
+  # Value is converted to hours
   - alert: SSL Expires
-    expr: p4_ssl_cert_expires - time() < 14 * 24 * 3600
+    expr: ((p4_ssl_cert_expires - time()) / (60 * 60)) < 14 * 24
     for: 12h
     labels:
       severity: "warning"
     annotations:
-      summary: "Endpoint {{ $labels.instance }} SSL certificate expiry warning"
+      summary: 'Endpoint {{ $labels.instance }} SSL certificate expiry warning (actual {{$value | printf "%.02f"}} hours)'
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been below target for more than 12 hours."
 
 ```
