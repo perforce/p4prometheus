@@ -215,9 +215,9 @@ monitor_license () {
     if [[ $no_license -ne 1 ]]; then
         userCount=$(grep userCount $tmp_license_data | awk '{print $3}')
         userLimit=$(grep userLimit $tmp_license_data | awk '{print $3}')
-        licenseExpires=$(grep licenseExpires $tmp_license_data | awk '{print $3}')
-        licenseTimeRemaining=$(grep licenseTimeRemaining $tmp_license_data | awk '{print $3}')
-        supportExpires=$(grep supportExpires $tmp_license_data | awk '{print $3}')
+        licenseExpires=$(grep "\.\.\. licenseExpires" $tmp_license_data | awk '{print $3}')
+        licenseTimeRemaining=$(grep "\.\.\. licenseTimeRemaining" $tmp_license_data | awk '{print $3}')
+        supportExpires=$(grep "\.\.\. supportExpires" $tmp_license_data | awk '{print $3}')
         licenseInfo=$(grep "Server license: " "$tmp_info_data" | sed -e "s/Server license: //" | sed -Ee "s/\(expires [^\)]+\)//" | sed -Ee "s/\(support [^\)]+\)//" )
         if [[ -z $licenseTimeRemaining && ! -z $supportExpires ]]; then
             dt=$(date +%s)
