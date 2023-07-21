@@ -14,17 +14,78 @@
 # Please note you need to make sure that the specified directory below (which may be linked)
 # can be read by the node_exporter user (and is setup via --collector.textfile.directory parameter)
 #
+# 
 
 # ============================================================
 # Configuration section
 
+# Find out if we're in AWS or GCP.. DOES NOT WORK FOR AZURE...YET'
+declare -i autoCloud=1
+
+
 # May be overwritten in the config file.
 declare report_instance_logfile="/p4/1/logs/report_instance_data.log"
+#declare report_instance_logfile="./report_instance_data.log" #Ugly stick testing
 
-# Default to AWS
-declare -i IsAWS=1
-declare -i IsAzure=0
-declare -i IsGCP=0
+# Define the commands
+declare -A commands=(
+    ["Awesome p4 tiggers"]='p4 triggers -o | awk "/^Triggers:/ {flag=1; next} /^$/ {flag=0} flag" | sed "s/^[ \t]*//"'
+    ["systemD status all"]="systemctl status"
+    ["p4 servers"]="p4 servers"
+    ["p4 property -Al"]="p4 property -Al"
+    ["p4 -Ztag Without the datefield?"]="p4 -Ztag info | awk '!/^... serverDate/'"
+    ["p4 property -Al"]="p4 property -Al"
+)
+
+# TODO
+#### Files to rummage thru below
+# Files
+# Files
+# Yada yada
+# Maybe some rummaging functions below?
+####
+
+
+
+if [ $autoCloud -eq 1 ]; then
+{
+    echo "Using autoCloud"
+# Placeholder for Azure
+    echo "Azure detection is TBD."
+    declare -i IsAzure=0
+    # Check if running on AWS
+    #aws_region_check=$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | grep -q "region")
+    curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | grep -q "region"
+    if [ $? -eq 0 ]; then
+      curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | grep "region"  | awk -F\" '{print $4}' >/dev/null
+      echo "You are on an AWS machine."
+      declare -i IsAWS=1
+    else
+      echo "You are not on an AWS machine."
+      declare -i IsAWS=0
+    fi
+    # Check if running on GCP
+    curl -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/?recursive=true" -s | grep -q "google"
+    if [ $? -eq 0 ]; then
+      echo "You are on a GCP machine."
+      declare -i IsGCP=1
+    else
+      echo "You are not on a GCP machine."
+      declare -i IsGCP=0
+    fi
+    }
+    else {
+      echo "Not using autoCloud"
+      # Default to AWS
+      declare -i IsAWS=1
+      declare -i IsAzure=0
+      declare -i IsGCP=0
+    }
+
+fi
+
+
+
 
 # ============================================================
 
@@ -36,19 +97,19 @@ function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
 
 function usage
 {
-   declare style=${1:--h}
-   declare errorMessage=${2:-Unset}
- 
-   if [[ "$errorMessage" != Unset ]]; then
+    declare style=${1:--h}
+    declare errorMessage=${2:-Unset}
+
+    if [[ "$errorMessage" != Unset ]]; then
       echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
-   fi
- 
+    fi
+
    echo "USAGE for $ThisScript:
- 
+
 $ThisScript -c <config_file> [-aws|-azure]
- 
+
    or
- 
+
 $ThisScript -h
 
     -azure      Specifies to collect Azure specific data (default is AWS)
@@ -60,7 +121,7 @@ This is not normally required on customer machines. It assumes an SDP setup.
 }
 
 # Command Line Processing
- 
+
 declare -i shiftArgs=0
 ConfigFile=/p4/common/config/.push_metrics.cfg
 
@@ -74,7 +135,7 @@ while [[ $# -gt 0 ]]; do
         (-gcp) IsAWS=0; IsGCP=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
     esac
- 
+
     # Shift (modify $#) the appropriate number of times.
     shift; while [[ "$shiftArgs" -gt 0 ]]; do
         [[ $# -eq 0 ]] && usage -h "Incorrect number of arguments."
@@ -102,9 +163,9 @@ metrics_user=${metrics_user:-Unset}
 metrics_passwd=${metrics_passwd:-Unset}
 report_instance_logfile=${report_instance_logfile:-/p4/1/logs/report_instance_data.log}
 if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Unset || $metrics_customer == Unset || $metrics_instance == Unset ]]; then
-   echo -e "\\nError: Required parameters not supplied.\\n"
-   echo "You must set the variables metrics_host, metrics_user, metrics_passwd, metrics_customer, metrics_instance in $ConfigFile."
-   exit 1
+    echo -e "\\nError: Required parameters not supplied.\\n"
+    echo "You must set the variables metrics_host, metrics_user, metrics_passwd, metrics_customer, metrics_instance in $ConfigFile."
+    exit 1
 fi
 
 # Convert host from 9091 -> 9092 (pushgateway -> datapushgateway default)
@@ -140,6 +201,7 @@ rm -f $TempLog
 
 # Start creating report in Markdown format - being careful to quote backquotes properly!
 
+# TODO Can probably put this in the commands list to ran
 {
     echo "# Output of hostnamectl"
     echo ""
@@ -197,18 +259,23 @@ if [[ $IsGCP -eq 1 ]]; then
         echo '```'
     } >> $TempLog
 fi
-
 {
-    echo ""
-    echo "# Output of crontab -l"
+for label in "${!commands[@]}"; do
+
+    command="${commands[$label]}"
+    echo "# Output of $label"
     echo ""
     echo '```'
-    crontab -l
+    eval "$command"
     echo '```'
     echo ""
+done
 } >> $TempLog 2>&1
 
+
 # Loop while pushing as there seem to be temporary password failures quite frequently
+# TODO Look into this
+
 
 iterations=0
 max_iterations=10
