@@ -30,6 +30,21 @@
 #TODO NEEDS AZURE testing
 declare -i autoCloud=0
 
+#This scripts default config file location
+ConfigFile=/p4/common/config/.push_metrics.cfg
+
+## example .push_metrics.cfg
+# ----------------------
+# metrics_host=http://some.ip.or.host:9091
+# metrics_customer=Customer-Name
+# metrics_instance=
+# metrics_user=username-for-pushgateway
+# metrics_passwd=password-for-pushgateway
+# report_instance_logfile=e=/log/file/location
+# metrics_cloudtype=AWS,GCP,AZure
+# ----------------------
+
+
 
 # May be overwritten in the config file.
 declare report_instance_logfile="/p4/1/logs/report_instance_data.log"
@@ -68,6 +83,7 @@ define_config_p4varsfile "P4MASTER_ID" #EXAMPLE
 # Add more variables as needed
 
 # Path to p4_1.vars file
+# TODO p4_1 needs to be changed for multi-instance
 file_path="$P4CCFG/p4_1.vars"
 
 
@@ -80,6 +96,35 @@ function msg () { echo -e "$*"; }
 function log () { dt=$(date '+%Y-%m-%d %H:%M:%S'); echo -e "$dt: $*" >> "$report_instance_logfile"; msg "$dt: $*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
 function upcfg () { echo "metrics_cloudtype=$1" >> "$ConfigFile"; } #TODO This could be way more elegant IE error checking the config file but it works
+
+# Instance Counter
+# Thanks to ttyler below
+function get_sdp_instances () {
+    SDPInstanceList=
+    cd /p4 || bail "Could not cd to /p4."
+    for e in *; do
+        if [[ -r "/p4/$e/root/db.counters" ]]; then
+            SDPInstanceList+=" $e"
+        fi
+    done
+
+# Trim leading space.
+# shellcheck disable=SC2116
+    SDPInstanceList=$(echo "$SDPInstanceList")
+    echo "Instance List: $SDPInstanceList"
+#Count instances
+    instance_count=$(echo "$SDPInstanceList" | wc -w)
+    echo "Instances: $instance_count"
+}
+get_sdp_instances
+
+#
+# Work instance place holder
+function work_instance () {
+    echo "Coming Soon"
+}
+
+
 
 function usage() {
     local style=${1:-"-h"}  # Default to "-h" if no style argument provided
@@ -124,7 +169,6 @@ function p4varsparse_file() {
 # Command Line Processing
 
 declare -i shiftArgs=0
-ConfigFile=/p4/common/config/.push_metrics.cfg
 
 set +u
 while [[ $# -gt 0 ]]; do
@@ -236,10 +280,10 @@ if [ $autoCloud -eq 1 ]; then
     else {
         echo "Not using autoCloud"
         # Default to AWS
-#TODO Look into this defaults to AWS... I think defaulting to 0 on all 3 is good (open to suggestions)
-        declare -i IsAWS=0
-        declare -i IsAzure=0
-        declare -i IsGCP=0
+#TODO DISABLING ALL THIS (lets see what happens) Look into this defaults to AWS... I think defaulting to 0 on all 3 is good (open to suggestions)
+#        declare -i IsAWS=0
+#        declare -i IsAzure=0
+#        declare -i IsGCP=0
     }
 
 fi
@@ -286,7 +330,7 @@ rm -f $TempLog
 
 # Start creating report in Markdown format - being careful to quote backquotes properly!
 
-# TODO Can probably put this in the commands list to ran.. Output of commands are not always sequential(?As of yet?) that they were ran. Deciding to keep hostnamectl
+# TODO Can probably put this in the commands list to run.. Output of commands are not always sequential(?As of yet?) that they were ran. Deciding to keep hostnamectl
 {
     echo "# Output of hostnamectl"
     echo ""
@@ -369,7 +413,7 @@ done
 
 
 # Loop while pushing as there seem to be temporary password failures quite frequently
-# TODO Look into this
+# TODO Look into this.. (Note: Looking at the go build it's potentially related datapushgate's go build)
 
 
 iterations=0
