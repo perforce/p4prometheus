@@ -14,6 +14,7 @@
 # Please note you need to make sure that the specified directory below (which may be linked)
 # can be read by the node_exporter user (and is setup via --collector.textfile.directory parameter)
 #
+#TODO Better logging
 #
 
 #### WARNING
@@ -27,12 +28,11 @@
 
 # Find out if we're in AWS, GCP, or AZURE.. NOT TESTED ON AZURE...YET'
 #TODO NEEDS AZURE testing
-declare -i autoCloud=1
+declare -i autoCloud=0
 
 
 # May be overwritten in the config file.
 declare report_instance_logfile="/p4/1/logs/report_instance_data.log"
-#declare report_instance_logfile="./report_instance_data.log" #Ugly stick testing
 
 # Define the commands
 declare -A commands=(
@@ -79,6 +79,7 @@ declare ThisScript=${0##*/}
 function msg () { echo -e "$*"; }
 function log () { dt=$(date '+%Y-%m-%d %H:%M:%S'); echo -e "$dt: $*" >> "$report_instance_logfile"; msg "$dt: $*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
+function upcfg () { echo "metrics_cloudtype=$1" >> "$ConfigFile"; } #TODO This could be way more elegant IE error checking the config file but it works
 
 function usage() {
     local style=${1:-"-h"}  # Default to "-h" if no style argument provided
@@ -96,10 +97,11 @@ $ThisScript -c <config_file> [-azure|-gcp]
 
 $ThisScript -h
 
-    -azure      Specifies to collect Azure specific data (default is autoCloud on)
-    -aws        Specifies to collect GCP specific data (default is autoCloud on)
-    -gcp        Specifies to collect GCP specific data (default is autoCloud on)
-    -acoff      Turns autoCloud off (default is autoCloud on)
+    -azure      Specifies to collect Azure specific data
+    -aws        Specifies to collect GCP specific data
+    -gcp        Specifies to collect GCP specific data
+    -acoff      Turns autoCloud off
+    -acon       Turns autoCloud on
     -timeout    Sets timeout(In seconds) to wait for Cloud provider responds (default is $autoCloudTimeout seconds)
 
 Collects metadata about the current instance and pushes the data centrally.
@@ -134,6 +136,7 @@ while [[ $# -gt 0 ]]; do
         (-aws) IsAWS=1; IsGCP=0; IsAzure=0; autoCloud=0; echo "Forced GCP by -aws";;
         (-gcp) IsGCP=1; IsAWS=0; IsAzure=0; autoCloud=0; echo "Forced GCP by -gcp";;
         (-acoff) autoCloud=0; echo "AutoCloud turned OFF";;
+        (-acon) autoCloud=1; echo "AutoCloud turned ON";;
         (-timeout) shift; autoCloudTimeout=$1; echo "Setting autoCloudTimeout to $autoCloudTimeout";;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
     esac
@@ -157,6 +160,7 @@ metrics_user=$(grep metrics_user "$ConfigFile" | awk -F= '{print $2}')
 metrics_passwd=$(grep metrics_passwd "$ConfigFile" | awk -F= '{print $2}')
 metrics_logfile=$(grep metrics_logfile "$ConfigFile" | awk -F= '{print $2}')
 report_instance_logfile=$(grep report_instance_logfile "$ConfigFile" | awk -F= '{print $2}')
+metrics_cloudtype=$(grep metrics_cloudtype "$ConfigFile" | awk -F= '{print $2}')
 
 metrics_host=${metrics_host:-Unset}
 metrics_customer=${metrics_customer:-Unset}
@@ -164,11 +168,18 @@ metrics_instance=${metrics_instance:-Unset}
 metrics_user=${metrics_user:-Unset}
 metrics_passwd=${metrics_passwd:-Unset}
 report_instance_logfile=${report_instance_logfile:-/p4/1/logs/report_instance_data.log}
+metrics_cloudtype=${metrics_cloudtype:-Unset}
 if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Unset || $metrics_customer == Unset || $metrics_instance == Unset ]]; then
     echo -e "\\nError: Required parameters not supplied.\\n"
     echo "You must set the variables metrics_host, metrics_user, metrics_passwd, metrics_customer, metrics_instance in $ConfigFile."
     exit 1
 fi
+if [[ $metrics_cloudtype == Unset ]]; then
+    echo -e "No Instance Type Defined using autoCloud"
+    declare -i autoCloud=1
+fi
+cloudtype="${metrics_cloudtype^^}"
+
 
 # Convert host from 9091 -> 9092 (pushgateway -> datapushgateway default)
 # TODO - make more configurable
@@ -190,6 +201,7 @@ if [ $autoCloud -eq 1 ]; then
         curl --connect-timeout $autoCloudTimeout -s curl --connect-timeout $autoCloudTimeout -s -H Metadata:true --noproxy "*" "http://169.254.169.254/metadata/instance?api-version=2021-02-01" | grep "location"  | awk -F\" '{print $4}' >/dev/null
         echo "You are on an AZURE machine."
         declare -i IsAzure=1
+        upcfg "Azure"
     else
         echo "You are not on an AZURE machine."
         declare -i IsAzure=0
@@ -203,6 +215,7 @@ if [ $autoCloud -eq 1 ]; then
         curl --connect-timeout $autoCloudTimeout -s http://169.254.169.254/latest/dynamic/instance-identity/document | grep "region"  | awk -F\" '{print $4}' >/dev/null
         echo "You are on an AWS machine."
         declare -i IsAWS=1
+        upcfg "AWS"
     else
         echo "You are not on an AWS machine."
         declare -i IsAWS=0
@@ -214,6 +227,7 @@ if [ $autoCloud -eq 1 ]; then
     if [ $? -eq 0 ]; then
         echo "You are on a GCP machine."
         declare -i IsGCP=1
+        upcfg "GCP"
     else
         echo "You are not on a GCP machine."
         declare -i IsGCP=0
@@ -252,6 +266,21 @@ fi
 #   "region" : "us-east-1",
 #   "version" : "2017-09-30"
 # }
+
+if [[ $cloudtype == AZURE ]]; then
+    echo -e "Config says cloud type is: Azure"
+    declare -i IsAzure=1
+fi
+if [[ $cloudtype == AWS ]]; then
+    echo -e "Config says cloud type is: AWS"
+    declare -i IsAWS=1
+fi
+if [[ $cloudtype == GCP ]]; then
+    echo -e "Config says cloud type is: GCP"
+    declare -i IsGCP=1
+fi
+
+
 
 rm -f $TempLog
 
@@ -362,5 +391,4 @@ while [ $STATUS -ne 0 ]; do
         exit 1
     fi
 done
-
 popd
