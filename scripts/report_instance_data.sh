@@ -17,9 +17,9 @@
 #TODO Better logging
 #
 
-#### WARNING
+#### WARNING ####
 #### SINGLE INSTANCE USE ONLY
-#### WARNING
+#### WARNING ####
 
 
 #TODO MAKE IT MULTI INSTANCE USE
