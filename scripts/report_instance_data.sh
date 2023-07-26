@@ -43,6 +43,7 @@ ConfigFile=/p4/common/config/.push_metrics.cfg
 declare report_instance_logfile="/p4/1/logs/report_instance_data.log"
 TempLog="_instance_data.log"
 
+
 # Define the commands
 declare -A commands=(
     ["Awesome p4 tiggers"]='p4 triggers -o | awk "/^Triggers:/ {flag=1; next} /^$/ {flag=0} flag" | sed "s/^[ \t]*//"'
@@ -59,7 +60,7 @@ autoCloudTimeout=5
 
 
 # =============P4 Vars File parser config=====================
-
+rm -f $TempLog
 declare -A p4varsconfig
 
 
@@ -76,7 +77,6 @@ define_config_p4varsfile "P4MASTER_ID" #EXAMPLE
 
 # ============================================================
 
-rm -f $TempLog
 declare ThisScript=${0##*/}
 
 function msg () { echo -e "$*"; }
@@ -91,7 +91,11 @@ function p4varsparse_file () {
         for key in "${!p4varsconfig[@]}"; do
             if [[ "$line" == "${p4varsconfig[$key]}"* ]]; then
                 value=${line#${p4varsconfig[$key]}}
+#               echo "# Instance: $file_path P4VARS PARSER"
+#               echo ""
+#               echo '```'
                 echo "$key=$value"
+#               echo '```'
             fi
         done
     done < "$file_path"
@@ -105,28 +109,30 @@ function work_instance () {
     source /p4/common/bin/p4_vars $instance
     file_path="$P4CCFG/p4_$instance.vars"
     # Your processing logic for each instance goes here
-    echo "Processing instance: $instance"
     {
-        echo "# Instance - $instance Output of P4VARS PARSER"
+        echo "# Instance: $instance Output of P4VARS PARSER"
         echo ""
         echo '```'
         # Grab stuff from p4_$instance.vars file
-        p4varsparse_file "$file_path" >> $TempLog 2>&1
+        p4varsparse_file "$file_path"
+#>> $TempLog 2>&1
         echo '```'
         echo ""
-    } >> $TempLog 2>&1
+    }
+# >> $TempLog 2>&1
     {
     for label in "${!commands[@]}"; do
         command="${commands[$label]}"
-        echo "#Instance $instance - Output of $label"
+        echo "# Instance: $instance - Output of $label"
         echo ""
         echo '```'
         eval "$command"
         echo '```'
         echo ""
     done
-    } >> $TempLog 2>&1
-}
+    }
+# >> $TempLog 2>&1
+} >> $TempLog 2>&1
 
 
 # Instance Counter
@@ -341,12 +347,13 @@ fi
     hostnamectl;
     echo '```'
     echo ""
-} >> $TempLog 2>&1
-{
+#} >> $TempLog 2>&1;
+#{
     echo "# Output of systemD status"
     echo ""
     echo '```'
-    systemctl status;
+#    systemctl status;
+    systemctl list-units --type=service --all;
     echo '```'
     echo ""
 } >> $TempLog 2>&1
