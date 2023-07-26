@@ -42,12 +42,9 @@ ConfigFile=/p4/common/config/.push_metrics.cfg
 # metrics_cloudtype=AWS,GCP,AZure
 # ----------------------
 
-
-
 # May be overwritten in the config file.
 declare report_instance_logfile="/p4/1/logs/report_instance_data.log"
 TempLog="_instance_data.log"
-
 
 # Define the commands
 declare -A commands=(
@@ -64,52 +61,42 @@ declare -A commands=(
 ### Timeout in seconds until we're done attempting to contact internal cloud information
 autoCloudTimeout=5
 
-
-# =============P4 Vars File parser config=====================
-rm -f $TempLog
+# ============= DONT TOUCH ============= 
 declare -A p4varsconfig
-
-
 function define_config_p4varsfile () {
     local var_name="$1"
     p4varsconfig["$var_name"]="export $var_name="
 }
+# ============= DONT TOUCH ============= 
 
-# CONFIGURABLES-Define the what you would like parsed from P4_1.vars
+# =============P4 Vars File parser config=====================
+# Define the what you would like parsed from P4__INSTANCE__.vars
 define_config_p4varsfile "MAILTO"
 define_config_p4varsfile "P4USER" #EXAMPLE
 define_config_p4varsfile "P4MASTER_ID" #EXAMPLE
 # Add more variables as needed
 
 # ============================================================
-
+rm -f $TempLog
 declare ThisScript=${0##*/}
 
 function msg () { echo -e "$*"; }
 function log () { dt=$(date '+%Y-%m-%d %H:%M:%S'); echo -e "$dt: $*" >> "$report_instance_logfile"; msg "$dt: $*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
 function upcfg () { echo "metrics_cloudtype=$1" >> "$ConfigFile"; } #TODO This could be way more elegant IE error checking the config file but it works
-
-
 function p4varsparse_file () {
     local file_path="$1"
     while IFS= read -r line; do
         for key in "${!p4varsconfig[@]}"; do
             if [[ "$line" == "${p4varsconfig[$key]}"* ]]; then
                 value=${line#${p4varsconfig[$key]}}
-#               echo "# Instance: $file_path P4VARS PARSER"
-#               echo ""
-#               echo '```'
                 echo "$key=$value"
-#               echo '```'
             fi
         done
     done < "$file_path"
 }
-
-
 #
-# Work instance place holder
+# Work instances here
 function work_instance () {
     local instance="$1"
     source /p4/common/bin/p4_vars $instance
@@ -121,11 +108,9 @@ function work_instance () {
         echo '```'
         # Grab stuff from p4_$instance.vars file
         p4varsparse_file "$file_path"
-#>> $TempLog 2>&1
         echo '```'
         echo ""
     }
-# >> $TempLog 2>&1
     {
     for label in "${!commands[@]}"; do
         command="${commands[$label]}"
@@ -137,7 +122,6 @@ function work_instance () {
         echo ""
     done
     }
-# >> $TempLog 2>&1
 } >> $TempLog 2>&1
 
 
@@ -170,7 +154,6 @@ function get_sdp_instances () {
 function usage () {
     local style=${1:-"-h"}  # Default to "-h" if no style argument provided
     local errorMessage=${2:-"Unset"}
-
     if [[ "$errorMessage" != "Unset" ]]; then
         echo -e "\n\nUsage Error:\n\n$errorMessage\n\n" >&2
     fi
@@ -234,7 +217,7 @@ metrics_passwd=$(grep metrics_passwd "$ConfigFile" | awk -F= '{print $2}')
 metrics_logfile=$(grep metrics_logfile "$ConfigFile" | awk -F= '{print $2}')
 report_instance_logfile=$(grep report_instance_logfile "$ConfigFile" | awk -F= '{print $2}')
 metrics_cloudtype=$(grep metrics_cloudtype "$ConfigFile" | awk -F= '{print $2}')
-
+# Set all thats not set to Unset
 metrics_host=${metrics_host:-Unset}
 metrics_customer=${metrics_customer:-Unset}
 metrics_instance=${metrics_instance:-Unset}
@@ -257,7 +240,6 @@ if [[ $metrics_cloudtype == Unset ]]; then
     fi
 fi
 cloudtype="${metrics_cloudtype^^}"
-
 
 # Convert host from 9091 -> 9092 (pushgateway -> datapushgateway default)
 # TODO - make more configurable
@@ -317,8 +299,6 @@ if [ $autoCloud -eq 1 ]; then
 
     else {
         echo "Not using autoCloud"
-        # Default to AWS
-#TODO DISABLING ALL THIS (lets see what happens) Look into this defaults to AWS... I think defaulting to 0 on all 3 is good (open to suggestions)
         declare -i IsAWS=0
         declare -i IsAzure=0
         declare -i IsGCP=0
@@ -344,8 +324,6 @@ if [[ $cloudtype == ONPREM ]]; then
 fi
 
 # Start creating report in Markdown format - being careful to quote backquotes properly!
-
-# TODO Can probably put this in the commands list to run.. Output of commands are not always sequential(?As of yet?) that they were ran. Deciding to keep hostnamectl
 {
     echo "# Output of hostnamectl"
     echo ""
@@ -353,12 +331,10 @@ fi
     hostnamectl;
     echo '```'
     echo ""
-#} >> $TempLog 2>&1;
-#{
     echo "# Output of systemD status"
     echo ""
     echo '```'
-#    systemctl status;
+#OLD    systemctl status;
     systemctl list-units --type=service --all;
     echo '```'
     echo ""
