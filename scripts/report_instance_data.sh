@@ -18,6 +18,10 @@
 #TODO Better logging
 #TODO NEEDS AZURE testing
 #TODO Expand for support people also ?datapushgateway? lets GO!!
+#     - p4 -Ztag info
+#     - p4 configure show allservers
+#     - p4 servers
+#     - p4 servers -J  -- Concerns about this changing
 # ============================================================
 # Configuration section
 # Find out if we're in AWS, GCP, or AZURE..
