@@ -24,6 +24,8 @@ rm -f $TempLog
 #     - p4 configure show allservers
 #     - p4 servers
 #     - p4 servers -J  -- Concerns about this changing
+#TODO SWARM
+#TODO HAS
 # ============================================================
 # Configuration section
 # Find out if we're in AWS, GCP, or AZURE..
