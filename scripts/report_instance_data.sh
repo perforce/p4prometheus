@@ -54,12 +54,10 @@ TempLog="/home/perforce/party/_instance_data.log"
 declare -A commands=(
     ["Awesome p4 tiggers"]='p4 triggers -o | awk "/^Triggers:/ {flag=1; next} /^$/ {flag=0} flag" | sed "s/^[ \t]*//"'
     ["p4 extensions and configs"]="p4 extension --list --type extensions; p4 extension --list --type configs"
-#    ["systemD status all"]="systemctl status" #Not instance Specific
     ["p4 servers"]="p4 servers"
     ["p4 property -Al"]="p4 property -Al"
     ["p4 -Ztag Without the datefield?"]="p4 -Ztag info | awk '!/^... serverDate/'"
     ["p4 property -Al"]="p4 property -Al"
-#Meh    ["MAILTO From p4vars"]="cat $P4CCFG/p4_1.vars | awk '/^export MAILTO=/{sub(/^export /, ""); print; exit}'"
 )
 
 ### Auto Cloud Configs
@@ -213,7 +211,7 @@ while [[ $# -gt 0 ]]; do
         (-azure) IsAzure=1; IsGCP=0; IsAWS=0; autoCloud=0; echo "Forced GCP by -azure";;
         (-aws) IsAWS=1; IsGCP=0; IsAzure=0; autoCloud=0; echo "Forced GCP by -aws";;
         (-gcp) IsGCP=1; IsAWS=0; IsAzure=0; autoCloud=0; echo "Forced GCP by -gcp";;
-        (-acoff) autoCloud=0; echo "AutoCloud turned OFF";;
+        (-acoff) autoCloud=3; echo "AutoCloud turned OFF";;
         (-acon) autoCloud=1; echo "AutoCloud turned ON";;
         (-timeout) shift; autoCloudTimeout=$1; echo "Setting autoCloudTimeout to $autoCloudTimeout";;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
@@ -252,9 +250,13 @@ if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Uns
     echo "You must set the variables metrics_host, metrics_user, metrics_passwd, metrics_customer, metrics_instance in $ConfigFile."
     exit 1
 fi
+echo autocloud is set to $autoCloud
 if [[ $metrics_cloudtype == Unset ]]; then
-    echo -e "No Instance Type Defined using autoCloud"
-    declare -i autoCloud=1
+    echo -e "No Instance Type Defined"
+    if [[ $autoCloud != 3 ]]; then
+        echo -e "using autoCloud"
+        autoCloud=1
+    fi
 fi
 cloudtype="${metrics_cloudtype^^}"
 
@@ -310,15 +312,19 @@ if [ $autoCloud -eq 1 ]; then
         declare -i IsGCP=0
     fi
     }
+    if [[ $IsAWS -eq 0 && $IsAzure -eq 0 && $IsGCP -eq 0 ]]; then
+        echo "No cloud detected setting to OnPrem"
+        upcfg "OnPrem"
+    fi
+
     else {
         echo "Not using autoCloud"
         # Default to AWS
 #TODO DISABLING ALL THIS (lets see what happens) Look into this defaults to AWS... I think defaulting to 0 on all 3 is good (open to suggestions)
-#        declare -i IsAWS=0
-#        declare -i IsAzure=0
-#        declare -i IsGCP=0
+        declare -i IsAWS=0
+        declare -i IsAzure=0
+        declare -i IsGCP=0
     }
-
 fi
 
 
@@ -333,6 +339,10 @@ fi
 if [[ $cloudtype == GCP ]]; then
     echo -e "Config says cloud type is: GCP"
     declare -i IsGCP=1
+fi
+if [[ $cloudtype == ONPREM ]]; then
+    echo -e "Config says cloud type is: OnPrem"
+    declare -i OnPrem=1
 fi
 
 # Start creating report in Markdown format - being careful to quote backquotes properly!
