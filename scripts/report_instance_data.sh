@@ -14,9 +14,10 @@
 # Please note you need to make sure that the specified directory below (which may be linked)
 # can be read by the node_exporter user (and is setup via --collector.textfile.directory parameter)
 #
+#TODO Autodectect is this a p4d instance better
 #TODO Better logging
 #TODO NEEDS AZURE testing
-#
+#TODO Expand for support people also ?datapushgateway? lets GO!!
 # ============================================================
 # Configuration section
 # Find out if we're in AWS, GCP, or AZURE..
