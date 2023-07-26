@@ -1,4 +1,6 @@
 #!/bin/bash
+TempLog="/tmp/_instance_data.log"
+rm -f $TempLog
 # report_instance_data.sh
 #
 # Collects basic instance metadata about a customer environment (for AWS and Azure and ultimately other cloud envs)
@@ -38,13 +40,13 @@ ConfigFile=/p4/common/config/.push_metrics.cfg
 # metrics_instance=       <------ #TODO Reconsider this for multiple instances mostly.. I think this should probably be set by the script instead?
 # metrics_user=username-for-pushgateway
 # metrics_passwd=password-for-pushgateway
-# report_instance_logfile=e=/log/file/location
+# report_instance_logfile=/log/file/location
 # metrics_cloudtype=AWS,GCP,AZure
 # ----------------------
 
 # May be overwritten in the config file.
 declare report_instance_logfile="/p4/1/logs/report_instance_data.log"
-TempLog="_instance_data.log"
+
 
 # Define the commands
 declare -A commands=(
@@ -77,7 +79,7 @@ define_config_p4varsfile "P4MASTER_ID" #EXAMPLE
 # Add more variables as needed
 
 # ============================================================
-rm -f $TempLog
+
 declare ThisScript=${0##*/}
 
 function msg () { echo -e "$*"; }
@@ -101,6 +103,7 @@ function work_instance () {
     local instance="$1"
     source /p4/common/bin/p4_vars $instance
     file_path="$P4CCFG/p4_$instance.vars"
+    echo "Working instance labeled as: $instance"
     # Your processing logic for each instance goes here
     {
         echo "# Instance: $instance Output of P4VARS PARSER"
@@ -110,7 +113,7 @@ function work_instance () {
         p4varsparse_file "$file_path"
         echo '```'
         echo ""
-    }
+    } >> $TempLog 2>&1
     {
     for label in "${!commands[@]}"; do
         command="${commands[$label]}"
@@ -121,13 +124,14 @@ function work_instance () {
         echo '```'
         echo ""
     done
-    }
-} >> $TempLog 2>&1
+    } >> $TempLog 2>&1
+} 
 
 
 # Instance Counter
 # Thanks to ttyler below
 function get_sdp_instances () {
+    echo "Finding p4d instances"
     SDPInstanceList=
     cd /p4 || bail "Could not cd to /p4."
     for e in *; do
@@ -143,11 +147,11 @@ function get_sdp_instances () {
 
     # Count instances
     instance_count=$(echo "$SDPInstanceList" | wc -w)
-    echo "Instances: $instance_count"
+    echo "Instances Names: $instance_count"
 
     # Loop through each instance and call the process_instance function
     for instance in $SDPInstanceList; do
-        work_instance "$instance"
+        work_instance $instance
     done
 }
 
@@ -340,8 +344,8 @@ fi
     echo ""
 } >> $TempLog 2>&1
 
-
 if [[ $IsAWS -eq 1 ]]; then
+    echo "Doing the AWS meta-pull"
     TOKEN=$(curl --connect-timeout $autoCloudTimeout -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
     Doc1=$(curl --connect-timeout $autoCloudTimeout -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/dynamic/instance-identity/document")
     Doc2=$(curl --connect-timeout $autoCloudTimeout -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/tags/instance/")
@@ -369,6 +373,7 @@ if [[ $IsAWS -eq 1 ]]; then
 fi
 
 if [[ $IsAzure -eq 1 ]]; then
+    echo "Doing the Azure meta-pull"
     Doc=$(curl --connect-timeout $autoCloudTimeout -s -H Metadata:true --noproxy "*" "http://169.254.169.254/metadata/instance?api-version=2021-02-01" | python -m json.tool)
     {
         echo "# Azure Metadata"
@@ -376,10 +381,11 @@ if [[ $IsAzure -eq 1 ]]; then
         echo '```'
         echo "$Doc"
         echo '```'
-    } >> $TempLog
+    } >> $TempLog 2>&1
 fi
 
 if [[ $IsGCP -eq 1 ]]; then
+    echo "Doing the GCP meta-pull"
     Doc=$(curl --connect-timeout $autoCloudTimeout "http://metadata.google.internal/computeMetadata/v1/?recursive=true&alt=text" -H "Metadata-Flavor: Google")
     {
         echo "# GCP Metadata"
@@ -387,7 +393,7 @@ if [[ $IsGCP -eq 1 ]]; then
         echo '```'
         echo "$Doc"
         echo '```'
-    } >> $TempLog
+    } >> $TempLog 2>&1
 fi
 
 get_sdp_instances
