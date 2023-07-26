@@ -22,7 +22,7 @@
 #### WARNING ####
 
 
-#TODO MAKE IT MULTI INSTANCE USE
+#TODO [IN PROGRESS] MAKE IT MULTI INSTANCE USE
 # ============================================================
 # Configuration section
 
@@ -37,7 +37,7 @@ ConfigFile=/p4/common/config/.push_metrics.cfg
 # ----------------------
 # metrics_host=http://some.ip.or.host:9091
 # metrics_customer=Customer-Name
-# metrics_instance=
+# metrics_instance=       <------ #TODO Reconsider this for multiple instances mostly.. I think this should probably be set by the script instead?
 # metrics_user=username-for-pushgateway
 # metrics_passwd=password-for-pushgateway
 # report_instance_logfile=e=/log/file/location
@@ -48,12 +48,13 @@ ConfigFile=/p4/common/config/.push_metrics.cfg
 
 # May be overwritten in the config file.
 declare report_instance_logfile="/p4/1/logs/report_instance_data.log"
+TempLog="/home/perforce/party/_instance_data.log"
 
 # Define the commands
 declare -A commands=(
     ["Awesome p4 tiggers"]='p4 triggers -o | awk "/^Triggers:/ {flag=1; next} /^$/ {flag=0} flag" | sed "s/^[ \t]*//"'
     ["p4 extensions and configs"]="p4 extension --list --type extensions; p4 extension --list --type configs"
-    ["systemD status all"]="systemctl status"
+#    ["systemD status all"]="systemctl status" #Not instance Specific
     ["p4 servers"]="p4 servers"
     ["p4 property -Al"]="p4 property -Al"
     ["p4 -Ztag Without the datefield?"]="p4 -Ztag info | awk '!/^... serverDate/'"
@@ -71,7 +72,7 @@ autoCloudTimeout=5
 declare -A p4varsconfig
 
 
-function define_config_p4varsfile() {
+function define_config_p4varsfile () {
     local var_name="$1"
     p4varsconfig["$var_name"]="export $var_name="
 }
@@ -84,18 +85,66 @@ define_config_p4varsfile "P4MASTER_ID" #EXAMPLE
 
 # Path to p4_1.vars file
 # TODO p4_1 needs to be changed for multi-instance
-file_path="$P4CCFG/p4_1.vars"
+#file_path="$P4CCFG/p4_1.vars"
 
 
 
 # ============================================================
 
+rm -f $TempLog
 declare ThisScript=${0##*/}
 
 function msg () { echo -e "$*"; }
 function log () { dt=$(date '+%Y-%m-%d %H:%M:%S'); echo -e "$dt: $*" >> "$report_instance_logfile"; msg "$dt: $*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
 function upcfg () { echo "metrics_cloudtype=$1" >> "$ConfigFile"; } #TODO This could be way more elegant IE error checking the config file but it works
+
+
+function p4varsparse_file () {
+    local file_path="$1"
+    while IFS= read -r line; do
+        for key in "${!p4varsconfig[@]}"; do
+            if [[ "$line" == "${p4varsconfig[$key]}"* ]]; then
+                value=${line#${p4varsconfig[$key]}}
+                echo "$key=$value"
+            fi
+        done
+    done < "$file_path"
+}
+
+
+#
+# Work instance place holder
+function work_instance () {
+    local instance="$1"
+    source /p4/common/bin/p4_vars $instance
+    file_path="$P4CCFG/p4_$instance.vars"
+    # Your processing logic for each instance goes here
+    echo "Processing instance: $instance"
+    # Add more code as needed for processing each instance
+    {
+        echo "# Instance - $instance Output of P4VARS PARSER"
+        echo ""
+        echo '```'
+        # Grab stuff from p4_1.vars file
+        p4varsparse_file "$file_path" >> $TempLog 2>&1
+        echo '```'
+        echo ""
+    } >> $TempLog 2>&1
+#### Instance Specific ####
+    {
+    for label in "${!commands[@]}"; do
+        command="${commands[$label]}"
+        echo "#Instance $instance - Output of $label"
+        echo ""
+        echo '```'
+        eval "$command"
+        echo '```'
+        echo ""
+    done
+    } >> $TempLog 2>&1
+}
+
 
 # Instance Counter
 # Thanks to ttyler below
@@ -108,25 +157,22 @@ function get_sdp_instances () {
         fi
     done
 
-# Trim leading space.
-# shellcheck disable=SC2116
+    # Trim leading space.
+    # shellcheck disable=SC2116
     SDPInstanceList=$(echo "$SDPInstanceList")
     echo "Instance List: $SDPInstanceList"
-#Count instances
+
+    # Count instances
     instance_count=$(echo "$SDPInstanceList" | wc -w)
     echo "Instances: $instance_count"
-}
-get_sdp_instances
 
-#
-# Work instance place holder
-function work_instance () {
-    echo "Coming Soon"
+    # Loop through each instance and call the process_instance function
+    for instance in $SDPInstanceList; do
+        work_instance "$instance"
+    done
 }
 
-
-
-function usage() {
+function usage () {
     local style=${1:-"-h"}  # Default to "-h" if no style argument provided
     local errorMessage=${2:-"Unset"}
 
@@ -152,18 +198,6 @@ $ThisScript -h
 Collects metadata about the current instance and pushes the data centrally.
 
 This is not normally required on customer machines. It assumes an SDP setup."
-}
-
-function p4varsparse_file() {
-    local file_path="$1"
-    while IFS= read -r line; do
-        for key in "${!p4varsconfig[@]}"; do
-            if [[ "$line" == "${p4varsconfig[$key]}"* ]]; then
-                value=${line#${p4varsconfig[$key]}}
-                echo "$key=$value"
-            fi
-        done
-    done < "$file_path"
 }
 
 # Command Line Processing
@@ -232,7 +266,6 @@ metrics_host=${metrics_host/9091/9092}
 # Collect various metrics into a tempt report file we post off
 
 pushd $(dirname "$metrics_logfile")
-TempLog="_instance_data.log"
 
 if [ $autoCloud -eq 1 ]; then
 {
@@ -289,28 +322,6 @@ if [ $autoCloud -eq 1 ]; then
 fi
 
 
-
-
-# For AWS:
-# curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/dynamic/instance-identity/document
-# {
-#   "accountId" : "251689412290",
-#   "architecture" : "x86_64",
-#   "availabilityZone" : "us-east-1a",
-#   "billingProducts" : null,
-#   "devpayProductCodes" : null,
-#   "marketplaceProductCodes" : null,
-#   "imageId" : "ami-047261a33f6dcc468",
-#   "instanceId" : "i-0fce0e35c7b971d6a",
-#   "instanceType" : "c5.18xlarge",
-#   "kernelId" : null,
-#   "pendingTime" : "2022-05-22T05:08:09Z",
-#   "privateIp" : "10.0.0.239",
-#   "ramdiskId" : null,
-#   "region" : "us-east-1",
-#   "version" : "2017-09-30"
-# }
-
 if [[ $cloudtype == AZURE ]]; then
     echo -e "Config says cloud type is: Azure"
     declare -i IsAzure=1
@@ -324,10 +335,6 @@ if [[ $cloudtype == GCP ]]; then
     declare -i IsGCP=1
 fi
 
-
-
-rm -f $TempLog
-
 # Start creating report in Markdown format - being careful to quote backquotes properly!
 
 # TODO Can probably put this in the commands list to run.. Output of commands are not always sequential(?As of yet?) that they were ran. Deciding to keep hostnamectl
@@ -335,16 +342,15 @@ rm -f $TempLog
     echo "# Output of hostnamectl"
     echo ""
     echo '```'
-    hostnamectl
+    hostnamectl;
     echo '```'
     echo ""
 } >> $TempLog 2>&1
 {
-    echo "# Output of P4VARS PARSER"
+    echo "# Output of systemD status"
     echo ""
     echo '```'
-    # Grab stuff from p4_1.vars file
-    p4varsparse_file "$file_path" >> $TempLog 2>&1
+    systemctl status;
     echo '```'
     echo ""
 } >> $TempLog 2>&1
@@ -398,24 +404,11 @@ if [[ $IsGCP -eq 1 ]]; then
         echo '```'
     } >> $TempLog
 fi
-{
-for label in "${!commands[@]}"; do
 
-    command="${commands[$label]}"
-    echo "# Output of $label"
-    echo ""
-    echo '```'
-    eval "$command"
-    echo '```'
-    echo ""
-done
-} >> $TempLog 2>&1
-
+get_sdp_instances
 
 # Loop while pushing as there seem to be temporary password failures quite frequently
 # TODO Look into this.. (Note: Looking at the go build it's potentially related datapushgate's go build)
-
-
 iterations=0
 max_iterations=10
 STATUS=1
