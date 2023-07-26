@@ -15,19 +15,12 @@
 # can be read by the node_exporter user (and is setup via --collector.textfile.directory parameter)
 #
 #TODO Better logging
+#TODO NEEDS AZURE testing
 #
-
-#### WARNING ####
-#### SINGLE INSTANCE USE ONLY
-#### WARNING ####
-
-
-#TODO [IN PROGRESS] MAKE IT MULTI INSTANCE USE
 # ============================================================
 # Configuration section
+# Find out if we're in AWS, GCP, or AZURE..
 
-# Find out if we're in AWS, GCP, or AZURE.. NOT TESTED ON AZURE...YET'
-#TODO NEEDS AZURE testing
 declare -i autoCloud=0
 
 #This scripts default config file location
@@ -48,7 +41,7 @@ ConfigFile=/p4/common/config/.push_metrics.cfg
 
 # May be overwritten in the config file.
 declare report_instance_logfile="/p4/1/logs/report_instance_data.log"
-TempLog="/home/perforce/party/_instance_data.log"
+TempLog="_instance_data.log"
 
 # Define the commands
 declare -A commands=(
@@ -80,12 +73,6 @@ define_config_p4varsfile "MAILTO"
 define_config_p4varsfile "P4USER" #EXAMPLE
 define_config_p4varsfile "P4MASTER_ID" #EXAMPLE
 # Add more variables as needed
-
-# Path to p4_1.vars file
-# TODO p4_1 needs to be changed for multi-instance
-#file_path="$P4CCFG/p4_1.vars"
-
-
 
 # ============================================================
 
@@ -119,17 +106,15 @@ function work_instance () {
     file_path="$P4CCFG/p4_$instance.vars"
     # Your processing logic for each instance goes here
     echo "Processing instance: $instance"
-    # Add more code as needed for processing each instance
     {
         echo "# Instance - $instance Output of P4VARS PARSER"
         echo ""
         echo '```'
-        # Grab stuff from p4_1.vars file
+        # Grab stuff from p4_$instance.vars file
         p4varsparse_file "$file_path" >> $TempLog 2>&1
         echo '```'
         echo ""
     } >> $TempLog 2>&1
-#### Instance Specific ####
     {
     for label in "${!commands[@]}"; do
         command="${commands[$label]}"
@@ -228,7 +213,7 @@ set -u
 
 [[ -f "$ConfigFile" ]] || bail "Can't find config file: ${ConfigFile}!"
 
-# Get config values - format: key=value
+# Get config values from config file- format: key=value
 metrics_host=$(grep metrics_host "$ConfigFile" | awk -F= '{print $2}')
 metrics_customer=$(grep metrics_customer "$ConfigFile" | awk -F= '{print $2}')
 metrics_instance=$(grep metrics_instance "$ConfigFile" | awk -F= '{print $2}')
@@ -251,6 +236,7 @@ if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Uns
     exit 1
 fi
 echo autocloud is set to $autoCloud
+## Auto set cloudtype in config?
 if [[ $metrics_cloudtype == Unset ]]; then
     echo -e "No Instance Type Defined"
     if [[ $autoCloud != 3 ]]; then
@@ -272,7 +258,7 @@ pushd $(dirname "$metrics_logfile")
 if [ $autoCloud -eq 1 ]; then
 {
     echo "Using autoCloud"
-#==========================
+    #==========================
     # Check if running on AZURE
     echo "Checking for AZURE"
     curl --connect-timeout $autoCloudTimeout -s -H Metadata:true --noproxy "*" "http://169.254.169.254/metadata/instance?api-version=2021-02-01" | grep -q "location"
@@ -285,7 +271,7 @@ if [ $autoCloud -eq 1 ]; then
         echo "You are not on an AZURE machine."
         declare -i IsAzure=0
     fi
-#==========================
+    #==========================
     # Check if running on AWS
     echo "Checking for AWS"
     #aws_region_check=$(curl --connect-timeout $autoCloudTimeout -s http://169.254.169.254/latest/dynamic/instance-identity/document | grep -q "region")
@@ -299,7 +285,7 @@ if [ $autoCloud -eq 1 ]; then
         echo "You are not on an AWS machine."
         declare -i IsAWS=0
     fi
-#==========================
+    #==========================
     # Check if running on GCP
     echo "Checking for GCP"
     curl --connect-timeout $autoCloudTimeout -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/?recursive=true" -s | grep -q "google"
