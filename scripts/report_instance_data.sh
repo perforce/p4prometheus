@@ -51,7 +51,8 @@ declare -A commands=(
     ["p4 extensions and configs"]="p4 extension --list --type extensions; p4 extension --list --type configs"
     ["p4 servers"]="p4 servers"
     ["p4 property -Al"]="p4 property -Al"
-    ["p4 -Ztag Without the datefield?"]="p4 -Ztag info | awk '!/^... serverDate/'"
+#OLD    ["p4 -Ztag"]="p4 -Ztag info | awk '!/^... serverDate/'"
+    ["p4 -Ztag Without the datefield?"]="p4 -Ztag info | awk '!/^... (serverDate|serverUptime)/'"
     ["p4 property -Al"]="p4 property -Al"
 )
 
