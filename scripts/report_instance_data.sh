@@ -52,7 +52,7 @@ declare report_instance_logfile="/p4/1/logs/report_instance_data.log"
 
 # Define the commands
 declare -A commands=(
-    ["Awesome p4 tiggers"]='p4 triggers -o | awk "/^Triggers:/ {flag=1; next} /^$/ {flag=0} flag" | sed "s/^[ \t]*//"'
+    ["Awesome p4 triggers"]='p4 triggers -o | awk "/^Triggers:/ {flag=1; next} /^$/ {flag=0} flag" | sed "s/^[ \t]*//"'
     ["p4 extensions and configs"]="p4 extension --list --type extensions; p4 extension --list --type configs"
     ["p4 servers"]="p4 servers"
     ["p4 property -Al"]="p4 property -Al"
