@@ -1,5 +1,6 @@
 #!/bin/bash
 TempLog="/tmp/_instance_data.log"
+CloudTempLog="/tmp/cloud_instance_data.log"
 rm -f $TempLog
 # report_instance_data.sh
 #
@@ -330,21 +331,21 @@ if [[ $cloudtype == ONPREM ]]; then
 fi
 
 # Start creating report in Markdown format - being careful to quote backquotes properly!
-{
-    echo "# Output of hostnamectl"
-    echo ""
-    echo '```'
-    hostnamectl;
-    echo '```'
-    echo ""
-    echo "# Output of systemD status"
-    echo ""
-    echo '```'
+#{
+#    echo "# Output of hostnamectl"
+#    echo ""
+#    echo '```'
+#    hostnamectl;
+#    echo '```'
+#    echo ""
+#    echo "# Output of systemD status"
+#    echo ""
+#    echo '```'
 #OLD    systemctl status;
-    systemctl list-units --type=service --all;
-    echo '```'
-    echo ""
-} >> $TempLog 2>&1
+#    systemctl list-units --type=service --all;
+#    echo '```'
+#    echo ""
+#} >> $TempLog 2>&1
 
 if [[ $IsAWS -eq 1 ]]; then
     echo "Doing the AWS meta-pull"
@@ -352,15 +353,15 @@ if [[ $IsAWS -eq 1 ]]; then
     Doc1=$(curl --connect-timeout $autoCloudTimeout -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/dynamic/instance-identity/document")
     Doc2=$(curl --connect-timeout $autoCloudTimeout -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/tags/instance/")
     {
-        echo "# AWS Metadata"
-        echo ""
-        echo '```'
+ #       echo "# AWS Metadata"
+ #       echo ""
+ #       echo '```'
         echo "$Doc1"
-        echo '```'
-        echo ""
-        echo "# AWS Tags"
-        echo ""
-        echo '```'
+ #       echo '```'
+ #       echo ""
+ #       echo "# AWS Tags"
+ #       echo ""
+ #       echo '```'
         if echo $Doc2 | grep -q '404 - Not Found'; then
             echo "Not available - check Instance permissions"
         else
@@ -369,33 +370,33 @@ if [[ $IsAWS -eq 1 ]]; then
                 echo "$t: $v"
             done
         fi
-        echo '```'
-        echo ""
-    } >> $TempLog 2>&1
+#        echo '```'
+#        echo ""
+    } >> $CloudTempLog 2>&1
 fi
 
 if [[ $IsAzure -eq 1 ]]; then
     echo "Doing the Azure meta-pull"
     Doc=$(curl --connect-timeout $autoCloudTimeout -s -H Metadata:true --noproxy "*" "http://169.254.169.254/metadata/instance?api-version=2021-02-01" | python -m json.tool)
     {
-        echo "# Azure Metadata"
-        echo ""
-        echo '```'
+#        echo "# Azure Metadata"
+#        echo ""
+#        echo '```'
         echo "$Doc"
-        echo '```'
-    } >> $TempLog 2>&1
+#        echo '```'
+    } >> $CloudTempLog 2>&1
 fi
 
 if [[ $IsGCP -eq 1 ]]; then
     echo "Doing the GCP meta-pull"
     Doc=$(curl --connect-timeout $autoCloudTimeout "http://metadata.google.internal/computeMetadata/v1/?recursive=true&alt=text" -H "Metadata-Flavor: Google")
     {
-        echo "# GCP Metadata"
-        echo ""
-        echo '```'
+#        echo "# GCP Metadata"
+#        echo ""
+#        echo '```'
         echo "$Doc"
-        echo '```'
-    } >> $TempLog 2>&1
+#        echo '```'
+    } >> $CloudTempLog 2>&1
 fi
 
 get_sdp_instances
