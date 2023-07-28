@@ -1,5 +1,8 @@
 #!/bin/bash
 TempLog="/tmp/_instance_data.log"
+TempJson="/tmp/json_instance_data.json"
+TempHMd="/tmp/hra_output.md"
+TempSMd="/tmp/support_output.md"
 rm -f $TempLog
 # report_instance_data.sh
 #
@@ -31,6 +34,9 @@ rm -f $TempLog
 # Find out if we're in AWS, GCP, or AZURE..
 
 declare -i autoCloud=0
+declare -i p4dRunning=0
+declare -i swarmRunning=0
+declare -i hasRunning=0
 
 #This scripts default config file location
 ConfigFile=/p4/common/config/.push_metrics.cfg
@@ -49,29 +55,47 @@ ConfigFile=/p4/common/config/.push_metrics.cfg
 # May be overwritten in the config file.
 declare report_instance_logfile="/p4/1/logs/report_instance_data.log"
 
+generate_random_serial() {
+    local characters="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    local serial=""
+    local char_count=${#characters}
+
+    for i in {1..6}; do
+        # Generate a random index to pick a character from the list
+        local random_index=$((RANDOM % char_count))
+        # Append the selected character to the serial
+        serial="${serial}${characters:$random_index:1}"
+    done
+
+    echo "$serial"
+}
 
 # Define the commands
 declare -A commands=(
-    ["Awesome p4 triggers"]='p4 triggers -o | awk "/^Triggers:/ {flag=1; next} /^$/ {flag=0} flag" | sed "s/^[ \t]*//"'
+    ["p4 triggers"]='p4 triggers -o | awk "/^Triggers:/ {flag=1; next} /^$/ {flag=0} flag" | sed "s/^[ \t]*//"'
     ["p4 extensions and configs"]="p4 extension --list --type extensions; p4 extension --list --type configs"
     ["p4 servers"]="p4 servers"
     ["p4 property -Al"]="p4 property -Al"
-#OLD    ["p4 -Ztag"]="p4 -Ztag info | awk '!/^... serverDate/'"
     ["p4 -Ztag Without the datefield?"]="p4 -Ztag info | awk '!/^... (serverDate|serverUptime)/'"
-    ["p4 property -Al"]="p4 property -Al"
+)
+declare -A supportcommands=(
+    ["p4 -Ztag Without the datefield?"]="p4 -Ztag info | awk '!/^... (serverDate|serverUptime)/'"
+    ["p4 extensions and configs"]="p4 configure show allservers"
+    ["p4 servers"]="p4 servers"
+    ["p4 servers -J"]="p4 servers -J"
 )
 
 ### Auto Cloud Configs
 ### Timeout in seconds until we're done attempting to contact internal cloud information
 autoCloudTimeout=5
 
-# ============= DONT TOUCH ============= 
+# ============= DONT TOUCH =============
 declare -A p4varsconfig
 function define_config_p4varsfile () {
     local var_name="$1"
     p4varsconfig["$var_name"]="export $var_name="
 }
-# ============= DONT TOUCH ============= 
+# ============= DONT TOUCH =============
 
 # =============P4 Vars File parser config=====================
 # Define the what you would like parsed from P4__INSTANCE__.vars
@@ -108,26 +132,44 @@ function work_instance () {
     echo "Working instance labeled as: $instance"
     # Your processing logic for each instance goes here
     {
-        echo "# Instance: $instance Output of P4VARS PARSER"
+        serialZ=$(generate_random_serial)
+        echo "TIGGER: $serialZ"
+        echo "#T1GL Instance: $instance Output of P4VARS PARSER"
         echo ""
         echo '```'
         # Grab stuff from p4_$instance.vars file
         p4varsparse_file "$file_path"
         echo '```'
-        echo ""
+        echo "P4TIGTAG: HRA"
+        echo "TIGGER: $serialZ"
     } >> $TempLog 2>&1
     {
-    for label in "${!commands[@]}"; do
-        command="${commands[$label]}"
-        echo "# Instance: $instance - Output of $label"
+    for label in "${!supportcommands[@]}"; do
+        serialZ=$(generate_random_serial)
+        echo "TIGGER: $serialZ"
+        command="${supportcommands[$label]}"
+        echo "#T1GL Instance: $instance - Output of $label"
         echo ""
         echo '```'
         eval "$command"
         echo '```'
+        echo "P4TIGTAG: SUPPORT"
+        echo "TIGGER: $serialZ"
+    done
+        for label in "${!commands[@]}"; do
+        serialZ=$(generate_random_serial)
+        echo "TIGGER: $serialZ"
+        command="${commands[$label]}"
+        echo "#T1GL Instance: $instance - Output of $label"
         echo ""
+        echo '```'
+        eval "$command"
+        echo '```'
+        echo "P4TIGTAG: HRA"
+        echo "TIGGER: $serialZ"
     done
     } >> $TempLog 2>&1
-} 
+}
 
 
 # Instance Counter
@@ -156,6 +198,39 @@ function get_sdp_instances () {
         work_instance $instance
     done
 }
+
+function findSwarm () {
+    SwarmURL=$(p4 -ztag -F %value% property -n P4.Swarm.URL -l)
+    if [[ -n "$SwarmURL" ]]; then
+        echo -e "There be Swarm here: $SwarmURL";
+        swarmRunning=1
+    else 
+        echo "We don't need no stink'n bees.";
+fi
+}
+
+function findHAS() {
+    HASExtensionVersion=$(p4 -ztag -F %ExtVersion% extension --configure Auth::loginhook -o)
+    if [[ -n "$SwarmURL" ]]; then
+        echo -e "There be HAS here, version: $HASExtensionVersion";
+        hasRunning=1
+    else
+        echo "No HAS installed.";
+fi
+}
+function findP4D () {
+    # Function to p4d check if a process is running
+    if pgrep -f "p4d_*" >/dev/null; then
+        echo "p4d service is running."
+        p4dRunning=1
+    else
+        echo "p4d service is not running."
+    fi
+}
+##SwarmURL=$(p4d -k db.property -jd - 2>&1 | grep @P4.Swarm.URL@|cut -d @ -f 6)
+##if [[ -n "$SwarmURL" ]]; then echo -e "There be Swarm here: $SwarmURL"; else echo "We don't need no stink'n bees."; fi
+
+
 
 function usage () {
     local style=${1:-"-h"}  # Default to "-h" if no style argument provided
@@ -331,19 +406,23 @@ fi
 
 # Start creating report in Markdown format - being careful to quote backquotes properly!
 {
-    echo "# Output of hostnamectl"
+    serialZ=$(generate_random_serial)
+    echo "TIGGER: $serialZ"
+    echo "#T1GL Output of hostnamectl"
     echo ""
     echo '```'
     hostnamectl;
     echo '```'
-    echo ""
-    echo "# Output of systemD status"
-    echo ""
-    echo '```'
+    echo "P4TIGTAG: ALL"
+#    echo "# Output of systemD status"
+#    echo ""
+#    echo '```'
+    echo "TIGGER: $serialZ"
+
 #OLD    systemctl status;
-    systemctl list-units --type=service --all;
-    echo '```'
-    echo ""
+#    systemctl list-units --type=service --all;
+#    echo '```'
+#    echo ""
 } >> $TempLog 2>&1
 
 if [[ $IsAWS -eq 1 ]]; then
@@ -352,13 +431,15 @@ if [[ $IsAWS -eq 1 ]]; then
     Doc1=$(curl --connect-timeout $autoCloudTimeout -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/dynamic/instance-identity/document")
     Doc2=$(curl --connect-timeout $autoCloudTimeout -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/tags/instance/")
     {
-        echo "# AWS Metadata"
+        serialZ=$(generate_random_serial)
+        echo "TIGGER: $serialZ"
+        echo "#T1GL AWS Metadata"
         echo ""
         echo '```'
         echo "$Doc1"
         echo '```'
-        echo ""
-        echo "# AWS Tags"
+        echo "P4TIGTAG: ALL"
+        echo "#T1GL AWS Tags"
         echo ""
         echo '```'
         if echo $Doc2 | grep -q '404 - Not Found'; then
@@ -370,7 +451,8 @@ if [[ $IsAWS -eq 1 ]]; then
             done
         fi
         echo '```'
-        echo ""
+        echo "P4TIGTAG: ALL"
+        echo "TIGGER: $serialZ"
     } >> $TempLog 2>&1
 fi
 
@@ -378,11 +460,15 @@ if [[ $IsAzure -eq 1 ]]; then
     echo "Doing the Azure meta-pull"
     Doc=$(curl --connect-timeout $autoCloudTimeout -s -H Metadata:true --noproxy "*" "http://169.254.169.254/metadata/instance?api-version=2021-02-01" | python -m json.tool)
     {
-        echo "# Azure Metadata"
+        serialZ=$(generate_random_serial)
+        echo "TIGGER: $serialZ"
+        echo "#T1GL Azure Metadata"
         echo ""
         echo '```'
         echo "$Doc"
         echo '```'
+        echo "P4TIGTAG: ALL"
+        echo "TIGGER: $serialZ"
     } >> $TempLog 2>&1
 fi
 
@@ -390,26 +476,64 @@ if [[ $IsGCP -eq 1 ]]; then
     echo "Doing the GCP meta-pull"
     Doc=$(curl --connect-timeout $autoCloudTimeout "http://metadata.google.internal/computeMetadata/v1/?recursive=true&alt=text" -H "Metadata-Flavor: Google")
     {
-        echo "# GCP Metadata"
+        serialZ=$(generate_random_serial)
+        echo "TIGGER: $serialZ"
+        echo "#T1GL GCP Metadata"
         echo ""
         echo '```'
         echo "$Doc"
         echo '```'
+        echo "P4TIGTAG: ALL"
+        echo "TIGGER: $serialZ"
     } >> $TempLog 2>&1
 fi
 
 get_sdp_instances
+findSwarm
+findHAS
+
 
 # Loop while pushing as there seem to be temporary password failures quite frequently
 # TODO Look into this.. (Note: Looking at the go build it's potentially related datapushgate's go build)
 iterations=0
 max_iterations=10
 STATUS=1
+
+###Build a really ugly json file then break it down into a md file before sending it.. Yeah..... O.o
+{
+    python3 $P4CSBIN/makejson.py $TempLog $TempJson;
+    python3 $P4CSBIN/makemd.py $TempJson /tmp;
+    cat /tmp/all_output.md | cat - $TempHMd > temp_file && mv temp_file $TempHMd;
+    cat /tmp/all_output.md | cat - $TempSMd > temp_file && mv temp_file $TempSMd;
+    sed -i '/P4TIGTAG:/d' $TempHMd;
+    sed -i '/P4TIGTAG:/d' $TempSMd;
+}
+
 while [ $STATUS -ne 0 ]; do
     sleep 1
     ((iterations=$iterations+1))
-    log "Pushing data"
-    result=$(curl --connect-timeout $autoCloudTimeout --retry 5 --user "$metrics_user:$metrics_passwd" --data-binary "@$TempLog" "$metrics_host/data/?customer=$metrics_customer&instance=$metrics_instance")
+    log "Pushing HRA data"
+    result=$(curl --connect-timeout $autoCloudTimeout --retry 5 --user "$metrics_user:$metrics_passwd" --data-binary "@$TempHMd" "$metrics_host/data/?customer=$metrics_customer&instance=$metrics_instance")
+    STATUS=0
+    log "Checking result: $result"
+    if [[ "$result" = '{"message":"invalid username or password"}' ]]; then
+        STATUS=1
+        log "Retrying due to temporary password failure"
+    fi
+    if [ "$iterations" -ge "$max_iterations" ]; then
+        log "Push loop iterations exceeded"
+        exit 1
+    fi
+done
+iterations=0
+max_iterations=10
+STATUS=1
+
+while [ $STATUS -ne 0 ]; do
+    sleep 1
+    ((iterations=$iterations+1))
+    log "Pushing Support data"
+    result=$(curl --connect-timeout $autoCloudTimeout --retry 5 --user "$metrics_user:$metrics_passwd" --data-binary "@$TempSMd" "$metrics_host/support/?customer=$metrics_customer&instance=$metrics_instance")
     STATUS=0
     log "Checking result: $result"
     if [[ "$result" = '{"message":"invalid username or password"}' ]]; then
