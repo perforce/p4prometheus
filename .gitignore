@@ -1,0 +1,12 @@
+
+.vs/p4prometheus/v17/.wsuo
+
+*.lock
+
+*.sqlite
+
+.vs/VSWorkspaceState.json
+
+*.vsidx
+
+scripts/postproc_cmds_sh.sh
