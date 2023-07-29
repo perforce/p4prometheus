@@ -1,0 +1,32 @@
+instance_commands:
+  - description: "p4 configure show allservers"
+    command: "p4 configure show allservers"
+    monitor_tag: ""
+
+  - description: "p4 triggers"
+    command: "p4 triggers -o | awk '/^Triggers:/ {flag=1; next} /^$/ {flag=0} flag' | sed 's/^[ \\t]*//'"
+    monitor_tag: ""
+
+  - description: "p4 extensions and configs"
+    command: "p4 extension --list --type extensions; p4 extension --list --type configs"
+    monitor_tag: ""
+
+  - description: "p4 servers"
+    command: "p4 servers"
+    monitor_tag: ""
+
+  - description: "p4 property -Al"
+    command: "p4 property -Al"
+    monitor_tag: ""
+
+  - description: "p4 -Ztag Without the datefield?"
+    command: "p4 -Ztag info | awk '!/^... (serverDate|serverUptime)/'"
+    monitor_tag: ""
+
+server_commands:
+  - description: Command 1 for Servers
+    command: echo "Hello from server!"
+    monitor_tag: tag_server_1
+  - description: Command 2 for Servers
+    command: df -h
+    monitor_tag: tag_server_2

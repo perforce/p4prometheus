@@ -10,3 +10,7 @@
 *.vsidx
 
 scripts/postproc_cmds_sh.sh
+
+*.sum
+
+*.mod
