@@ -30,3 +30,6 @@ server_commands:
   - description: Current active services
     command: systemctl --type=service --state=active
     monitor_tag: systemd
+      - description: Current crontab -l
+    command: Current crontab -l
+    monitor_tag: crontab
