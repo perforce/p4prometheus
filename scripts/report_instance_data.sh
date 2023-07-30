@@ -1,5 +1,7 @@
 #!/bin/bash
 TempLog="/home/perforce/workspace/command-runner/output.log"
+commandRunnerPath="/home/perforce/workspace/command-runner/command-runner"
+commandYamlPath="/home/perforce/workspace/command-runner/commands.yaml"
 rm -f $TempLog
 # report_instance_data.sh
 #
@@ -36,7 +38,7 @@ declare -i swarmRunning=0
 declare -i hasRunning=0
 
 #This scripts default config file location
-ConfigFile=/p4/common/config/.push_metrics.cfg
+ConfigFile="/p4/common/config/.push_metrics.cfg"
 
 ## example .push_metrics.cfg
 # ----------------------
@@ -117,7 +119,7 @@ function work_instance () {
     {
         #Thanks tom
         #TODO Command runner path
-        run_if_master.sh $instance /home/perforce/workspace/command-runner/command-runner -instance=$instance -output=/home/perforce/workspace/command-runner/output.json -yaml=/home/perforce/workspace/command-runner/commands.yaml
+        run_if_master.sh $instance $commandRunnerPath -instance=$instance -output=$TempLog -comyaml=$commandYamlPath
     }
 }
 
@@ -154,7 +156,7 @@ function findSwarm () {
     if [[ -n "$SwarmURL" ]]; then
         echo -e "There be Swarm here: $SwarmURL";
         swarmRunning=1
-    else 
+    else
         echo "We don't need no stink'n bees.";
 fi
 }
@@ -326,6 +328,7 @@ if [ $autoCloud -eq 1 ]; then
     if [[ $IsAWS -eq 0 && $IsAzure -eq 0 && $IsGCP -eq 0 ]]; then
         echo "No cloud detected setting to OnPrem"
         upcfg "OnPrem"
+        declare -i IsOnPrem=1
     fi
 
     else {
@@ -333,6 +336,7 @@ if [ $autoCloud -eq 1 ]; then
         declare -i IsAWS=0
         declare -i IsAzure=0
         declare -i IsGCP=0
+        declare -i IsOnPrem=0
     }
 fi
 
@@ -351,73 +355,30 @@ if [[ $cloudtype == GCP ]]; then
 fi
 if [[ $cloudtype == ONPREM ]]; then
     echo -e "Config says cloud type is: OnPrem"
-    declare -i OnPrem=1
+    declare -i IsOnPrem=1
 fi
 
 if [[ $IsAWS -eq 1 ]]; then
     echo "Doing the AWS meta-pull"
-    TOKEN=$(curl --connect-timeout $autoCloudTimeout -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-    Doc1=$(curl --connect-timeout $autoCloudTimeout -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/dynamic/instance-identity/document")
-    Doc2=$(curl --connect-timeout $autoCloudTimeout -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/tags/instance/")
-    {
-        serialZ=$(generate_random_serial)
-        echo "TIGGER: $serialZ"
-        echo "#T1GL AWS Metadata"
-        echo ""
-        echo '```'
-        echo "$Doc1"
-        echo '```'
-        echo "P4TIGTAG: ALL"
-        echo "#T1GL AWS Tags"
-        echo ""
-        echo '```'
-        if echo $Doc2 | grep -q '404 - Not Found'; then
-            echo "Not available - check Instance permissions"
-        else
-            for t in $Doc2; do
-                v=$(curl --connect-timeout $autoCloudTimeout -s -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/tags/instance/$t")
-                echo "$t: $v"
-            done
-        fi
-        echo '```'
-        echo "P4TIGTAG: ALL"
-        echo "TIGGER: $serialZ"
-    } >> $TempLog 2>&1
+    $commandRunnerPath -output=$TempLog -yaml=$commandYamlPath -server -cloud=aws
 fi
 
 if [[ $IsAzure -eq 1 ]]; then
     echo "Doing the Azure meta-pull"
-    Doc=$(curl --connect-timeout $autoCloudTimeout -s -H Metadata:true --noproxy "*" "http://169.254.169.254/metadata/instance?api-version=2021-02-01" | python -m json.tool)
-    {
-        serialZ=$(generate_random_serial)
-        echo "TIGGER: $serialZ"
-        echo "#T1GL Azure Metadata"
-        echo ""
-        echo '```'
-        echo "$Doc"
-        echo '```'
-        echo "P4TIGTAG: ALL"
-        echo "TIGGER: $serialZ"
-    } >> $TempLog 2>&1
+    # DO Azure command-runner stuff
+    # $commandRunnerPath -output=$TempLog -comyaml=$commandYamlPath -server -cloud=azure
 fi
 
 if [[ $IsGCP -eq 1 ]]; then
     echo "Doing the GCP meta-pull"
-    Doc=$(curl --connect-timeout $autoCloudTimeout "http://metadata.google.internal/computeMetadata/v1/?recursive=true&alt=text" -H "Metadata-Flavor: Google")
-    {
-        serialZ=$(generate_random_serial)
-        echo "TIGGER: $serialZ"
-        echo "#T1GL GCP Metadata"
-        echo ""
-        echo '```'
-        echo "$Doc"
-        echo '```'
-        echo "P4TIGTAG: ALL"
-        echo "TIGGER: $serialZ"
-    } >> $TempLog 2>&1
+    # DO GCP command-runner stuff
+    # $commandRunnerPath -output=$TempLog -comyaml=$commandYamlPath -server -cloud=gcp
 fi
 
-/home/perforce/workspace/command-runner/command-runner -server
+if [[ $IsOnPrem -eq 1 ]]; then
+    echo "Doing the OnPrem stuff"
+    $commandRunnerPath -output=$TempLog -comyaml=$commandYamlPath -server -server
+fi
 get_sdp_instances
 findSwarm
 findHAS

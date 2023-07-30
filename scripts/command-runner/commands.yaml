@@ -24,9 +24,9 @@ instance_commands:
     monitor_tag: ""
 
 server_commands:
-  - description: Command 1 for Servers
-    command: echo "Hello from server!"
-    monitor_tag: tag_server_1
-  - description: Command 2 for Servers
-    command: df -h
-    monitor_tag: tag_server_2
+  - description: Server host information
+    command: hostnamectl
+    monitor_tag:  hostnamectl
+  - description: Current active services
+    command: systemctl --type=service --state=active
+    monitor_tag: systemd

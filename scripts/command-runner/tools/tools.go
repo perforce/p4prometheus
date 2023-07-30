@@ -4,12 +4,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io/ioutil"
+	"os"
 	"os/exec"
 
 	"gopkg.in/yaml.v2"
 )
 
-// Define a struct to hold each command's details
 // Define a struct to hold each command's details
 type Command struct {
 	Description string `yaml:"description"`
@@ -18,6 +18,7 @@ type Command struct {
 }
 
 // Define a struct to hold the configuration from the YAML file for instance_commands and server_commands
+//#TODO Is this needed
 type CommandConfig struct {
 	InstanceCommands []Command `yaml:"instance_commands"`
 	ServerCommands   []Command `yaml:"server_commands"`
@@ -59,26 +60,25 @@ func ReadServerCommandsFromYAML(filePath string) ([]Command, error) {
 
 	return config.ServerCommands, nil
 }
+
 func ReadCommandsFromYAML(filePath string) ([]Command, error) {
-	yamlFile, err := ioutil.ReadFile(filePath)
+	commands := make([]Command, 0)
+
+	instanceCommands, err := ReadInstanceCommandsFromYAML(filePath)
 	if err != nil {
 		return nil, err
 	}
+	commands = append(commands, instanceCommands...)
 
-	var config CommandConfig
-	if err := yaml.Unmarshal(yamlFile, &config); err != nil {
+	serverCommands, err := ReadServerCommandsFromYAML(filePath)
+	if err != nil {
 		return nil, err
 	}
-
-	var commands []Command
-	// Combine both instance and server commands
-	commands = append(commands, config.InstanceCommands...)
-	commands = append(commands, config.ServerCommands...)
+	commands = append(commands, serverCommands...)
 
 	return commands, nil
 }
 
-// Function to execute a single shell command and capture its output
 func ExecuteShellCommand(command string) (string, error) {
 	cmd := exec.Command("sh", "-c", command)
 	output, err := cmd.Output()
@@ -105,45 +105,40 @@ func ExecuteAndEncodeCommands(commands []Command) ([]string, error) {
 	return base64Outputs, nil
 }
 
-// Function to encode input to Base64
 func EncodeToBase64(input string) string {
 	return base64.StdEncoding.EncodeToString([]byte(input))
 }
 
-// Function to write JSON data to a file
+// Function to write JSON data to a file with indentation for human-readability.....Minus the base64 humans don't read that stuff... normally
 func WriteJSONToFile(data []JSONData, filePath string) error {
-	jsonString, err := json.MarshalIndent(data, "", "  ")
+	jsonString, err := json.MarshalIndent(data, "", "    ") // Use four spaces for indentation
 	if err != nil {
 		return err
+	}
+
+	// Check if the file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		// Create the file if it doesn't exist
+		file, err := os.Create(filePath)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
 	}
 
 	return ioutil.WriteFile(filePath, jsonString, 0644)
 }
 
-// Function to convert the input type to []tools.CommandConfig
-func ConvertToCommandConfig(commands []struct {
-	Description string `yaml:"description"`
-	Command     string `yaml:"command"`
-	MonitorTag  string `yaml:"monitor_tag"`
-}) CommandConfig {
-	var cmdConfig CommandConfig
-	for _, cmd := range commands {
-		cmdConfig.InstanceCommands = append(cmdConfig.InstanceCommands, Command{
-			Description: cmd.Description,
-			Command:     cmd.Command,
-			MonitorTag:  cmd.MonitorTag,
-		})
-	}
-	return cmdConfig
-}
 func ReadJSONFromFile(filePath string) ([]JSONData, error) {
-	jsonFile, err := ioutil.ReadFile(filePath)
+	jsonFile, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
 	}
+	defer jsonFile.Close()
 
 	var jsonData []JSONData
-	if err := json.Unmarshal(jsonFile, &jsonData); err != nil {
+	dec := json.NewDecoder(jsonFile)
+	if err := dec.Decode(&jsonData); err != nil {
 		return nil, err
 	}
 
