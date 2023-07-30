@@ -1,3 +1,10 @@
+//TODO LOGGING
+//TODO GCP
+//TODO AZURE
+//TODO file parser
+//TODO SWARM
+//TODO HAS
+
 package main
 
 import (
