@@ -19,6 +19,7 @@ metrics_link=/p4/metrics
 
 VER_NODE_EXPORTER="1.3.1"
 VER_P4PROMETHEUS="0.7.5"
+VER_COMMAND_RUNNER="1.0"
 
 # ============================================================
 
@@ -45,7 +46,7 @@ install_p4prom.sh -h
     <metrics_link> is an alternative link to metrics_root where metrics will be written - default: $metrics_link
                 Typically only used for SDP installations.
     <osuser>    Operating system user, e.g. perforce, under which p4d process is running
-    -push     Means install pushgateway/report_data_instance cronjobs and config file. Not relevant for most installations.
+    -push     Means install pushgateway/command-runner cronjobs and config file. Not relevant for most installations.
 
 IMPORTANT: Specify either the SDP instance (e.g. 1), or -nosdp
 
@@ -318,6 +319,9 @@ EOF
 
 install_monitor_metrics () {
 
+    CVER="$VER_COMMAND_RUNNER" #command-runner version
+    fname="command-runner-linux-amd64.tar.gz" #command-runner filename
+    url="https://github.com/willKman718/command-runner/releases/download/$CVER/$fname" #command-runner url
     if [[ $UseSDP -eq 1 ]]; then
         cron_args="$SDP_INSTANCE"
     else
@@ -330,8 +334,8 @@ mkdir -p $p4prom_bin_dir
 cd $p4prom_bin_dir
 
 # Download command-runner [Needs to be latest?]
-echo "downloading command-runner"
-wget "https://github.com/willKman718/command-runner/releases/download/1.0/command-runner-linux-amd64.tar.gz"
+echo "downloading and extracting $url"
+wget -q "$url"
 if [ $? -ne 0 ]; then
     echo "Failed to download command-runner"
     exit 1
@@ -416,7 +420,7 @@ if crontab -l | grep -q "\$old_scriptname" ; then
 fi
 
 if ! crontab -l | grep -q "\$scriptname" ; then
-    cmd="$p4prom_bin_dir/\$scriptname --server --instance=\"$SDP_INSTANCE\" --log=/p4/$SDP_INSTANCE/logs/command-runner.log"
+    cmd="$p4prom_bin_dir/\$scriptname --server --instance=\\\${INSTANCE} --log=/p4/\\\$INSTANCE/logs/command-runner.log"
     entry1="0 23 * * * \$cmd > /dev/null 2>&1 ||:"
     (crontab -l && echo "\$entry1") | crontab -
 fi
