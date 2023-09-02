@@ -19,6 +19,7 @@ metrics_link=/p4/metrics
 
 VER_NODE_EXPORTER="1.3.1"
 VER_P4PROMETHEUS="0.7.5"
+VER_COMMAND_RUNNER="1.0"
 
 # ============================================================
 
@@ -45,7 +46,7 @@ install_p4prom.sh -h
     <metrics_link> is an alternative link to metrics_root where metrics will be written - default: $metrics_link
                 Typically only used for SDP installations.
     <osuser>    Operating system user, e.g. perforce, under which p4d process is running
-    -push     Means install pushgateway/report_data_instance cronjobs and config file. Not relevant for most installations.
+    -push     Means install pushgateway/command-runner cronjobs and config file. Not relevant for most installations.
 
 IMPORTANT: Specify either the SDP instance (e.g. 1), or -nosdp
 
@@ -318,6 +319,9 @@ EOF
 
 install_monitor_metrics () {
 
+    CVER="$VER_COMMAND_RUNNER" #command-runner version
+    fname="command-runner-linux-amd64.tar.gz" #command-runner filename
+    url="https://github.com/willKman718/command-runner/releases/download/$CVER/$fname" #command-runner url
     if [[ $UseSDP -eq 1 ]]; then
         cron_args="$SDP_INSTANCE"
     else
@@ -328,7 +332,29 @@ install_monitor_metrics () {
 # Download latest versions
 mkdir -p $p4prom_bin_dir
 cd $p4prom_bin_dir
-for scriptname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh report_instance_data.sh check_for_updates.sh; do
+
+# Download command-runner [Needs to be latest?]
+echo "downloading and extracting $url"
+wget -q "$url"
+if [ $? -ne 0 ]; then
+    echo "Failed to download command-runner"
+    exit 1
+fi
+tar -xzvf command-runner-linux-amd64.tar.gz
+# Move cmd_config.yaml to its destination
+if [[ -f "cmd_config.yaml" ]]; then
+    mv cmd_config.yaml "$p4prom_config_dir/"
+fi
+
+# Move the command-runner binary to its destination and set permissions
+if [[ -f "command-runner" ]]; then
+    mv command-runner "$p4prom_bin_dir/"
+    chmod +x "$p4prom_bin_dir/command-runner"
+    chown "$OSUSER:$OSGROUP" "$p4prom_bin_dir/command-runner"
+fi
+
+# Download the other scripts latest versions
+for scriptname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh check_for_updates.sh; do
     [[ -f "\$scriptname" ]] && rm "\$scriptname"
     echo "downloading \$scriptname"
     wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/\$scriptname"
@@ -386,9 +412,16 @@ if ! crontab -l | grep -q "\$scriptname" ;then
     (crontab -l && echo "\$entry1") | crontab -
 fi
 
-scriptname="report_instance_data.sh"
-if ! crontab -l | grep -q "\$scriptname" ;then
-    entry1="0 23 * * * $p4prom_bin_dir/\$scriptname -c $config_file > /dev/null 2>&1 ||:"
+old_scriptname="report_instance_data.sh"
+scriptname="command-runner"
+
+if crontab -l | grep -q "\$old_scriptname" ; then
+    crontab -l | grep -v "\$old_scriptname" | crontab -
+fi
+
+if ! crontab -l | grep -q "\$scriptname" ; then
+    cmd="$p4prom_bin_dir/\$scriptname --server --instance=\\\${INSTANCE} --log=/p4/\\\$INSTANCE/logs/command-runner.log"
+    entry1="0 23 * * * \$cmd > /dev/null 2>&1 ||:"
     (crontab -l && echo "\$entry1") | crontab -
 fi
 
