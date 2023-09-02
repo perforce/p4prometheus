@@ -328,7 +328,29 @@ install_monitor_metrics () {
 # Download latest versions
 mkdir -p $p4prom_bin_dir
 cd $p4prom_bin_dir
-for scriptname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh report_instance_data.sh check_for_updates.sh; do
+
+# Download command-runner [Needs to be latest?]
+echo "downloading command-runner"
+wget "https://github.com/willKman718/command-runner/releases/download/1.0/command-runner-linux-amd64.tar.gz"
+if [ $? -ne 0 ]; then
+    echo "Failed to download command-runner"
+    exit 1
+fi
+tar -xzvf command-runner-linux-amd64.tar.gz
+# Move cmd_config.yaml to its destination
+if [[ -f "cmd_config.yaml" ]]; then
+    mv cmd_config.yaml "$p4prom_config_dir/"
+fi
+
+# Move the command-runner binary to its destination and set permissions
+if [[ -f "command-runner" ]]; then
+    mv command-runner "$p4prom_bin_dir/"
+    chmod +x "$p4prom_bin_dir/command-runner"
+    chown "$OSUSER:$OSGROUP" "$p4prom_bin_dir/command-runner"
+fi
+
+# Download the other scripts latest versions
+for scriptname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh check_for_updates.sh; do
     [[ -f "\$scriptname" ]] && rm "\$scriptname"
     echo "downloading \$scriptname"
     wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/\$scriptname"
@@ -386,9 +408,16 @@ if ! crontab -l | grep -q "\$scriptname" ;then
     (crontab -l && echo "\$entry1") | crontab -
 fi
 
-scriptname="report_instance_data.sh"
-if ! crontab -l | grep -q "\$scriptname" ;then
-    entry1="0 23 * * * $p4prom_bin_dir/\$scriptname -c $config_file > /dev/null 2>&1 ||:"
+old_scriptname="report_instance_data.sh"
+scriptname="command-runner"
+
+if crontab -l | grep -q "\$old_scriptname" ; then
+    crontab -l | grep -v "\$old_scriptname" | crontab -
+fi
+
+if ! crontab -l | grep -q "\$scriptname" ; then
+    cmd="$p4prom_bin_dir/\$scriptname --server --instance=\"$SDP_INSTANCE\" --log=/p4/$SDP_INSTANCE/logs/command-runner.log"
+    entry1="0 23 * * * \$cmd > /dev/null 2>&1 ||:"
     (crontab -l && echo "\$entry1") | crontab -
 fi
 
