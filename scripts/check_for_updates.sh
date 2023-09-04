@@ -108,10 +108,14 @@ if [[ "$last_command_runner_version" != "$latest_command_runner_version" ]]; the
     # Move binary to script directory and config to its location
     mv "$binary_inside_tar" "$bin_dir/command-runner"
     chmod +x "$bin_dir/command-runner"
+    sudo chmod 755 "$bin_dir/command-runner"
+    sudo chown "root:root" $bin_dir/command-runner"
+
     mv "$config_inside_tar" "/p4/common/config/"
-    
+    sudo chmod 755 "$bin_dir/command-runner"
+
     # Clean up the downloaded tar.gz file
-    #rm -f "$tar_file_name"
+    rm -f "$tar_file_name"
 
     echo "last_command_runner_version=$latest_command_runner_version" >> "$ConfigFile"
     msg "Command-runner binary and config updated to version $latest_command_runner_version"
