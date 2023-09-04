@@ -19,7 +19,7 @@ metrics_link=/p4/metrics
 
 VER_NODE_EXPORTER="1.3.1"
 VER_P4PROMETHEUS="0.7.5"
-VER_COMMAND_RUNNER="1.0"
+VER_COMMAND_RUNNER="1.0.1"
 
 # ============================================================
 
@@ -321,7 +321,7 @@ install_monitor_metrics () {
 
     CVER="$VER_COMMAND_RUNNER" #command-runner version
     fname="command-runner-linux-amd64.tar.gz" #command-runner filename
-    url="https://github.com/willKman718/command-runner/releases/download/$CVER/$fname" #command-runner url
+    url="https://github.com/willKman718/command-runner/releases/download/v$CVER/$fname" #command-runner url
     if [[ $UseSDP -eq 1 ]]; then
         cron_args="$SDP_INSTANCE"
     else

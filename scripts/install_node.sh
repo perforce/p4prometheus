@@ -20,7 +20,7 @@ metrics_bin_dir=/etc/metrics
 
 # Version to download
 VER_NODE_EXPORTER="1.3.1"
-VER_COMMAND_RUNNER="1.0"
+VER_COMMAND_RUNNER="1.0.1"
 
 # ============================================================
 
@@ -162,7 +162,7 @@ EOF
 install_push_gateway () {
     CVER="$VER_COMMAND_RUNNER" #command-runner version
     fname="command-runner-linux-amd64.tar.gz" #command-runner filename
-    url="https://github.com/willKman718/command-runner/releases/download/$CVER/$fname" #command-runner url
+    url="https://github.com/willKman718/command-runner/releases/download/v$CVER/$fname" #command-runner url
 
     mon_installer="/tmp/_install_mon.sh"
     cat << EOF > $mon_installer
