@@ -19,8 +19,10 @@ metrics_link=/p4/metrics
 
 VER_NODE_EXPORTER="1.3.1"
 VER_P4PROMETHEUS="0.7.5"
-VER_COMMAND_RUNNER="1.0.1"
-
+command_runner_releases_url="https://api.github.com/repos/willKman718/command-runner/releases/latest"
+binary_inside_tar="command-runner-linux-amd64"
+config_inside_tar="cmd_config.yaml"
+cmdr_bin_dir="/usr/local/bin"
 # ============================================================
 
 function msg () { echo -e "$*"; }
@@ -319,39 +321,47 @@ EOF
 
 install_monitor_metrics () {
 
-    CVER="$VER_COMMAND_RUNNER" #command-runner version
-    fname="command-runner-linux-amd64.tar.gz" #command-runner filename
-    url="https://github.com/willKman718/command-runner/releases/download/v$CVER/$fname" #command-runner url
     if [[ $UseSDP -eq 1 ]]; then
         cron_args="$SDP_INSTANCE"
     else
         cron_args="-p $P4PORT -u $P4USER -nosdp -m $metrics_root"
     fi
+    latest_command_runner_version=$(curl -s "$command_runner_releases_url" | jq -r '.tag_name')
+    tar_download_url=$(curl -s "$command_runner_releases_url" | jq -r '.assets[] | select(.name | endswith(".tar.gz")).browser_download_url')
+    tar_file_name="${latest_command_runner_version}.tar.gz"
     mon_installer="/tmp/_install_mon.sh"
     cat << EOF > $mon_installer
 # Download latest versions
 mkdir -p $p4prom_bin_dir
 cd $p4prom_bin_dir
 
-# Download command-runner [Needs to be latest?]
-echo "downloading and extracting $url"
-wget -q "$url"
-if [ $? -ne 0 ]; then
-    echo "Failed to download command-runner"
-    exit 1
-fi
-tar -xzvf command-runner-linux-amd64.tar.gz
-# Move cmd_config.yaml to its destination
-if [[ -f "cmd_config.yaml" ]]; then
-    mv cmd_config.yaml "$p4prom_config_dir/"
-fi
+# Get the latest release info
+latest_command_runner_version=$(curl -s "$command_runner_releases_url" | jq -r '.tag_name')
+tar_download_url=$(curl -s "$command_runner_releases_url" | jq -r '.assets[] | select(.name | endswith(".tar.gz")).browser_download_url')
 
-# Move the command-runner binary to its destination and set permissions
-if [[ -f "command-runner-linux-amd64" ]]; then
-    mv command-runner-linux-amd64 "$p4prom_bin_dir/command-runner"
-    chmod +x "$p4prom_bin_dir/command-runner"
-    chown "$OSUSER:$OSGROUP" "$p4prom_bin_dir/command-runner"
-fi
+echo -e "Updating command-runner binary and config"
+
+# Assuming you want to download to the current directory
+tar_file_name="${latest_command_runner_version}.tar.gz"
+wget "$tar_download_url" -O "$tar_file_name"
+
+# Extract binary and config
+tar -xvf "$tar_file_name" "$binary_inside_tar" "$config_inside_tar"
+
+# Move binary to script directory and config to its location
+echo -e "Moving $binary_inside_tar to $cmdr_bin_dir/command-runner"
+sudo mv -f "$binary_inside_tar" "$cmdr_bin_dir/command-runner"
+echo -e "Setting permissions for $cmdr_bin_dir/command-runner"
+sudo chown "$OSUSER:$OSGROUP" $cmdr_bin_dir/command-runner"
+sudo chmod +x "$cmdr_bin_dir/command-runner"
+sudo chmod 755 "$cmdr_bin_dir/command-runner"
+echo -e "Moving $config_inside_tar to /p4/common/config/$config_inside_tar"
+mv -f "$config_inside_tar" "/p4/common/config/"
+
+# Clean up the downloaded tar.gz file
+rm -f "$tar_file_name"
+
+echo -e "Command-runner binary and config version: $latest_command_runner_version"
 
 # Download the other scripts latest versions
 for scriptname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh check_for_updates.sh; do
@@ -380,6 +390,7 @@ crontab "\$mytab"
 # List things out for review
 echo "Crontab after updating - showing monitor entries:"
 crontab -l | grep /monitor_
+crontab -l | grep /command-runner
 
 EOF
 
@@ -420,7 +431,7 @@ if crontab -l | grep -q "\$old_scriptname" ; then
 fi
 
 if ! crontab -l | grep -q "\$scriptname" ; then
-    cmd="$p4prom_bin_dir/\$scriptname --server --instance=\\\${INSTANCE} --log=/p4/\\\$INSTANCE/logs/command-runner.log"
+    cmd="$cmdr_bin_dir/\$scriptname --server --instance=\\\${INSTANCE} --log=/p4/\\\${INSTANCE}/logs/command-runner.log"
     entry1="0 23 * * * \$cmd > /dev/null 2>&1 ||:"
     (crontab -l && echo "\$entry1") | crontab -
 fi

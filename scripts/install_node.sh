@@ -20,7 +20,9 @@ metrics_bin_dir=/etc/metrics
 
 # Version to download
 VER_NODE_EXPORTER="1.3.1"
-VER_COMMAND_RUNNER="1.0.1"
+binary_inside_tar="command-runner-linux-amd64"
+config_inside_tar="cmd_config.yaml"
+cmdr_bin_dir="/usr/local/bin"
 
 # ============================================================
 
@@ -160,35 +162,39 @@ EOF
 
 
 install_push_gateway () {
-    CVER="$VER_COMMAND_RUNNER" #command-runner version
-    fname="command-runner-linux-amd64.tar.gz" #command-runner filename
-    url="https://github.com/willKman718/command-runner/releases/download/v$CVER/$fname" #command-runner url
-
+    latest_command_runner_version=$(curl -s "$command_runner_releases_url" | jq -r '.tag_name')
+    tar_download_url=$(curl -s "$command_runner_releases_url" | jq -r '.assets[] | select(.name | endswith(".tar.gz")).browser_download_url')
+    tar_file_name="${latest_command_runner_version}.tar.gz"
     mon_installer="/tmp/_install_mon.sh"
     cat << EOF > $mon_installer
 # Download latest versions
 mkdir -p $metrics_bin_dir
 cd $metrics_bin_dir
 
-# Download command-runner [Needs to be latest?]
-echo "downloading and extracting $url"
-wget -q "$url"
-if [ $? -ne 0 ]; then
-    echo "Failed to download command-runner"
-    exit 1
-fi
-tar -xzvf command-runner-linux-amd64.tar.gz
-# Move cmd_config.yaml to its destination
-if [[ -f "cmd_config.yaml" ]]; then
-    mv cmd_config.yaml "$metrics_bin_dir/"
-fi
+# Get the latest release info
+latest_command_runner_version=$(curl -s "$command_runner_releases_url" | jq -r '.tag_name')
+tar_download_url=$(curl -s "$command_runner_releases_url" | jq -r '.assets[] | select(.name | endswith(".tar.gz")).browser_download_url')
 
-# Move the command-runner binary to its destination and set permissions
-if [[ -f "command-runner-linux-amd64" ]]; then
-    mv command-runner-linux-amd64 "$metrics_bin_dir/command-runner"
-    chmod +x "$metrics_bin_dir/command-runner"
-    #chown "$OSUSER:$OSGROUP" "$metrics_bin_dir/command-runner"
-fi
+echo -e "Updating command-runner binary and config"
+
+# Assuming you want to download to the current directory
+tar_file_name="${latest_command_runner_version}.tar.gz"
+wget "$tar_download_url" -O "$tar_file_name"
+
+# Extract binary and config
+tar -xvf "$tar_file_name" "$binary_inside_tar" "$config_inside_tar"
+
+# Move binary to script directory and config to its location
+echo -e "Moving $binary_inside_tar to $cmdr_bin_dir/command-runner"
+sudo mv -f "$binary_inside_tar" "$cmdr_bin_dir/command-runner"
+echo -e "Setting permissions for $cmdr_bin_dir/command-runner"
+sudo chmod +x "$cmdr_bin_dir/command-runner"
+sudo chown "$OSUSER:$OSGROUP" $cmdr_bin_dir/command-runner"
+sudo chmod 755 "$cmdr_bin_dir/command-runner"
+echo -e "Moving $config_inside_tar to $metrics_bin_dir/$config_inside_tar"
+mv -f "$config_inside_tar" "$metrics_bin_dir/$config_inside_tar"
+sudo chown "$OSUSER:$OSGROUP" "$metrics_bin_dir/$config_inside_tar
+
 for scriptname in push_metrics.sh check_for_updates.sh; do
     [[ -f "\$scriptname" ]] && rm "\$scriptname"
     echo "downloading \$scriptname"
@@ -239,7 +245,7 @@ if crontab -l | grep -q "\$old_scriptname" ; then
 fi
 
 if ! crontab -l | grep -q "\$scriptname" ; then
-    cmd="$metrics_bin_dir/\$scriptname --server --instance=\\\${INSTANCE} --mcfg=$config_file --log=$metrics_root/command-runner.log"
+    cmd="$metrics_bin_dir/\$scriptname --server --instance=\\\${INSTANCE} -c=$metrics_bin_dir/$config_inside_tar -m=$config_file --log=$metrics_root/command-runner.log"
     entry1="0 23 * * * \$cmd > /dev/null 2>&1 ||:"
     (crontab -l && echo "\$entry1") | crontab -
 fi

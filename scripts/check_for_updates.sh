@@ -5,8 +5,6 @@ github_url="https://api.github.com/repos/perforce/p4prometheus/commits?per_page=
 github_download_url="https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts"
 command_runner_releases_url="https://api.github.com/repos/willKman718/command-runner/releases/latest"
 
-p4prom_bin_dir="/p4/common/site/bin"
-
 binary_inside_tar="command-runner-linux-amd64"
 config_inside_tar="cmd_config.yaml"
 
@@ -41,19 +39,19 @@ FILE_LIST="monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics
 declare -i shiftArgs=0
 ConfigFile=".update_config"
 
-#Where to put command-runner
+#How to handle command-runner push_metrics.cfg and logging
 if [[ -d "/etc/metrics" ]]; then
     echo "/etc/metrics exists."
-    bin_dir=/etc/metrics
-    cron_cmd="$bin_dir/command-runner --server --instance=\${INSTANCE} --mcfg=/etc/metrics/.push_metrics.cfg --log=/var/metrics/command-runner.log"
+    bin_dir=/usr/local/bin
+    cron_cmd="$bin_dir/command-runner --server --instance=\${INSTANCE} -c=/etc/metrics/cmd_config.yaml -m=/etc/metrics/.push_metrics.cfg --log=/var/metrics/command-runner.log"
 elif [[ -d "/p4/common/site/bin" ]]; then
     echo "/p4/common/site/bin exists, but /etc/metrics does not."
-    bin_dir=/p4/common/site/bin
-    cron_cmd="$bin_dir/command-runner --server --instance=\\\${INSTANCE} --log=/p4/\$INSTANCE/logs/command-runner.log"
+    bin_dir=/usr/local/bin
+    cron_cmd="$bin_dir/command-runner --server --instance=\${INSTANCE} --log=/p4/\${INSTANCE}/logs/command-runner.log"
 else
     echo "Neither /etc/metrics nor /p4/common/site/bin exist."
-    bin_dir=$SCRIPT_DIR
-    cron_cmd="$bin_dir/command-runner --server --instance=\\\${INSTANCE} --log=/p4/\$INSTANCE/logs/command-runner.log"
+    bin_dir=/usr/local/bin
+    cron_cmd="$bin_dir/command-runner --server --instance=\${INSTANCE} --log=/p4/\${INSTANCE}/logs/command-runner.log"
 fi
 
 set +u
@@ -93,14 +91,9 @@ fi
 github_sha=$(curl -s "$github_url" | jq -r '.[0].sha')
 github_date=$(curl -s "$github_url" | jq -r '.[0].commit.committer.date')
 
-# Get the latest tag info
-#latest_command_runner_version=$(curl -s "$command_runner_tags_url" | jq -r '.[0].name')
-#tar_download_url=$(curl -s "$command_runner_tags_url" | jq -r '.[0].tarball_url')
 # Get the latest release info
 latest_command_runner_version=$(curl -s "$command_runner_releases_url" | jq -r '.tag_name')
 tar_download_url=$(curl -s "$command_runner_releases_url" | jq -r '.assets[] | select(.name | endswith(".tar.gz")).browser_download_url')
-
-
 
 if [[ "$last_command_runner_version" != "$latest_command_runner_version" ]]; then
     msg "Updating command-runner binary and config"
