@@ -106,12 +106,12 @@ if [[ "$last_command_runner_version" != "$latest_command_runner_version" ]]; the
     tar -xvf "$tar_file_name" "$binary_inside_tar" "$config_inside_tar"
     
     # Move binary to script directory and config to its location
-    mv "$binary_inside_tar" "$bin_dir/command-runner"
+    sudo mv -f "$binary_inside_tar" "$bin_dir/command-runner"
     chmod +x "$bin_dir/command-runner"
     sudo chmod 755 "$bin_dir/command-runner"
-    sudo chown "root:root" $bin_dir/command-runner"
+    sudo chown root:root "$bin_dir/command-runner"
 
-    mv "$config_inside_tar" "/p4/common/config/"
+    mv -f "$config_inside_tar" "/p4/common/config/"
     sudo chmod 755 "$bin_dir/command-runner"
 
     # Clean up the downloaded tar.gz file
