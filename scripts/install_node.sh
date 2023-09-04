@@ -184,8 +184,8 @@ if [[ -f "cmd_config.yaml" ]]; then
 fi
 
 # Move the command-runner binary to its destination and set permissions
-if [[ -f "command-runner" ]]; then
-    mv command-runner "$metrics_bin_dir/"
+if [[ -f "command-runner-linux-amd64" ]]; then
+    mv command-runner-linux-amd64 "$metrics_bin_dir/command-runner"
     chmod +x "$metrics_bin_dir/command-runner"
     #chown "$OSUSER:$OSGROUP" "$metrics_bin_dir/command-runner"
 fi
