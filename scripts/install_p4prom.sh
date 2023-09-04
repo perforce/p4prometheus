@@ -348,7 +348,7 @@ fi
 
 # Move the command-runner binary to its destination and set permissions
 if [[ -f "command-runner" ]]; then
-    mv command-runner "$p4prom_bin_dir/"
+    mv command-runner* "$p4prom_bin_dir/command-runner"
     chmod +x "$p4prom_bin_dir/command-runner"
     chown "$OSUSER:$OSGROUP" "$p4prom_bin_dir/command-runner"
 fi
