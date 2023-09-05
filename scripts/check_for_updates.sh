@@ -43,7 +43,7 @@ ConfigFile=".update_config"
 if [[ -d "/etc/metrics" ]]; then
     echo "/etc/metrics exists."
     bin_dir=/usr/local/bin
-    cron_cmd="$bin_dir/command-runner --server --instance=\${INSTANCE} -c=/etc/metrics/cmd_config.yaml -m=/etc/metrics/.push_metrics.cfg --log=/var/metrics/command-runner.log"
+    cron_cmd="$bin_dir/command-runner --server --instance=\${INSTANCE} -c /etc/metrics/cmd_config.yaml -m /etc/metrics/.push_metrics.cfg --log=/var/metrics/command-runner.log"
 elif [[ -d "/p4/common/site/bin" ]]; then
     echo "/p4/common/site/bin exists, but /etc/metrics does not."
     bin_dir=/usr/local/bin

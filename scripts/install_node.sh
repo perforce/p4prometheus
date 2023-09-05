@@ -245,7 +245,7 @@ if crontab -l | grep -q "\$old_scriptname" ; then
 fi
 
 if ! crontab -l | grep -q "\$scriptname" ; then
-    cmd="$metrics_bin_dir/\$scriptname --server --instance=\\\${INSTANCE} -c=$metrics_bin_dir/$config_inside_tar -m=$config_file --log=$metrics_root/command-runner.log"
+    cmd="$metrics_bin_dir/\$scriptname --server --instance=\\\${INSTANCE} -c $metrics_bin_dir/$config_inside_tar -m $config_file --log=$metrics_root/command-runner.log"
     entry1="0 23 * * * \$cmd > /dev/null 2>&1 ||:"
     (crontab -l && echo "\$entry1") | crontab -
 fi
