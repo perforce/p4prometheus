@@ -22,6 +22,9 @@
 
 # This might also be /hxlogs/metrics or /var/metrics, and can be set via the "-m" parameter to script.
 metrics_root=/p4/metrics
+# This Can be set via the "-m" parameter to script. For SDP installs the default vaule will be changed
+# to locks_<SDP_INSTANCE>.prom
+metrics_file=locks.prom
 
 function msg () { echo -e "$*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
@@ -37,7 +40,7 @@ function usage
  
    echo "USAGE for monitor_wrapper.sh:
  
-monitor_wrapper.sh [<instance> | -nosdp] [-p <port>] | [-u <user>] | [-m <metrics_dir>]
+monitor_wrapper.sh [<instance> | -nosdp] [-p <port>] | [-u <user>] | [-m <metrics_dir>] [-o <metrics_file>]
  
    or
  
@@ -58,6 +61,7 @@ while [[ $# -gt 0 ]]; do
         (-p) Port=$2; shiftArgs=1;;
         (-u) User=$2; shiftArgs=1;;
         (-m) metrics_root=$2; shiftArgs=1;;
+        (-o) metrics_file=$2; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
@@ -84,6 +88,9 @@ if [[ $UseSDP -eq 1 ]]; then
         echo "You must supply the Perforce SDP instance as a parameter to this script or use flag: -nosdp."
         exit 1
     fi
+    if [ ${metrics_file} = "locks.prom" ]; then
+        metrics_file=locks-${SDP_INSTANCE}.prom
+    fi
     source /p4/common/bin/p4_vars "$SDP_INSTANCE"
 else
     p4port=${Port:-$P4PORT}
@@ -92,7 +99,7 @@ fi
 
 # Adjust to your script location if required
 if [[ $UseSDP -eq 1 ]]; then
-    "$SCRIPT_DIR"/monitor_metrics.py  -i "$SDP_INSTANCE" -m "$metrics_root"
+    "$SCRIPT_DIR"/monitor_metrics.py  -i "$SDP_INSTANCE" -m "$metrics_root" -o "$metrics_file"
 else
     "$SCRIPT_DIR"/monitor_metrics.py -m "$metrics_root" -p "$p4port" -u "$p4user"
 fi
