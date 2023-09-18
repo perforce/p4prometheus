@@ -64,11 +64,15 @@ function usage
  
    echo "USAGE for monitor_metrics.sh:
  
-monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ] | [-m <metrics_dir>]
+monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ] | [-update <mins>] | [-m <metrics_dir>]
  
    or
  
 monitor_metrics.sh -h
+
+When '-update N' is given, the default update frequency for 'p4_licenses.prom' and 'p4_filesys.prom' 
+are set to once every 'N' minutes. The default update frequency for these two metrics files is once
+every 60 minutes.
 "
 }
 
@@ -76,6 +80,7 @@ monitor_metrics.sh -h
  
 declare -i shiftArgs=0
 declare -i UseSDP=1
+declare -i Update=60
 
 set +u
 while [[ $# -gt 0 ]]; do
@@ -86,6 +91,7 @@ while [[ $# -gt 0 ]]; do
         (-u) User=$2; shiftArgs=1;;
         (-m) metrics_root=$2; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
+        (-update) Update=$2; shiftArgs=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
     esac
@@ -197,8 +203,8 @@ monitor_license () {
     tmp_license_data="$metrics_root/tmp_license"
     # Don't update if there is no license for this server, e.g. a replica
     no_license=$(grep -c "Server license: none" "$tmp_info_data")
-    # Update every 60 mins
-    [[ ! -f "$tmp_license_data" || $(find "$tmp_license_data" -mmin +60) ]] || return
+    # Update every N mins
+    [[ ! -f "$tmp_license_data" || $(find "$tmp_license_data" -mmin +"$Update") ]] || return
     $p4 license -u 2>&1 > "$tmp_license_data"
     [[ $? -ne 0 ]] && return
 
@@ -270,8 +276,8 @@ monitor_filesys () {
     fname="$metrics_root/p4_filesys${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
     tmp_filesys_data="$metrics_root/tmp_filesys"
-    # Update every 60 mins
-    [[ ! -f "$tmp_filesys_data" || $(find "$tmp_filesys_data" -mmin +60) ]] || return
+    # Update every N mins
+    [[ ! -f "$tmp_filesys_data" || $(find "$tmp_filesys_data" -mmin +"$Update") ]] || return
     configurables="filesys.depot.min filesys.P4ROOT.min filesys.P4JOURNAL.min filesys.P4LOG.min filesys.TEMP.min"
 
     echo "" > "$tmp_filesys_data"
