@@ -3,7 +3,7 @@
 repo_path="scripts"
 github_url="https://api.github.com/repos/perforce/p4prometheus/commits?per_page=1&path=$repo_path"
 github_download_url="https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts"
-command_runner_releases_url="https://api.github.com/repos/willKman718/command-runner/releases/latest"
+command_runner_releases_url="https://api.github.com/repos/perforce/command-runner/releases/latest"
 
 binary_inside_tar="command-runner-linux-amd64"
 config_inside_tar="cmd_config.yaml"
