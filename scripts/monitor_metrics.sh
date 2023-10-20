@@ -9,6 +9,8 @@
 # If not using SDP then please ensure that appropriate LONG TERM TICKET is setup in the environment
 # that this script is running.
 #
+# It is possible to use a user of type "operator" to run this script. (Doesn't need to be an ordinary user)
+#
 # Please note you need to make sure that the specified directory below (which may be linked)
 # can be read by the node_exporter user (and is setup via --collector.textfile.directory parameter)
 #
@@ -64,11 +66,28 @@ function usage
  
    echo "USAGE for monitor_metrics.sh:
  
-monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ] | [-m <metrics_dir>]
+monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ] | [-m <metrics_dir>] [-t <P4TICKETS file>]
  
    or
  
 monitor_metrics.sh -h
+
+    -nosdp              Specifies SDP not in use - implies P4PORT and P4USER should be defined in shell env
+    <metrics_dir>       The directory to write metrics to (not required unless -nosdp is specified)
+    <port>              The P4PORT to use (not required unless -nosdp is specified)
+    <user>              The P4USER to use (not required unless -nosdp is specified)
+    <P4TICKETS file>    The P4TICKETS to use (not required unless -nosdp is specified)
+
+IMPORTANT: Specify either the SDP instance (e.g. 1), or -nosdp
+
+WARNING: If using -nosdp, then please ensure P4PORT and P4USER are appropriately set and that you can connect
+    to your server (e.g. you have done a 'p4 trust' if required, and logged in already)
+
+Examples - for crontab:
+
+/p4/common/site/bin/monitor_metrics.sh 1
+/etc/p4prometheus/monitor_metrics.sh -nosdp -m /p4/metrics -u perforce -t /home/perforce/.p4tickets
+
 "
 }
 
@@ -76,6 +95,7 @@ monitor_metrics.sh -h
  
 declare -i shiftArgs=0
 declare -i UseSDP=1
+declare p4tickets=""
 
 set +u
 while [[ $# -gt 0 ]]; do
@@ -85,6 +105,8 @@ while [[ $# -gt 0 ]]; do
         (-p) Port=$2; shiftArgs=1;;
         (-u) User=$2; shiftArgs=1;;
         (-m) metrics_root=$2; shiftArgs=1;;
+        (-m) metrics_root=$2; shiftArgs=1;;
+        (-t) p4tickets=$2; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
@@ -129,6 +151,7 @@ if [[ $UseSDP -eq 1 ]]; then
 else
     p4port=${Port:-$P4PORT}
     p4user=${User:-$P4USER}
+    [[ -n "$p4tickets" ]] || export P4TICKETS=${P4TICKETS:-$p4tickets}
     p4="$P4BIN -u $p4user -p $p4port"
     $p4 info -s > "$tmp_info_data"
     [[ $? -eq 0 ]] || bail "Can't connect to P4PORT: $p4port"
@@ -139,7 +162,7 @@ else
     p4logfile=$(grep P4LOG "$tmp_config_data" | sed -e 's/P4LOG=//' -e 's/ .*//')
     errors_file=$(egrep "serverlog.file.*errors.csv" "$tmp_config_data" | cut -d= -f2 | sed -e 's/ (.*//')
     check_for_replica=$(grep -c 'Replica of:' "$tmp_info_data")
-    if [[ "$check_for_replica" -eq "0" ]]; then
+    if [[ "$check_for_replica" -eq 0 ]]; then
         P4REPLICA="FALSE"
     else
         P4REPLICA="TRUE"
@@ -156,7 +179,7 @@ fi
 if [[ -r "${P4ROOT:-UnsetP4ROOT}/server.id" ]]; then
    SERVER_ID=$(head -1 "$P4ROOT/server.id" 2>/dev/null)
 else
-   SERVER_ID=$($p4 serverid 2>/dev/null | awk '{print $3}')
+   SERVER_ID=$(grep "^ServerID" "$tmp_info_data" | awk '{print $2}')
 fi
 [[ -n "$SERVER_ID" ]] || SERVER_ID=UnsetServerID
 serverid_label="serverid=\"$SERVER_ID\""
