@@ -20,7 +20,7 @@ metrics_link=/p4/metrics
 
 VER_NODE_EXPORTER="1.3.1"
 VER_P4PROMETHEUS="0.7.5"
-command_runner_releases_url="https://api.github.com/repos/willKman718/command-runner/releases/latest"
+command_runner_releases_url="https://api.github.com/repos/perforce/command-runner/releases/latest"
 binary_inside_tar="command-runner-linux-amd64"
 config_inside_tar="cmd_config.yaml"
 cmdr_bin_dir="/usr/local/bin"

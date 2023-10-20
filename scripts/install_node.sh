@@ -23,6 +23,7 @@ VER_NODE_EXPORTER="1.3.1"
 binary_inside_tar="command-runner-linux-amd64"
 config_inside_tar="cmd_config.yaml"
 cmdr_bin_dir="/usr/local/bin"
+command_runner_releases_url="https://api.github.com/repos/perforce/command-runner/releases/latest"
 
 # ============================================================
 
