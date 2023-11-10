@@ -30,7 +30,7 @@
 
 node_exporter_url="http://localhost:9100"
 # The following may be overwritten in the config_file
-metrics_logfile="/p4/1/logs/push_metrics.log"
+metrics_logfile="/p4/${INSTANCE}/logs/push_metrics.log"
 
 # ============================================================
 
@@ -101,7 +101,7 @@ metrics_instance=${metrics_instance:-Unset}
 metrics_customer=${metrics_customer:-Unset}
 metrics_user=${metrics_user:-Unset}
 metrics_passwd=${metrics_passwd:-Unset}
-metrics_logfile=${metrics_logfile:-/p4/1/logs/push_metrics.log}
+metrics_logfile=${metrics_logfile:-/p4/${INSTANCE}/logs/push_metrics.log}
 if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Unset || $metrics_instance == Unset || $metrics_customer == Unset ]]; then
    echo -e "\\nError: Required parameters not supplied.\\n"
    echo "You must set the variables metrics_host, metrics_user, metrics_passwd, metrics_instance, metrics_customer in $ConfigFile."

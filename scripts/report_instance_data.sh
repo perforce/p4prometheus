@@ -19,7 +19,7 @@
 # Configuration section
 
 # May be overwritten in the config file.
-declare report_instance_logfile="/p4/1/logs/report_instance_data.log"
+declare report_instance_logfile="/p4/${INSTANCE}/logs/report_instance_data.log"
 
 # Default to AWS
 declare -i IsAWS=1
@@ -100,7 +100,7 @@ metrics_customer=${metrics_customer:-Unset}
 metrics_instance=${metrics_instance:-Unset}
 metrics_user=${metrics_user:-Unset}
 metrics_passwd=${metrics_passwd:-Unset}
-report_instance_logfile=${report_instance_logfile:-/p4/1/logs/report_instance_data.log}
+report_instance_logfile=${report_instance_logfile:-/p4/${INSTANCE}/logs/report_instance_data.log}
 if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Unset || $metrics_customer == Unset || $metrics_instance == Unset ]]; then
    echo -e "\\nError: Required parameters not supplied.\\n"
    echo "You must set the variables metrics_host, metrics_user, metrics_passwd, metrics_customer, metrics_instance in $ConfigFile."
