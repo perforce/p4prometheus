@@ -698,7 +698,7 @@ groups:
     expr: node_systemd_unit_state{state="active",name="p4d_.*.service"} != 1
     for: 5m
     labels:
-      severity: "warning"
+      severity: "critical"
     annotations:
       summary: "Endpoint {{ $labels.instance }} p4d service not running"
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for 5 minutes."
@@ -736,7 +736,7 @@ groups:
     expr: rate(p4_prom_log_lines_read{sdpinst="1",serverid="master"}[1m]) < 100
     for: 10m
     labels:
-      severity: "critical"
+      severity: "high"
     annotations:
       summary: 'Endpoint {{ $labels.instance }} too few log lines (rate per min {{ $value | printf "%.f" }})'
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been below target for more than 10 minutes."
@@ -744,10 +744,10 @@ groups:
   # Include this is you have replicas. Adjust the value as appropriate, e.g. 1GB or 5GB or whatever.
   - alert: Replication Slow
     expr: >
-      p4_pull_replica_lag > (1 * 1024 * 1024)
+      p4_pull_replica_lag > (500 * 1024 * 1024)
     for: 10m
     labels:
-      severity: "warning"
+      severity: "high"
     annotations:
       summary: 'Endpoint {{ $labels.instance }} replication lag is too great ({{ $value | humanize }})'
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 10 minutes."
@@ -864,6 +864,19 @@ route:
   group_interval: 5m
   repeat_interval: 60m
   receiver: mail
+  routes:
+  - match:
+      severity: critical
+    repeat_interval: 30m
+  - match:
+      severity: high
+    repeat_interval: 60m
+  - match:
+      severity: warning
+    repeat_interval: 1d
+  - match:
+      severity: low
+    repeat_interval: 1d
 
 receivers:
 - name: mail
