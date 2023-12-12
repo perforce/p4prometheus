@@ -22,7 +22,7 @@ build:
 # Builds distribution
 dist:
 	GOOS=linux GOARCH=amd64 go build -o p4prometheus.linux-amd64 ${LDFLAGS}
-	GOOS=windows GOARCH=amd64 go build -o p4prometheus.windows-amd64 ${LDFLAGS}
+	GOOS=windows GOARCH=amd64 go build -o p4prometheus.windows-amd64.exe ${LDFLAGS}
 	go build -o p4prometheus.darwin-amd64 ${LDFLAGS}
 	-chmod +x p4prometheus.linux-amd64 p4prometheus.windows-amd64 p4prometheus.darwin-amd64
 	rm -f p4prometheus.*.gz
