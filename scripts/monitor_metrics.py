@@ -200,8 +200,14 @@ class P4Monitor(object):
                         "mode": parts[4], "m": parts[5],
                         "start": parts[6], "end": parts[7],
                         "path": None, "blocker": None}
+            # there's a possibility that both PATH and BLOCKER may be None
+            # we'll have to inspect the length of the parts array & values to determine which value(s) to set
             if len(parts) == 9:
-                lockinfo["blocker"] = parts[8]
+                if parts[8].isdigit():
+                    lockinfo["blocker"] = parts[8]
+                else:
+                    lockinfo["path"] = parts[8]
+            # we have both PATH and BLOCKER values present
             if len(parts) == 10:
                 lockinfo["path"] = parts[8]
                 lockinfo["blocker"] = parts[9]
