@@ -199,8 +199,11 @@ class P4Monitor(object):
                         "type": parts[2], "size": parts[3],
                         "mode": parts[4], "m": parts[5],
                         "start": parts[6], "end": parts[7],
-                        "path": parts[8], "blocker": None}
+                        "path": None, "blocker": None}
+            if len(parts) == 9:
+                lockinfo["blocker"] = parts[8]
             if len(parts) == 10:
+                lockinfo["path"] = parts[8]
                 lockinfo["blocker"] = parts[9]
             jlock['locks'].append(lockinfo)
         self.logger.debug("parsed TextLockInfo: %s" % str(jlock))
@@ -234,9 +237,9 @@ class P4Monitor(object):
             return metrics
         blockingCommands = defaultdict(dict)
         for j in jlock['locks']:
-            if "p4d" not in j["command"] or "path" not in j or not j["path"]:
+            if "p4d" not in j["command"]:
                 continue
-            if "clientEntity" in j["path"]:
+            if j["path"] is not None and "clientEntity" in j["path"]:
                 if j["mode"] == "READ":
                     metrics.clientEntityReadLocks += 1
                 elif j["mode"] == "WRITE":
@@ -247,13 +250,14 @@ class P4Monitor(object):
             path = j["path"]
             if j["pid"] in pids:
                 user, cmd, _ = pids[j["pid"]]
-            if "server.locks/meta" in j["path"]:
+            if j["path"] is not None and "server.locks/meta" in j["path"]:
                 if j["mode"] == "READ":
                     metrics.metaReadLocks += 1
                 elif j["mode"] == "WRITE":
                     metrics.metaWriteLocks += 1
-            dbPath = self.dbFileInPath(j["path"])
-            if dbPath:
+            if j["path"] is not None:
+                dbPath = self.dbFileInPath(j["path"])
+            if j["path"] is not None and dbPath:
                 if j["mode"] == "READ":
                     metrics.dbReadLocks += 1
                 if j["mode"] == "WRITE":
