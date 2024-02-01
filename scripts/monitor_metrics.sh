@@ -405,7 +405,7 @@ monitor_processes () {
     tmpfname="$fname.$$"
     monfile="/tmp/mon.out"
 
-    $p4 monitor show > "$monfile" 2> /dev/null
+    $p4 monitor show -l > "$monfile" 2> /dev/null
     rm -f "$tmpfname"
     echo "# HELP p4_monitor_by_cmd P4 running processes" >> "$tmpfname"
     echo "# TYPE p4_monitor_by_cmd counter" >> "$tmpfname"
