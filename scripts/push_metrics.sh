@@ -25,6 +25,12 @@
 #
 # Function to find and set the INSTANCE variable
 get_sdp_instances () {
+    echo "Searching for p4d/SDP"
+    if [ ! -d "/p4" ]; then
+        echo "p4d/SDP environment not detected."
+        return
+    fi
+
     echo "Finding p4d instances"
     local SDPInstanceList=
     cd /p4 || exit 1  # Exit if cannot change to /p4 directory.
