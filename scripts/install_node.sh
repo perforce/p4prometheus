@@ -21,6 +21,9 @@ metrics_bin_dir=/etc/metrics
 # Version to download
 VER_NODE_EXPORTER="1.3.1"
 
+# Default to amd but allow arm architecture
+arch="amd64"
+[[ $(uname -p) == 'aarch64' ]] && arch="arm64"
 
 # ============================================================
 
@@ -115,12 +118,12 @@ install_node_exporter () {
 
     cd /tmp || bail "Failed to cd to /tmp"
     PVER="$VER_NODE_EXPORTER"
-    fname="node_exporter-$PVER.linux-amd64.tar.gz"
+    fname="node_exporter-$PVER.linux-${arch}.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/node_exporter/releases/download/v$PVER/$fname"
 
-    tar xvf node_exporter-$PVER.linux-amd64.tar.gz 
+    tar xvf node_exporter-$PVER.linux-${arch}.tar.gz 
     msg "Installing node_exporter"
-    mv node_exporter-$PVER.linux-amd64/node_exporter /usr/local/bin/
+    mv node_exporter-$PVER.linux-${arch}/node_exporter /usr/local/bin/
 
     if [[ $SELinuxEnabled -eq 1 ]]; then
         bin_file=/usr/local/bin/node_exporter

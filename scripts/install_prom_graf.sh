@@ -17,6 +17,10 @@ VER_ALERTMANAGER="0.25.0"
 VER_PUSHGATEWAY="1.5.1"
 VER_VICTORIA_METRICS="1.87.5"
 
+# Default to amd but allow arm architecture
+arch="amd64"
+[[ $(uname -p) == 'aarch64' ]] && arch="arm64"
+
 # ============================================================
 
 function msg () { echo -e "$*"; }
@@ -146,10 +150,10 @@ install_alertmanager () {
 
     cd /tmp || bail "failed to cd"
     PVER="$VER_ALERTMANAGER"
-    fname="alertmanager-$PVER.linux-amd64.tar.gz"
+    fname="alertmanager-$PVER.linux-${arch}.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/alertmanager/releases/download/v$PVER/$fname"
 
-    mv alertmanager-$PVER.linux-amd64 alertmanager-files
+    mv alertmanager-$PVER.linux-${arch} alertmanager-files
 
     for base_file in alertmanager amtool; do
         bin_file=/usr/local/bin/$base_file
@@ -226,10 +230,10 @@ install_node_exporter () {
 
     cd /tmp || bail "failed to cd"
     PVER="$VER_NODE_EXPORTER"
-    fname="node_exporter-$PVER.linux-amd64.tar.gz"
+    fname="node_exporter-$PVER.linux-${arch}.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/node_exporter/releases/download/v$PVER/$fname"
 
-    mv node_exporter-$PVER.linux-amd64/node_exporter /usr/local/bin/
+    mv node_exporter-$PVER.linux-${arch}/node_exporter /usr/local/bin/
     if [[ $SELinuxEnabled -eq 1 ]]; then
         bin_file=/usr/local/bin/node_exporter
         semanage fcontext -a -t bin_t $bin_file
@@ -268,7 +272,7 @@ install_victoria_metrics () {
 
     cd /tmp || bail "failed to cd"
     PVER="$VER_VICTORIA_METRICS"
-    for fname in victoria-metrics-linux-amd64-v$PVER.tar.gz vmutils-linux-amd64-v$PVER.tar.gz; do
+    for fname in victoria-metrics-linux-${arch}-v$PVER.tar.gz vmutils-linux-${arch}-v$PVER.tar.gz; do
         download_and_untar "$fname" "https://github.com/victoriametrics/victoriametrics/releases/download/v$PVER/$fname"
     done
 
@@ -323,10 +327,10 @@ install_prometheus () {
 
     cd /tmp || bail "failed to cd"
     PVER="$VER_PROMETHEUS"
-    fname="prometheus-$PVER.linux-amd64.tar.gz"
-    download_and_untar "$fname" "https://github.com/prometheus/prometheus/releases/download/v$PVER/prometheus-$PVER.linux-amd64.tar.gz"
+    fname="prometheus-$PVER.linux-${arch}.tar.gz"
+    download_and_untar "$fname" "https://github.com/prometheus/prometheus/releases/download/v$PVER/prometheus-$PVER.linux-${arch}.tar.gz"
 
-    mv prometheus-$PVER.linux-amd64 prometheus-files
+    mv prometheus-$PVER.linux-${arch} prometheus-files
 
     for base_file in prometheus promtool; do
         bin_file=/usr/local/bin/$base_file
@@ -441,10 +445,10 @@ install_pushgateway () {
 
     cd /tmp || bail "failed to cd"
     PVER="$VER_PUSHGATEWAY"
-    fname="pushgateway-$PVER.linux-amd64.tar.gz"
+    fname="pushgateway-$PVER.linux-${arch}.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/pushgateway/releases/download/v$PVER/$fname"
 
-    mv pushgateway-$PVER.linux-amd64/pushgateway /usr/local/bin/
+    mv pushgateway-$PVER.linux-${arch}/pushgateway /usr/local/bin/
     if [[ $SELinuxEnabled -eq 1 ]]; then
         bin_file=/usr/local/bin/pushgateway
         semanage fcontext -a -t bin_t $bin_file
