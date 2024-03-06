@@ -15,6 +15,7 @@ fi
 
 # This might also be /hxlogs/metrics or passed as a parameter (with -m flag)
 metrics_root=/hxlogs/metrics
+# This is for SDP installs only
 metrics_link=/p4/metrics
 
 VER_NODE_EXPORTER="1.3.1"
@@ -34,28 +35,31 @@ function usage
    fi
  
    echo "USAGE for install_p4prom.sh:
- 
-install_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>] [-u <osuser>] [-push]
- 
+
+install_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-osuser <osuser>] 
+        [-p <P4PORT>] [-u <p4user>] [-c <p4prom_config_dir>] [-push]
+
    or
 
 install_p4prom.sh -h
 
-    <metrics_root> is the directory where metrics will be written - default: $metrics_root
-    <metrics_link> is an alternative link to metrics_root where metrics will be written - default: $metrics_link
-                Typically only used for SDP installations.
-    <osuser>    Operating system user, e.g. perforce, under which p4d process is running
-    -push     Means install pushgateway/report_data_instance cronjobs and config file. Not relevant for most installations.
+    <metrics_root>  is the directory where metrics will be written - default: $metrics_root
+    <osuser>        Operating system user, e.g. perforce, under which p4d process is running and to install crontab
+    <P4PORT>        P4PORT to use within any installed scripts
+    <P4USER>        P4USER to use within any installed scripts
+    <p4prom_config_dir> Specify directory to install p4prometheus config file - useful for nonsdp installs
+    -push           Means install pushgateway/report_data_instance cronjobs and config file.
+                    Not relevant for most installations.
 
-IMPORTANT: Specify either the SDP instance (e.g. 1), or -nosdp
+IMPORTANT: Specify either the SDP instance (e.g. 1), or -nosdp and other parameters
 
-WARNING: If using -nosdp, then please ensure P4PORT and P4USER are appropriately set and that you can connect
+WARNING: If using -nosdp, then please ensure P4PORT and P4USER are provided or are appropriately set and that you can connect
     to your server (e.g. you have done a 'p4 trust' if required, and logged in already)
 
 Examples:
 
 ./install_p4prom.sh 1
-./install_p4prom.sh -nosdp -m /p4metrics -u perforce
+./install_p4prom.sh -nosdp -m /p4metrics -u perforce -p 1666 -u p4admin -c /p4/p4prometheus
 
 "
 }
@@ -67,18 +71,24 @@ declare -i UseSDP=1
 declare -i SELinuxEnabled=0
 declare -i InstallPushgateway=0
 declare OsUser=""
+declare p4port=""
+declare p4user=""
 declare P4LOG=""
+declare P4SERVERID=""
+declare p4prom_config_dir=""
 
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
         (-h) usage -h  && exit 1;;
         # (-man) usage -man;;
-        (-m) metrics_root=$2; shiftArgs=1;;
-        (-u) OsUser="$2"; shiftArgs=1;;
-        (-push) InstallPushgateway=1;;
         (-nosdp) UseSDP=0;;
-        (-l) P4LOG="$2"; shiftArgs=1;;
+        (-m) metrics_root=$2; shiftArgs=1;;
+        (-osuser) OsUser="$2"; shiftArgs=1;;
+        (-p) p4port="$2"; shiftArgs=1;;
+        (-u) p4user="$2"; shiftArgs=1;;
+        (-push) InstallPushgateway=1;;
+        (-c) p4prom_config_dir="$2"; shiftArgs=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
     esac
@@ -105,8 +115,6 @@ if command -v getenforce > /dev/null; then
     [[ "$selinux" == "Enforcing" ]] && SELinuxEnabled=1
 fi
 
-# [[ -d "$metrics_root" ]] || bail "Specified metrics directory '$metrics_root' does not exist!"
-
 if [[ $UseSDP -eq 1 ]]; then
     SDP_INSTANCE=${SDP_INSTANCE:-Unset}
     SDP_INSTANCE=${1:-$SDP_INSTANCE}
@@ -132,13 +140,20 @@ if [[ $UseSDP -eq 1 ]]; then
     p4prom_bin_dir="/p4/common/site/bin"
 else
     SDP_INSTANCE=""
-    p4port=${Port:-$P4PORT}
-    p4user=${User:-$P4USER}
+    p4port=${p4port:-$P4PORT}
+    p4user=${p4user:-$P4USER}
     OSUSER="$OsUser"
     OSGROUP=$(id -gn "$OSUSER")
     p4="p4 -u $p4user -p $p4port"
-    $p4 info -s || bail "Can't connect to P4PORT: $p4port"
-    p4prom_config_dir="/etc/p4prometheus"
+    $p4 info -s || bail "Can't connect to P4PORT: $p4 info -s"
+    $p4 login -s || bail "Error - can't run: $p4 login -s"
+    P4PORT=$p4port
+    P4USER=$p4user
+    P4SERVERID=$($p4 info -s | grep "^ServerID" | awk '{print $2}')
+    P4LOG=$($p4 configure show P4LOG | awk '{print $1}' | sed -e 's/P4LOG=//')
+    [[ -n "$P4SERVERID" ]] || bail "Failed to find P4 serverid value"
+    [[ -n "$P4LOG" ]] ||  bail "Failed to find P4LOG value"
+    p4prom_config_dir=${p4prom_config_dir:-"/etc/p4prometheus"}
     p4prom_bin_dir="$p4prom_config_dir"
 fi
 
@@ -254,7 +269,7 @@ metrics_output: $metrics_root/p4_cmds.prom
 # ----------------------
 # server_id: Optional - serverid for metrics - typically read from /p4/<sdp_instance>/root/server.id for 
 # SDP installations - please specify a value if non-SDP install
-server_id:      
+server_id:      $P4SERVERID
 
 # ----------------------
 # output_cmds_by_user: true/false - Whether to output metrics p4_cmd_user_counter/p4_cmd_user_cumulative_seconds

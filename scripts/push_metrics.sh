@@ -23,6 +23,46 @@
 # Please note you need to make sure that the specified directory below (which may be linked)
 # can be read by the node_exporter user (and is setup via --collector.textfile.directory parameter)
 #
+# Function to find and set the INSTANCE variable
+get_sdp_instances () {
+    echo "Searching for p4d/SDP"
+    if [ ! -d "/p4" ]; then
+        echo "p4d/SDP environment not detected."
+        return
+    fi
+
+    echo "Finding p4d instances"
+    local SDPInstanceList=
+    cd /p4 || exit 1  # Exit if cannot change to /p4 directory.
+    for e in *; do
+        if [[ -r "/p4/$e/root/db.counters" ]]; then
+            SDPInstanceList+=" $e"
+        fi
+    done
+    SDPInstanceList=$(echo "$SDPInstanceList")  # Trim leading space.
+    echo "Instance List: $SDPInstanceList"
+
+    local instance_count=$(echo "$SDPInstanceList" | wc -w)
+    echo "Instances Found: $instance_count"
+
+    if [ "$instance_count" -eq 1 ]; then
+        INSTANCE=$SDPInstanceList
+        echo "Single instance found: $INSTANCE"
+    elif [ "$instance_count" -gt 1 ]; then
+        echo "Multiple instances found. Using the first one."
+        INSTANCE=$(echo "$SDPInstanceList" | awk '{print $1}')
+    else
+        echo "No instances found. Using default instance."
+        INSTANCE="1"  # Set to a default value or handle as required
+    fi
+}
+
+# Check SDP_INSTANCE first, then fallback to INSTANCE
+if [ -n "$SDP_INSTANCE" ]; then
+    INSTANCE=$SDP_INSTANCE
+elif [ -z "$INSTANCE" ]; then
+    get_sdp_instances
+fi
 
 
 # ============================================================
@@ -30,7 +70,7 @@
 
 node_exporter_url="http://localhost:9100"
 # The following may be overwritten in the config_file
-metrics_logfile="/p4/1/logs/push_metrics.log"
+metrics_logfile="/p4/${INSTANCE}/logs/push_metrics.log"
 
 # ============================================================
 
@@ -101,7 +141,7 @@ metrics_instance=${metrics_instance:-Unset}
 metrics_customer=${metrics_customer:-Unset}
 metrics_user=${metrics_user:-Unset}
 metrics_passwd=${metrics_passwd:-Unset}
-metrics_logfile=${metrics_logfile:-/p4/1/logs/push_metrics.log}
+metrics_logfile=${metrics_logfile:-/p4/${INSTANCE}/logs/push_metrics.log}
 if [[ $metrics_host == Unset || $metrics_user == Unset || $metrics_passwd == Unset || $metrics_instance == Unset || $metrics_customer == Unset ]]; then
    echo -e "\\nError: Required parameters not supplied.\\n"
    echo "You must set the variables metrics_host, metrics_user, metrics_passwd, metrics_instance, metrics_customer in $ConfigFile."
