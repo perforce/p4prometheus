@@ -95,6 +95,9 @@ if [[ $UseSDP -eq 1 ]]; then
 else
     p4port=${Port:-$P4PORT}
     p4user=${User:-$P4USER}
+    export P4PORT=${p4port}
+    export P4USER=${p4user}
+    export P4BIN=${P4BIN:-p4}
 fi
 
 # Adjust to your script location if required
