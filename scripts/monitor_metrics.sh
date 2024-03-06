@@ -547,6 +547,7 @@ monitor_errors () {
     # ... f_name f_severity
     line=$($p4 logschema "$ver" | grep -B1 f_severity | head -1)
     if ! [[ $line =~ f_field ]]; then
+        touch "$fname"
         return
     fi
     indSeverity=$(echo "$line" | awk '{print $3}')
