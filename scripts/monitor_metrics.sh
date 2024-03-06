@@ -66,7 +66,6 @@ function usage
  
    echo "USAGE for monitor_metrics.sh:
  
-monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ] | [-m <metrics_dir>]
 monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ] | [-update <mins>] | [-m <metrics_dir>] [-t <P4TICKETS file>]
  
    or
