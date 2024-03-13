@@ -130,7 +130,7 @@ class P4Monitor(object):
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
 
-    def run_cmd(self, cmd, get_output=True, timeout=35, stop_on_error=True):
+    def run_cmd(self, cmd, get_output=True, timeout=5, stop_on_error=True):
         "Run cmd logging input and output"
         output = ""
         try:
@@ -148,6 +148,9 @@ class P4Monitor(object):
                 else:
                     result = subprocess.check_call(cmd, stderr=subprocess.STDOUT, shell=True)
                 self.logger.debug('Result: %d' % result)
+        except subprocess.TimeoutExpired as e:
+            self.logger.debug("Timeout Expired")
+            return ""
         except subprocess.CalledProcessError as e:
             self.logger.debug("Output: %s" % e.output)
             if stop_on_error:
@@ -349,13 +352,19 @@ class P4Monitor(object):
         p4cmd = "%s -u %s -p %s" % (os.environ["P4BIN"], os.environ["P4USER"], os.environ["P4PORT"])
         verdata = self.run_cmd("lslocks -V")
         locksver = self.getLslocksVer(verdata)
-        lockcmd = "lslocks -o +BLOCKER"
+        lockcmd = "sudo lslocks -o +BLOCKER"    # Try sudo
         # If lslocks can't return JSON we parse it into JSON ourselves
         if locksver > "2.26":
             lockcmd += " -J"
             lockdata = self.run_cmd(lockcmd)
+            if not lockdata:
+                lockcmd = lockcmd.replace("sudo ", "")
+                lockdata = self.run_cmd(lockcmd)
         else:
             lockdata = self.run_cmd(lockcmd)
+            if not lockdata:
+                lockcmd = lockcmd.replace("sudo ", "")
+                lockdata = self.run_cmd(lockcmd)
             lockdata = self.parseTextLockInfo(lockdata)
         mondata = self.run_cmd('{0} -F "%id% %runstate% %user% %elapsed% %function% %args%" monitor show -al'.format(p4cmd))
         metrics = self.findLocks(lockdata, mondata)
