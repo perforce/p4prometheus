@@ -129,6 +129,56 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         self.maxDiff = None
         self.assertEqual(exp_lines, lines)
 
+    def testFindBlockers2(self):
+        """Check parsing of lockdata"""
+        lockdata = """{
+   "locks": [
+      {"command":"master", "pid":2023, "type":"FLOCK", "size":"33B", "mode":"WRITE", "m":false, "start":0, "end":0, "path":"/var/spool/postfix/pid/master.pid", "blocker":null},
+      {"command":"p4d_1", "pid":92210, "type":"FLOCK", "size":"14.6G", "mode":"WRITE*", "m":false, "start":0, "end":0, "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":92079},
+      {"command":"p4d_1", "pid":92079, "type":"FLOCK", "size":"14.6G", "mode":"WRITE", "m":false, "start":0, "end":0, "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":null},
+      {"command":"snapd", "pid":1328, "type":"FLOCK", "size":null, "mode":"WRITE", "m":false, "start":0, "end":0, "path":"/var/lib/snapd/state.lock", "blocker":null},
+      {"command":"p4d_1", "pid":92126, "type":"FLOCK", "size":null, "mode":"READ", "m":false, "start":0, "end":0, "path":"/hxmetadata/p4/1/db1/server.locks/meta/db", "blocker":null},
+      {"command":"cron", "pid":1787, "type":"FLOCK", "size":"5B", "mode":"WRITE", "m":false, "start":0, "end":0, "path":"/run/crond.pid", "blocker":null}
+   ]
+}"""
+        mondata = """ 2033 B svc_master-1666 633:31:21 ldapsync -g -i 1800
+ 7009 I svc_p4d_fs_brk 00:00:34 IDLE none
+12857 I svc_p4d_edge_CL1 00:02:32 IDLE none
+92014 R jteam      00:00:09 transmit -t91900 -b8 -s524288
+92061 R ecagent    00:00:07 sync //...@2579187
+92063 R ecagent    00:00:06 transmit -t92061 -b8 -s524288
+92077 R jteam      00:00:06 sync -p -q /swarmJenkins/workspace/docker-development-Jest/...@2579187
+92079 R jteam      00:00:06 sync -p -q /swarmJenkins/workspace/docker-development-Jest/...@2579187
+92081 R jteam      00:00:06 sync -p -q /swarmJenkins/workspace/docker-development-Jest/...@2579187
+92126 R jteam      00:00:04 sync -p -q /swarmJenkins/workspace/docker-development-Jest/...@2579187
+92210 R jteam      00:00:02 transmit -t92074 -b8 -s524288
+92264 I swarm      00:00:00 IDLE none
+609936 I svc_p4d_ha_chi 23:30:43 IDLE none"""
+        obj = P4Monitor()
+        m = obj.findLocks(lockdata, mondata)
+        self.assertEqual(0, m.dbReadLocks)
+        self.assertEqual(1, m.dbWriteLocks)
+        self.assertEqual(0, m.clientEntityReadLocks)
+        self.assertEqual(0, m.clientEntityWriteLocks)
+        self.assertEqual(1, m.metaReadLocks)
+        self.assertEqual(0, m.metaWriteLocks)
+        self.assertEqual(1, m.blockedCommands)
+        self.assertEqual(1, len(m.msgs))
+        self.assertEqual("pid 92210, user jteam, cmd transmit, table /hxmetadata/p4/1/db1/db.sendq, blocked by pid 92079, user jteam, cmd sync, args -p -q /swarmJenkins/workspace/docker-development-Jest/...@2579187", m.msgs[0])
+
+        lines = [x for x in obj.formatMetrics(m) if not x.startswith("#")]
+        exp = """p4_locks_db_read 0
+                 p4_locks_db_write 1
+                 p4_locks_cliententity_read 0
+                 p4_locks_cliententity_write 0
+                 p4_locks_meta_read 1
+                 p4_locks_meta_write 0
+                 p4_locks_cmds_blocked 1""".split("\n")
+        exp_lines = [x.strip() for x in exp]
+        exp_lines.sort()
+        lines.sort()
+        self.maxDiff = None
+        self.assertEqual(exp_lines, lines)
 
 if __name__ == '__main__':
     unittest.main()

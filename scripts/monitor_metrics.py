@@ -245,11 +245,11 @@ class P4Monitor(object):
                 elif j["mode"] == "WRITE":
                     metrics.clientEntityWriteLocks += 1
             cmd = user = ""
-            pid = j["pid"]
+            pid = str(j["pid"])
             # mode = j["mode"]
             path = j["path"]
-            if j["pid"] in pids:
-                user, cmd, _ = pids[j["pid"]]
+            if pid in pids:
+                user, cmd, _ = pids[pid]
             if "server.locks/meta" in j["path"]:
                 if j["mode"] == "READ":
                     metrics.metaReadLocks += 1
@@ -264,7 +264,7 @@ class P4Monitor(object):
             if j["blocker"]:
                 metrics.blockedCommands += 1
                 buser, bcmd, bargs = "unknown", "unknown", "unknown"
-                bpid = j["blocker"]
+                bpid = str(j["blocker"])
                 if bpid in pids:
                     buser, bcmd, bargs = pids[bpid]
                 msg = "pid %s, user %s, cmd %s, table %s, blocked by pid %s, user %s, cmd %s, args %s" % (
