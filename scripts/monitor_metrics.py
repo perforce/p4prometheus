@@ -12,7 +12,7 @@ NAME:
     monitor_metrics.py
 
 DESCRIPTION:
-    This script monitors locks and other Perforce server metrics for use with Prometheus.
+    This script monitors locks using lslocks and p4 monitor show for Perforce server metrics for use with Prometheus.
 
     Assumes it is wrapped by a simple bash script monitor_wrapper.sh
 
@@ -33,6 +33,7 @@ import subprocess
 import datetime
 import json
 from collections import defaultdict
+from operator import itemgetter
 
 python3 = (sys.version_info[0] >= 3)
 
@@ -52,6 +53,18 @@ DEFAULT_VERBOSITY = 'DEBUG'
 LOGGER_NAME = 'monitor_metrics'
 
 
+class Blocker:
+    """Blocking pid"""
+
+    def __init__(self, pid, user, cmd, elapsed) -> None:
+        self.pid = pid
+        self.user = user
+        self.cmd = cmd
+        self.elapsed = elapsed
+        self.blockedPids = []
+        self.indirectlyBlocked = 0 # Those pids indirectly blocked
+
+
 class MonitorMetrics:
     """Metric counts"""
 
@@ -66,7 +79,7 @@ class MonitorMetrics:
         self.replicaWriteLocks = 0
         self.blockedCommands = 0
         self.msgs = []
-
+        self.blockingCommands = {}
 
 class P4Monitor(object):
     """See module doc string for details"""
@@ -109,6 +122,7 @@ class P4Monitor(object):
         parser.add_argument('-u', '--p4user', default=None, help="Perforce user. Default: $P4USER")
         parser.add_argument('-L', '--log', default=default_log_file, help="Default: " + default_log_file)
         parser.add_argument('-i', '--sdp-instance', help="SDP instance")
+        parser.add_argument('-t', '--test-file', help="Test file (section of log file from monitor_metrics.py)")
         parser.add_argument('-m', '--metrics-root', default=metrics_root, help="Metrics directory to use. Default: " + metrics_root)
         parser.add_argument('-v', '--verbosity',
                             nargs='?',
@@ -163,6 +177,10 @@ class P4Monitor(object):
                 self.logger.debug(msg)
         return output
 
+    # Monitor data format:
+    # 562 I perforce 00:01:01 monitor
+    # 2502 I fred 00:01:01 sync //...
+    # 2503 I susan 00:01:01 sync //...
     def parseMonitorData(self, mondata):
         reProc = re.compile(r"(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*(.*)$")
         pids = {}
@@ -172,12 +190,12 @@ class P4Monitor(object):
                 pid = m.group(1)
                 # runstate = m.group(2)
                 user = m.group(3)
-                # elapsed = m.group(4)
+                elapsed = m.group(4)
                 cmd = m.group(5)
                 args = None
                 if len(m.groups()) == 6:
                     args = m.group(6)
-                pids[pid] = (user, cmd, args)
+                pids[pid] = (user, cmd, args, elapsed)
         return pids
 
     # Old versions of lslocks can't return json so we parse text
@@ -235,7 +253,6 @@ class P4Monitor(object):
             jlock = []
         if 'locks' not in jlock:
             return metrics
-        blockingCommands = defaultdict(dict)
         for j in jlock['locks']:
             if "p4d" not in j["command"] or "path" not in j or not j["path"]:
                 continue
@@ -249,7 +266,7 @@ class P4Monitor(object):
             # mode = j["mode"]
             path = j["path"]
             if pid in pids:
-                user, cmd, _ = pids[pid]
+                user, cmd, _, _ = pids[pid]
             if "server.locks/meta" in j["path"]:
                 if j["mode"] == "READ":
                     metrics.metaReadLocks += 1
@@ -266,11 +283,12 @@ class P4Monitor(object):
                 buser, bcmd, bargs = "unknown", "unknown", "unknown"
                 bpid = str(j["blocker"])
                 if bpid in pids:
-                    buser, bcmd, bargs = pids[bpid]
+                    buser, bcmd, bargs, belapsed = pids[bpid]
                 msg = "pid %s, user %s, cmd %s, table %s, blocked by pid %s, user %s, cmd %s, args %s" % (
                     pid, user, cmd, path, bpid, buser, bcmd, bargs)
-                if bcmd not in blockingCommands or bpid not in blockingCommands[bcmd]:
-                    blockingCommands[bcmd][bpid] = 1
+                if bpid not in metrics.blockingCommands:
+                    metrics.blockingCommands[bpid] = Blocker(bpid, buser, bcmd, belapsed)
+                metrics.blockingCommands[bpid].blockedPids.append(pid)
                 metrics.msgs.append(msg)
         return metrics
 
@@ -347,8 +365,82 @@ class P4Monitor(object):
         except Exception:
             return "1.0"
 
+    def findBlockers(self, metrics):
+        lblockers = [metrics.blockingCommands[x] for x in metrics.blockingCommands]
+        lblockers.sort(key=lambda x:x.elapsed) # Newest first
+        blines = []
+        if lblockers:
+            blines.append("Blocking commands by oldest, with count")
+        processedPids = {}
+        for b in metrics.blockingCommands.values():
+            for p in b.blockedPids:
+                if p in processedPids:
+                    continue
+                processedPids[p] = 1
+                if p in metrics.blockingCommands:
+                    b.indirectlyBlocked += len(metrics.blockingCommands[p].blockedPids)
+        lblockers.sort(key=lambda x:x.elapsed, reverse=True) # Oldest first
+        for b in lblockers:
+            blines.append("blocking cmd: elapsed %s, pid %s, user %s, cmd %s, blocking %d, indirectly %d" % (
+                b.elapsed, b.pid, b.user, b.cmd, len(b.blockedPids), b.indirectlyBlocked))
+        return blines
+
+    def parseTestFile(self):
+        # Parses test file and outputs result
+        # DEBUG 2024-04-03 23:57:02,118 monitor_metrics.py 137: Running: sudo lslocks -o +BLOCKER -J
+        # DEBUG 2024-04-03 23:57:02,211 monitor_metrics.py 144: Output:
+        # {
+        # "locks": [
+        #     {"command":"snapd", "pid":1249, "type":"FLOCK", "size":null, "mode":"WRITE", "m":false, "start":0, "end":0, "path":"/var/lib/snapd/state.lock", "blocker":null},
+        # }
+        #
+        # DEBUG 2024-04-03 23:57:02,211 monitor_metrics.py 137: Running: /p4/1/bin/p4_1 -u p4sdp -p ssl:1667 -F "%id% %runstate% %user% %elapsed% %function% %args%" monitor show -al
+        # DEBUG 2024-04-03 23:57:02,313 monitor_metrics.py 144: Output:
+        # 2030 B svc_master-1666 05:24:42 ldapsync -g -i 1800
+        # 162476 I svc_p4d_fs_brk 00:00:01 IDLE none
+        locklines = []
+        monlines = []
+        timestamp = ""
+        with open(self.options.test_file, "r") as f:
+            stage = 0 # 1 = processing locks, 2 = processing monitor data
+            for line in f:
+                line = line.rstrip()
+                if stage == 0 and line.startswith("{"):
+                    stage = 1
+                    locklines.append(line)
+                    continue
+                if stage == 1:
+                    locklines.append(line)
+                    if line == "}":
+                        stage = 2
+                    continue
+                if stage == 2 and line.endswith("Output:"):
+                    stage = 3
+                    timestamp = line[6:25] + " "
+                    continue
+                if stage == 3:
+                    if line == "":
+                        metrics = self.findLocks("\n".join(locklines), "\n".join(monlines))
+                        self.writeLog(self.formatLog(metrics))
+                        blines = self.findBlockers(metrics)
+                        self.writeLog([timestamp + x for x in blines])
+                        self.writeMetrics(self.formatMetrics(metrics))
+                        locklines = []
+                        monlines = []
+                        stage = 0
+                    else:
+                        monlines.append(line)
+        if monlines or locklines:
+            metrics = self.findLocks("\n".join(locklines), "\n".join(monlines))
+            self.writeLog(self.formatLog(metrics))
+            self.findBlockers(metrics)
+            self.writeMetrics(self.formatMetrics(metrics))
+
     def run(self):
         """Runs script"""
+        if self.options.test_file:
+            self.parseTestFile()
+            return
         p4cmd = "%s -u %s -p %s" % (os.environ["P4BIN"], os.environ["P4USER"], os.environ["P4PORT"])
         verdata = self.run_cmd("lslocks -V")
         locksver = self.getLslocksVer(verdata)
@@ -369,6 +461,9 @@ class P4Monitor(object):
         mondata = self.run_cmd('{0} -F "%id% %runstate% %user% %elapsed% %function% %args%" monitor show -al'.format(p4cmd))
         metrics = self.findLocks(lockdata, mondata)
         self.writeLog(self.formatLog(metrics))
+        timestamp = self.now.strftime("%Y-%m-%d %H:%M:%S ")
+        blines = self.findBlockers(metrics)
+        self.writeLog([timestamp + x for x in blines])
         self.writeMetrics(self.formatMetrics(metrics))
 
 
