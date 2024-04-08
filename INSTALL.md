@@ -67,6 +67,9 @@ Checkout  following files:
 * [install_prom_graf.sh](scripts/install_prom_graf.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for the monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
 * [install_node.sh](scripts/install_node.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_node.sh) - the installer for monitoring a server hosting other tools such as Swarm, Hansoft, HTH (Helix TeamHub) etc. Just installs `node_exporter`
 
+Standalone script just to install the `lslocks` monitoring (normally covered by `install_p4prom.sh` above):
+* [install_lslocks.sh](scripts/install_lslocks.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_lslocks.sh) - the installer for lslocks monitoring only (if `install_p4prom.sh` not performed)
+
 Example of use (as root):
 
     wget https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh
@@ -564,6 +567,14 @@ Other options to remove client locks (which are output with paths like `.../serv
 Output might contain lines like:
 
     2021-06-08 10:42:01 pid 4203, user bldagent, cmd client, table /hxmetadata/p4/1/db1/db.have, blocked by pid 3877, user jim, cmd sync, args c:\Users\jim\p4servers\...#have
+
+It may also be worth checking for commands which are "blocking" others, e.g.
+
+    grep blocking /p4/1/logs/monitor_metrics.log
+
+    2024-04-04 00:29:02: blocking cmd: elapsed 02:09:23, pid 284460, user perforce, cmd sync, blocking 2, indirectly 203
+    2024-04-04 00:29:02: blocking cmd: elapsed 00:59:35, pid 374896, user fred, cmd dm-CommitSubmit, blocking 203, indirectly 0
+    2024-04-04 00:29:02: blocking cmd: elapsed 00:30:45, pid 396091, user fred, cmd shelve, blocking 3, indirectly 0
 
 Please note that metrics (counts of processes locked) are written to `/p4/metrics/locks.prom` (or your metrics dir) and will be available to Prometheus/Grafana. See [P4Prometheus Metrics (look for p4_lock*)](README.md#locks-metrics).
 
