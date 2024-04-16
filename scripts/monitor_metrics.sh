@@ -66,18 +66,18 @@ function usage
  
    echo "USAGE for monitor_metrics.sh:
  
-monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ] | [-m <metrics_dir>] [-t <P4TICKETS file>]
+monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ] | [-update <mins>] | [-m <metrics_dir>] [-t <P4TICKETS file>]
  
    or
  
 monitor_metrics.sh -h
-
-    -nosdp              Specifies SDP not in use - implies P4PORT and P4USER should be defined in shell env
-    <metrics_dir>       The directory to write metrics to (not required unless -nosdp is specified)
-    <port>              The P4PORT to use (not required unless -nosdp is specified)
-    <user>              The P4USER to use (not required unless -nosdp is specified)
-    <P4TICKETS file>    The P4TICKETS to use (not required unless -nosdp is specified)
-
+    -nosdp                 Specifies SDP not in use - implies P4PORT and P4USER should be defined in shell env
+    -m <metrics_dir>       The directory to write metrics to (not required unless -nosdp is specified)
+    -p <port>              The P4PORT to use (not required unless -nosdp is specified)
+    -u <user>              The P4USER to use (not required unless -nosdp is specified)
+    -t <P4TICKETS file>    The P4TICKETS to use (not required unless -nosdp is specified)
+    -update <min>          Set the default update frequecy for 'p4_licenses.prom' and 'p4_filesys.prom'
+                           in minutes. The default value is 60.
 IMPORTANT: Specify either the SDP instance (e.g. 1), or -nosdp
 
 WARNING: If using -nosdp, then please ensure P4PORT and P4USER are appropriately set and that you can connect
@@ -88,6 +88,7 @@ Examples - for crontab:
 /p4/common/site/bin/monitor_metrics.sh 1
 /etc/p4prometheus/monitor_metrics.sh -nosdp -m /p4/metrics -u perforce -t /home/perforce/.p4tickets
 
+
 "
 }
 
@@ -96,6 +97,7 @@ Examples - for crontab:
 declare -i shiftArgs=0
 declare -i UseSDP=1
 declare p4tickets=""
+declare -i Update=60
 
 set +u
 while [[ $# -gt 0 ]]; do
@@ -108,6 +110,7 @@ while [[ $# -gt 0 ]]; do
         (-m) metrics_root=$2; shiftArgs=1;;
         (-t) p4tickets=$2; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
+        (-update) Update=$2; shiftArgs=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
     esac
@@ -220,8 +223,8 @@ monitor_license () {
     tmp_license_data="$metrics_root/tmp_license"
     # Don't update if there is no license for this server, e.g. a replica
     no_license=$(grep -c "Server license: none" "$tmp_info_data")
-    # Update every 60 mins
-    [[ ! -f "$tmp_license_data" || $(find "$tmp_license_data" -mmin +60) ]] || return
+    # Update every N mins
+    [[ ! -f "$tmp_license_data" || $(find "$tmp_license_data" -mmin +"$Update") ]] || return
     $p4 license -u 2>&1 > "$tmp_license_data"
     [[ $? -ne 0 ]] && return
 
@@ -293,8 +296,8 @@ monitor_filesys () {
     fname="$metrics_root/p4_filesys${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
     tmp_filesys_data="$metrics_root/tmp_filesys"
-    # Update every 60 mins
-    [[ ! -f "$tmp_filesys_data" || $(find "$tmp_filesys_data" -mmin +60) ]] || return
+    # Update every N mins
+    [[ ! -f "$tmp_filesys_data" || $(find "$tmp_filesys_data" -mmin +"$Update") ]] || return
     configurables="filesys.depot.min filesys.P4ROOT.min filesys.P4JOURNAL.min filesys.P4LOG.min filesys.TEMP.min"
 
     echo "" > "$tmp_filesys_data"
