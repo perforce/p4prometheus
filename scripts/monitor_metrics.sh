@@ -46,7 +46,7 @@ fi
 
 metrics_root=/p4/metrics
 
-# For non SDP, if the 'p4' executable is not in your $PATH, then specify full path here. SDP will update it.
+# For non SDP, if the 'p4' executable is not in your $PATH, then specify full path here. SDP will find it automatically from instance var.
 
 P4BIN=p4
 
@@ -66,13 +66,15 @@ function usage
  
    echo "USAGE for monitor_metrics.sh:
  
-monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ] | [-m <metrics_dir>] [-t <P4TICKETS file>]
+monitor_metrics.sh [<instance> | -nosdp [-p <port>] | [-u <user>] ]
+    | [-m <metrics_dir>] [-t <P4TICKETS file>] [-no_user_metrics]
  
    or
  
 monitor_metrics.sh -h
 
     -nosdp              Specifies SDP not in use - implies P4PORT and P4USER should be defined in shell env
+    -no_user_metrics    Specify that per-user metrics should not be collected (e.g. if organisation has personal information concerns)
     <metrics_dir>       The directory to write metrics to (not required unless -nosdp is specified)
     <port>              The P4PORT to use (not required unless -nosdp is specified)
     <user>              The P4USER to use (not required unless -nosdp is specified)
@@ -95,6 +97,7 @@ Examples - for crontab:
  
 declare -i shiftArgs=0
 declare -i UseSDP=1
+declare -i PerUserMetrics=1
 declare p4tickets=""
 
 set +u
@@ -108,6 +111,7 @@ while [[ $# -gt 0 ]]; do
         (-m) metrics_root=$2; shiftArgs=1;;
         (-t) p4tickets=$2; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
+        (-no_user_metrics) PerUserMetrics=0;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
     esac
@@ -414,12 +418,14 @@ monitor_processes () {
         echo "p4_monitor_by_cmd{${serverid_label}${sdpinst_label},cmd=\"$cmd\"} $count" >> "$tmpfname"
     done
 
-    echo "# HELP p4_monitor_by_user P4 running processes" >> "$tmpfname"
-    echo "# TYPE p4_monitor_by_user counter" >> "$tmpfname"
-    awk '{print $3}' "$monfile" | sort | uniq -c | while read count user
-    do
-        echo "p4_monitor_by_user{${serverid_label}${sdpinst_label},user=\"$user\"} $count" >> "$tmpfname"
-    done
+    if [[ $PerUserMetrics -eq 1 ]]; then
+        echo "# HELP p4_monitor_by_user P4 running processes" >> "$tmpfname"
+        echo "# TYPE p4_monitor_by_user counter" >> "$tmpfname"
+        awk '{print $3}' "$monfile" | sort | uniq -c | while read count user
+        do
+            echo "p4_monitor_by_user{${serverid_label}${sdpinst_label},user=\"$user\"} $count" >> "$tmpfname"
+        done
+    fi
 
     if [[ $UseSDP -eq 1 ]]; then
         proc="p4d_${SDP_INSTANCE}"
