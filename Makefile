@@ -1,4 +1,4 @@
-
+# Makefile for p4prometheus project
 
 BINARY=p4prometheus
 
@@ -21,12 +21,14 @@ build:
 
 # Builds distribution
 dist:
-	GOOS=linux GOARCH=amd64 go build -o p4prometheus.linux-amd64 ${LDFLAGS}
-	GOOS=windows GOARCH=amd64 go build -o p4prometheus.windows-amd64.exe ${LDFLAGS}
-	go build -o p4prometheus.darwin-amd64 ${LDFLAGS}
-	-chmod +x p4prometheus.linux-amd64 p4prometheus.windows-amd64 p4prometheus.darwin-amd64
-	rm -f p4prometheus.*.gz
-	gzip p4prometheus.linux-amd64 p4prometheus.windows-amd64 p4prometheus.darwin-amd64
+	GOOS=linux GOARCH=amd64 go build -o bin/p4prometheus.linux-amd64 ${LDFLAGS}
+	GOOS=linux GOARCH=arm64 go build -o bin/p4prometheus.linux-arm64 ${LDFLAGS}
+	GOOS=windows GOARCH=amd64 go build -o bin/p4prometheus.windows-amd64.exe ${LDFLAGS}
+	GOOS=darwin GOARCH=amd64 go build -o bin/p4prometheus.darwin-amd64 ${LDFLAGS}
+	GOOS=darwin GOARCH=arm64 go build -o bin/p4prometheus.darwin-arm64 ${LDFLAGS}
+	-chmod +x bin/p4prometheus.linux-* bin/p4prometheus.windows-*.exe bin/p4prometheus.darwin-*
+	rm -f bin/p4prometheus.*.gz
+	gzip bin/p4prometheus.linux-* bin/p4prometheus.windows-*.exe bin/p4prometheus.darwin-*
 
 # Installs our project: copies binaries
 install:
