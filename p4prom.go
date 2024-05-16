@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"syscall"
@@ -57,7 +56,7 @@ func newP4Prometheus(config *config.Config, logger *logrus.Logger) (p4p *P4Prome
 func readServerID(logger *logrus.Logger, instance string) string {
 	idfile := fmt.Sprintf("/p4/%s/root/server.id", instance)
 	if _, err := os.Stat(idfile); err == nil {
-		buf, err := ioutil.ReadFile(idfile) // just pass the file name
+		buf, err := os.ReadFile(idfile) // just pass the file name
 		if err != nil {
 			logger.Errorf("Failed to read %v - %v", idfile, err)
 			return ""
@@ -262,13 +261,13 @@ func main() {
 	if *updateInterval != 10*time.Second {
 		cfg.UpdateInterval = *updateInterval
 	}
-	if !*noOutputCmdsByUser {
+	if *noOutputCmdsByUser {
 		cfg.OutputCmdsByUser = !*noOutputCmdsByUser
 	}
 	if *outputCmdsByUserRegex != "" {
 		cfg.OutputCmdsByUserRegex = *outputCmdsByUserRegex
 	}
-	if !*noOutputCmdsByIP {
+	if *noOutputCmdsByIP {
 		cfg.OutputCmdsByIP = !*noOutputCmdsByUser
 	}
 	if *caseInsensitiveServer {
