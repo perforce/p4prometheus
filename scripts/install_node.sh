@@ -19,7 +19,7 @@ metrics_root=/var/metrics
 metrics_bin_dir=/etc/metrics
 
 # Version to download
-VER_NODE_EXPORTER="1.3.1"
+VER_NODE_EXPORTER="1.8.0"
 
 # Default to amd but allow arm architecture
 arch="amd64"

@@ -11,7 +11,7 @@ fi
 # ============================================================
 # Configuration section
 
-VER_NODE_EXPORTER="1.3.1"
+VER_NODE_EXPORTER="1.8.0"
 VER_PROMETHEUS="2.37.6"
 VER_ALERTMANAGER="0.25.0"
 VER_PUSHGATEWAY="1.5.1"
