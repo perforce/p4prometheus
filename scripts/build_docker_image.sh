@@ -3,7 +3,7 @@
 set -u
 
 #------------------------------------------------------------------------------
-# Build the Docker containers for the SDP
+# Build the Docker containers for P4prometheus testing - now using podman
 
 # Usage Exaxmples:
 #    build_docker_image.sh
@@ -24,7 +24,7 @@ set -u
 
 declare oses=
 
-# This file should be in <workspace-root>/sdp/test/
+# This file should be in <workspace-root>/scripts/
 # We calculate dir relative to directory of script
 script_dir="${0%/*}"
 root_dir="$(cd "$script_dir/../.."; pwd -P)"
@@ -35,8 +35,8 @@ if [[ "${1:-Unset}" == "Unset" ]]; then
 else
    for os in $(echo $* | tr ',' ' '); do
       case "$os" in
-         (all) oses="centos7 rocky8 ubuntu20";;
-         (ALL) oses="centos6 centos7 rocky8 ubuntu20";;
+         (all) oses="rocky8 ubuntu20";;
+         (ALL) oses="rocky8 ubuntu20";;
          (ubuntu20) oses+="ubuntu20";;
          (centos7) oses+="centos7";;
          (rocky8) oses+="rocky8";;
@@ -55,6 +55,6 @@ for os in $oses; do
     dockerfile_base="${docker_dir}/Dockerfile.${os}.base"
     dockerfile_sdp="${docker_dir}/Dockerfile.${os}.sdp"
     # Build the base Docker for the OS, and then the SDP variant on top
-    docker build --rm=true -t="perforce/${os}-base" -f "${dockerfile_base}" "${docker_dir}"
-    docker build --rm=true -t="perforce/${os}-sdp" -f "${dockerfile_sdp}" "${docker_dir}"
+    podman build --rm=true -t="perforce/${os}-base" -f "${dockerfile_base}" "${docker_dir}"
+    podman build --rm=true -t="perforce/${os}-sdp" -f "${dockerfile_sdp}" "${docker_dir}"
 done

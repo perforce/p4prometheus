@@ -25,7 +25,8 @@ export P4PORT=1666
 source ~/.bashrc
 PS1='\u@\h:\w$ '
 EOF
-chown perforce:perforce $BASH_PROF
+echo "source /p4/common/bin/p4_vars 1" >> /home/perforce/.bashrc
+chown perforce:perforce $BASH_PROF /home/perforce/.bashrc
 
 chown -R perforce:perforce /hx*
 
@@ -39,7 +40,18 @@ chown -R perforce:perforce sdp
 
 cd sdp/helix_binaries
 
-sudo -u perforce ./get_helix_binaries.sh
+# Adjust platform if required
+# declare Platform=linux26x86_64
+arch=$(uname -m)
+if [[ "$arch" = "aarch64" ]]; then
+    get_script="get_helix_binaries.sh"
+    mv "${get_script}" "${get_script}.bak"
+    cat "${get_script}.bak" | sed -e 's/declare Platform=linux26x86_64/declare Platform=linux26aarch64/' > "${get_script}"
+    chmod +x "${get_script}"
+    chown perforce: "${get_script}"
+fi
+# Need to hard-code 24.1 for now to get ARM support
+sudo -u perforce ./get_helix_binaries.sh -r r24.1
 
 cd /hxdepots/sdp/Server/Unix/setup
 

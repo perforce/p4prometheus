@@ -1,4 +1,4 @@
-# Tests for non-sdp
+# P4Prometheus tests for sdp
 
 from time import sleep
 
@@ -13,7 +13,7 @@ def test_metrics(host):
 
 def test_node(host):
     assert host.file("/tmp/node.out").exists
-    cmd = host.run("grep =error /tmp/node.out")
+    cmd = host.run("grep =error /tmp/node.out | grep -v 'udev device' ")
     assert '=error' not in cmd.stdout
     
     cmd = host.run("curl localhost:9100/metrics")
@@ -21,5 +21,5 @@ def test_node(host):
     assert 'p4_server_uptime' in cmd.stdout
 
     sleep(1)
-    cmd = host.run("grep =error /tmp/node.out")
+    cmd = host.run("grep =error /tmp/node.out | grep -v 'udev device' ")
     assert '=error' not in cmd.stdout

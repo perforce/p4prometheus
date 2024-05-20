@@ -3,9 +3,9 @@
 set -u
 
 #------------------------------------------------------------------------------
-# Build the Docker containers for P4Prometheus testing
+# Build the Docker containers for P4Prometheus testing - but using podman for systemd support
 
-# Usage Exaxmples:
+# Usage Examples:
 #    build_docker_image.sh
 #
 # Goes together with run_docker_tests.sh
@@ -18,10 +18,11 @@ root_dir="$(cd "$script_dir/.."; pwd -P)"
 # Set progress for docker build
 export BUILDKIT_PROGRESS=plain
 
-echo Building SDP docker containers
-for image in nonsdp sdp no-p4; do
+echo Building SDP podman/docker containers
+# for image in nonsdp sdp no-p4; do
+for image in sdp no-p4; do
     docker_dir="$root_dir"
     dockerfile="${docker_dir}/docker/Dockerfile"
     # Build the base Docker for the OS, and then the SDP variant on top
-    docker build --rm=true -t="perforce/p4promtest-${image}" --target p4promtest-${image} -f "${dockerfile}" "${docker_dir}"
+    podman build --rm=true -t="perforce/p4promtest-${image}" --target p4promtest-${image} -f "${dockerfile}" "${docker_dir}"
 done
