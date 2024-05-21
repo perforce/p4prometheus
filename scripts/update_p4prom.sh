@@ -20,6 +20,10 @@ metrics_link=/p4/metrics
 VER_NODE_EXPORTER="1.8.0"
 VER_P4PROMETHEUS="0.8.2"
 
+# Default to amd but allow arm architecture
+arch="amd64"
+[[ $(uname -p) == 'aarch64' ]] && arch="arm64"
+
 # ============================================================
 
 function msg () { echo -e "$*"; }
@@ -168,12 +172,12 @@ update_node_exporter () {
 
     cd /tmp || bail "Failed to cd to /tmp"
     PVER="$VER_NODE_EXPORTER"
-    fname="node_exporter-$PVER.linux-amd64.tar.gz"
-    [[ -d node_exporter-$PVER.linux-amd64 ]] && rm -rf node_exporter-$PVER.linux-amd64
+    fname="node_exporter-$PVER.linux-${arch}.tar.gz"
+    [[ -d node_exporter-$PVER.linux-${arch} ]] && rm -rf node_exporter-$PVER.linux-${arch}
     download_and_untar "$fname" "https://github.com/prometheus/node_exporter/releases/download/v$PVER/$fname"
 
     msg "Installing node_exporter"
-    mv node_exporter-$PVER.linux-amd64/node_exporter /usr/local/bin/
+    mv node_exporter-$PVER.linux-${arch}/node_exporter /usr/local/bin/
 
     if [[ $SELinuxEnabled -eq 1 ]]; then
         bin_file=/usr/local/bin/node_exporter
@@ -228,17 +232,17 @@ update_p4prometheus () {
     systemctl stop p4prometheus
 
     PVER="$VER_P4PROMETHEUS"
-    fname="p4prometheus.linux-amd64.gz"
+    fname="p4prometheus.linux-${arch}.gz"
     url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
     msg "downloading and extracting $url"
-    [[ -e p4prometheus.linux-amd64 ]] && rm -f p4prometheus.linux-amd64
+    [[ -e p4prometheus.linux-${arch} ]] && rm -f p4prometheus.linux-${arch}
     wget -q "$url"
 
     gunzip "$fname"
     
-    chmod +x p4prometheus.linux-amd64
+    chmod +x p4prometheus.linux-${arch}
 
-    mv p4prometheus.linux-amd64 /usr/local/bin/p4prometheus
+    mv p4prometheus.linux-${arch} /usr/local/bin/p4prometheus
 
     if [[ $SELinuxEnabled -eq 1 ]]; then
         bin_file=/usr/local/bin/p4prometheus
