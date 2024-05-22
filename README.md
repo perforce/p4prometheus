@@ -24,7 +24,7 @@ Uses [go-libp4dlog](https://github.com/rcowham/go-libp4dlog) for actual log file
 - [Detailed Installation Instructions](#detailed-installation-instructions)
 - [Metrics Available](#metrics-available)
   - [P4Prometheus Metrics](#p4prometheus-metrics)
-  - [Monitor_metrics.sh Metrics](#monitor_metricssh-metrics)
+  - [Monitor\_metrics.sh Metrics](#monitor_metricssh-metrics)
   - [Locks Metrics](#locks-metrics)
 
 ## Support Status
@@ -103,6 +103,7 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_cmd_running |  | The number of running commands at any one time - a high value indicates concurrent jobs and/or locks |
 | p4_prom_cpu_user |  | User CPU used by p4prometheus |
 | p4_prom_cpu_system |  | System CPU used by p4prometheus |
+| p4_prom_memory |  | Memory used by p4prometheus (bytes) |
 | p4_sync_files_added |  | The number of files added to workspaces by syncs |
 | p4_sync_files_updated |  | The number of files updated in workspaces by syncs |
 | p4_sync_files_deleted |  | The number of files deleted in workspaces by syncs |
