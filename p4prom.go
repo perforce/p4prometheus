@@ -52,9 +52,12 @@ func newP4Prometheus(config *config.Config, logger *logrus.Logger) (p4p *P4Prome
 	}
 }
 
-// Reads server id for SDP instance
-func readServerID(logger *logrus.Logger, instance string) string {
-	idfile := fmt.Sprintf("/p4/%s/root/server.id", instance)
+// Reads server id for SDP instance or the server.id path
+func readServerID(logger *logrus.Logger, instance string, path string) string {
+	idfile := path
+	if idfile == "" {
+		idfile = fmt.Sprintf("/p4/%s/root/server.id", instance)
+	}
 	if _, err := os.Stat(idfile); err == nil {
 		buf, err := os.ReadFile(idfile) // just pass the file name
 		if err != nil {
@@ -276,18 +279,16 @@ func main() {
 	logger.Infof("%v", version.Print("p4prometheus"))
 	logger.Infof("Processing log file: '%s' output to '%s' SDP instance '%s'",
 		cfg.LogPath, cfg.MetricsOutput, cfg.SDPInstance)
-	if cfg.SDPInstance == "" && len(cfg.ServerID) == 0 {
-		logger.Errorf("error loading config file - if no sdp_instance then please specifiy server_id!")
+	if cfg.SDPInstance == "" && len(cfg.ServerID) == 0 && cfg.ServerIDPath == "" {
+		logger.Errorf("error loading config file - if no sdp_instance then please specify server_id or server_id_path!")
 		os.Exit(-1)
 	}
-	if len(cfg.ServerID) == 0 && cfg.SDPInstance != "" {
-		cfg.ServerID = readServerID(logger, cfg.SDPInstance)
+	if len(cfg.ServerID) == 0 && (cfg.SDPInstance != "" || cfg.ServerIDPath != "") {
+		cfg.ServerID = readServerID(logger, cfg.SDPInstance, cfg.ServerIDPath)
 	}
 	logger.Infof("Server id: '%s'", cfg.ServerID)
 
-	var logcfg *logConfig
-
-	logcfg = &logConfig{
+	logcfg := &logConfig{
 		Type:                 "file",
 		Path:                 cfg.LogPath,
 		PollInterval:         time.Second * 1,

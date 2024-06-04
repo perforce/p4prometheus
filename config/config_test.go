@@ -37,6 +37,17 @@ output_cmds_by_user: true
 case_sensitive_server: false
 `
 
+const nonSDPConfig3 = `
+log_path:			/p4/1/logs/log
+metrics_output:		/hxlogs/metrics/cmds.prom
+server_id:			myserverid
+server_id_path:		/p4/root/server.id
+sdp_instance:
+update_interval: 	20s
+output_cmds_by_user: true
+case_sensitive_server: false
+`
+
 func checkValue(t *testing.T, fieldname string, val string, expected string) {
 	if val != expected {
 		t.Fatalf("Error parsing %s, expected %v got %v", fieldname, expected, val)
@@ -72,6 +83,7 @@ func TestNoSDP(t *testing.T) {
 	checkValue(t, "LogPath", cfg.LogPath, "/p4/1/logs/log")
 	checkValue(t, "MetricsOutput", cfg.MetricsOutput, "/hxlogs/metrics/cmds.prom")
 	checkValue(t, "ServerId", cfg.ServerID, "myserverid")
+	checkValue(t, "ServerIdPath", cfg.ServerIDPath, "")
 	checkValue(t, "SDPInstance", cfg.SDPInstance, "")
 	checkValueDuration(t, "UpdateInterval", cfg.UpdateInterval, 1*time.Minute)
 	checkValueBool(t, "OutputCmdsByUser", cfg.OutputCmdsByUser, false)
@@ -79,6 +91,15 @@ func TestNoSDP(t *testing.T) {
 	checkValue(t, "LogPath", cfg.LogPath, "/p4/1/logs/log")
 	checkValue(t, "MetricsOutput", cfg.MetricsOutput, "/hxlogs/metrics/cmds.prom")
 	checkValue(t, "ServerId", cfg.ServerID, "myserverid")
+	checkValue(t, "ServerIdPath", cfg.ServerIDPath, "")
+	checkValue(t, "SDPInstance", cfg.SDPInstance, "")
+	checkValueDuration(t, "UpdateInterval", cfg.UpdateInterval, 20*time.Second)
+	checkValueBool(t, "OutputCmdsByUser", cfg.OutputCmdsByUser, true)
+	cfg = loadOrFail(t, nonSDPConfig3)
+	checkValue(t, "LogPath", cfg.LogPath, "/p4/1/logs/log")
+	checkValue(t, "MetricsOutput", cfg.MetricsOutput, "/hxlogs/metrics/cmds.prom")
+	checkValue(t, "ServerId", cfg.ServerID, "myserverid")
+	checkValue(t, "ServerIdPath", cfg.ServerIDPath, "/p4/root/server.id")
 	checkValue(t, "SDPInstance", cfg.SDPInstance, "")
 	checkValueDuration(t, "UpdateInterval", cfg.UpdateInterval, 20*time.Second)
 	checkValueBool(t, "OutputCmdsByUser", cfg.OutputCmdsByUser, true)

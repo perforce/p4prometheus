@@ -16,6 +16,7 @@ type Config struct {
 	LogPath               string        `yaml:"log_path"`
 	MetricsOutput         string        `yaml:"metrics_output"`
 	ServerID              string        `yaml:"server_id"`
+	ServerIDPath          string        `yaml:"server_id_path"`
 	SDPInstance           string        `yaml:"sdp_instance"`
 	UpdateInterval        time.Duration `yaml:"update_interval"`
 	OutputCmdsByUser      bool          `yaml:"output_cmds_by_user"`

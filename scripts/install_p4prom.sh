@@ -271,9 +271,16 @@ log_path:       $P4LOG
 metrics_output: $metrics_root/p4_cmds.prom
 
 # ----------------------
-# server_id: Optional - serverid for metrics - typically read from /p4/<sdp_instance>/root/server.id for 
-# SDP installations - please specify a value if non-SDP install
+# server_id: Optional - serverid for metrics.
+# If SDP install then it will read /p4/<sdp_instance>/root/server.id for 
+# If non-SDP install, set this field or set server_id_path (this field has preference!)
 server_id:      $P4SERVERID
+
+# ----------------------
+# server_id_path: Optional - path to server.id file for metrics - only used if non-SDP install.
+# If non-SDP install, set either this field, or server_id instead.
+# e.g. server_id_path: /opt/perforce/server/root/server.id
+server_id_path:      
 
 # ----------------------
 # output_cmds_by_user: true/false - Whether to output metrics p4_cmd_user_counter/p4_cmd_user_cumulative_seconds
