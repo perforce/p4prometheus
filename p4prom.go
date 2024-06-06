@@ -149,7 +149,12 @@ func runLogTailer(logger *logrus.Logger, logcfg *logConfig, cfg *config.Config, 
 		CaseSensitiveServer:   cfg.CaseSensitiveServer,
 	}
 	logger.Infof("P4Prometheus config: %+v", mcfg)
-	mp := metrics.NewP4DMetricsLogParser(mcfg, logger, false)
+	version := &metrics.P4DMetricsVersion{
+		Version:   version.Version,
+		GoVersion: version.GoVersion,
+		Revision:  version.Revision,
+	}
+	mp := metrics.NewP4DMetricsLogParser(mcfg, version, logger, false)
 
 	linesChan := make(chan string, 10000)
 	_, metricsChan := mp.ProcessEvents(ctx, linesChan, false)
