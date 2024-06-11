@@ -19,7 +19,7 @@ metrics_root=/hxlogs/metrics
 metrics_link=/p4/metrics
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.8.5"
+VER_P4PROMETHEUS="0.8.6"
 
 # Default to amd but allow arm architecture
 arch="amd64"
