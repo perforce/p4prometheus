@@ -208,7 +208,7 @@ EOF
 validate:
 \\tamtool check-config alertmanager.yml
 
-restart:
+restart: validate
 \\tsystemctl restart alertmanager
 " >  /etc/alertmanager/Makefile
 
@@ -423,7 +423,7 @@ EOF
 validate:
 \\tpromtool check config prometheus.yml
 
-restart:
+restart: validate
 \\tsystemctl restart prometheus
 " >  /etc/prometheus/Makefile
 

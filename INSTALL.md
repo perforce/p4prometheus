@@ -689,7 +689,7 @@ Note that Makefile format requires a `<tab>` char (not spaces) at the start of '
 validate:
         promtool check config prometheus.yml
 
-restart:
+restart: validate
         systemctl restart prometheus
 ```
 
@@ -911,7 +911,7 @@ Note that Makefile format requires a `<tab>` char (not spaces) at the start of '
 validate:
         amtool check-config alertmanager.yml
 
-restart:
+restart: validate
         systemctl restart alertmanager
 ```
 
