@@ -538,15 +538,17 @@ monitor_errors () {
     # Metric for error counts - but only if structured error log exists
     fname="$metrics_root/p4_errors${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-    
-    [[ -f "$errors_file" ]] || { rm -f "$fname"; return; }
+
+    rm -f "$fname"
+    [[ -f "$errors_file" ]] || return
 
     declare -A subsystems=([0]=OS [1]=SUPP [2]=LBR [3]=RPC [4]=DB [5]=DBSUPP [6]=DM [7]=SERVER [8]=CLIENT \
     [9]=INFO [10]=HELP [11]=SPEC [12]=FTPD [13]=BROKER [14]=P4QT [15]=X3SERVER [16]=GRAPH [17]=SCRIPT \
     [18]=SERVER2 [19]=DM2)
 
-    # Log format differs according to p4d versions - first column
+    # Log format differs according to p4d versions - first column - abort if file is empty
     ver=$(head -1 "$errors_file" | awk -F, '{print $1}')
+    [[ -z "$ver" ]] && return
 
     # Output of logschema is:
     # ... f_field 16
