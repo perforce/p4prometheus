@@ -322,6 +322,7 @@ EOF
     cat << EOF > /etc/systemd/system/p4prometheus.service
 [Unit]
 Description=P4prometheus
+Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
 Wants=network-online.target
 After=network-online.target
 

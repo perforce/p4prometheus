@@ -351,6 +351,7 @@ install_prometheus () {
     cat << EOF > /etc/systemd/system/prometheus.service
 [Unit]
 Description=Prometheus
+Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
 Wants=network-online.target
 After=network-online.target
 
