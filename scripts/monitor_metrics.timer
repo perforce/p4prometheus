@@ -1,0 +1,15 @@
+# monitor_metrics.timer
+# Timer for service to run p4prometheus monitor_metrics.sh - ensuring single threading
+
+[Unit]
+Description=p4prometheus monitor_metrics.sh for p4d metrics gathering
+Requires=monitor_metrics.service
+
+[Timer]
+Unit=monitor_metrics.service
+# Runs once a minute
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

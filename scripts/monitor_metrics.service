@@ -1,0 +1,14 @@
+# monitor_metrics.service
+# Service file to run p4prometheus monitor_metrics.sh - ensuring single threading
+
+[Unit]
+Description=p4prometheus monitor_metrics.sh for p4d metrics gathering
+Wants=monitor_metrics.timer
+
+[Service]
+User=perforce
+Type=oneshot
+ExecStart=/p4/common/site/bin/monitor_metrics.sh 1
+
+[Install]
+WantedBy=multi-user.target
