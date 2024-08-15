@@ -3,7 +3,7 @@ module github.com/perforce/p4prometheus
 go 1.18
 
 require (
-	github.com/rcowham/go-libp4dlog v0.13.0
+	github.com/rcowham/go-libp4dlog v0.13.1
 	github.com/rcowham/go-libtail v0.1.3
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
