@@ -254,9 +254,9 @@ class P4Monitor(object):
         if 'locks' not in jlock:
             return metrics
         for j in jlock['locks']:
-            if "p4d" not in j["command"] or "path" not in j or not j["path"]:
+            if "p4d" not in j["command"] or "path" not in j:
                 continue
-            if "clientEntity" in j["path"]:
+            if j["path"] and "clientEntity" in j["path"]:
                 if j["mode"] == "READ":
                     metrics.clientEntityReadLocks += 1
                 elif j["mode"] == "WRITE":
@@ -267,12 +267,14 @@ class P4Monitor(object):
             path = j["path"]
             if pid in pids:
                 user, cmd, _, _ = pids[pid]
-            if "server.locks/meta" in j["path"]:
+            if path and "server.locks/meta" in path:
                 if j["mode"] == "READ":
                     metrics.metaReadLocks += 1
                 elif j["mode"] == "WRITE":
                     metrics.metaWriteLocks += 1
-            dbPath = self.dbFileInPath(j["path"])
+            dbPath = "unknown"
+            if path:
+                dbPath = self.dbFileInPath(path)
             if dbPath:
                 if j["mode"] == "READ":
                     metrics.dbReadLocks += 1
@@ -285,7 +287,7 @@ class P4Monitor(object):
                 if bpid in pids:
                     buser, bcmd, bargs, belapsed = pids[bpid]
                 msg = "pid %s, user %s, cmd %s, table %s, blocked by pid %s, user %s, cmd %s, args %s" % (
-                    pid, user, cmd, path, bpid, buser, bcmd, bargs)
+                    pid, user, cmd, dbPath, bpid, buser, bcmd, bargs)
                 if bpid not in metrics.blockingCommands:
                     metrics.blockingCommands[bpid] = Blocker(bpid, buser, bcmd, belapsed)
                 metrics.blockingCommands[bpid].blockedPids.append(pid)

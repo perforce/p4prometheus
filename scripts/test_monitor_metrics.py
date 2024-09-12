@@ -112,8 +112,8 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         self.assertEqual(0, m.metaWriteLocks)
         self.assertEqual(2, m.blockedCommands)
         self.assertEqual(2, len(m.msgs))
-        self.assertEqual("pid 2502, user fred, cmd sync, table /p4/1/root/db.have, blocked by pid 166, user jim, cmd sync, args -f //...", m.msgs[0])
-        self.assertEqual("pid 2503, user susan, cmd sync, table /p4/1/root/db.have, blocked by pid 166, user jim, cmd sync, args -f //...", m.msgs[1])
+        self.assertEqual("pid 2502, user fred, cmd sync, table db.have, blocked by pid 166, user jim, cmd sync, args -f //...", m.msgs[0])
+        self.assertEqual("pid 2503, user susan, cmd sync, table db.have, blocked by pid 166, user jim, cmd sync, args -f //...", m.msgs[1])
 
         lines = [x for x in obj.formatMetrics(m) if not x.startswith("#")]
         exp = """p4_locks_db_read 3
@@ -164,7 +164,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         self.assertEqual(0, m.metaWriteLocks)
         self.assertEqual(1, m.blockedCommands)
         self.assertEqual(1, len(m.msgs))
-        self.assertEqual("pid 92210, user jteam, cmd transmit, table /hxmetadata/p4/1/db1/db.sendq, blocked by pid 92079, user jteam, cmd sync, args -p -q /swarmJenkins/workspace/docker-development-Jest/...@2579187", m.msgs[0])
+        self.assertEqual("pid 92210, user jteam, cmd transmit, table db.sendq, blocked by pid 92079, user jteam, cmd sync, args -p -q /swarmJenkins/workspace/docker-development-Jest/...@2579187", m.msgs[0])
 
         lines = [x for x in obj.formatMetrics(m) if not x.startswith("#")]
         exp = """p4_locks_db_read 0
@@ -174,6 +174,55 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
                  p4_locks_meta_read 1
                  p4_locks_meta_write 0
                  p4_locks_cmds_blocked 1""".split("\n")
+        exp_lines = [x.strip() for x in exp]
+        exp_lines.sort()
+        lines.sort()
+        self.maxDiff = None
+        self.assertEqual(exp_lines, lines)
+
+    def testFindBlockersNoPath(self):
+        """Check parsing of lockdata"""
+        lockdata = """{
+   "locks": [
+      {"command": "crond", "pid": "1313", "type": "FLOCK", "size": "5B", "mode": "WRITE", "m": "0", "start": "0", "end": "0", "path": "/run/crond.pid", "blocker": null},
+      {"command": "p4d_1_bin", "pid": "6142", "type": "FLOCK", "size": null, "mode": "WRITE*", "m": "0", "start": "0", "end": "0", "path": null, "blocker": "3727"},
+      {"command": "p4d_1_bin", "pid": "6144", "type": "FLOCK", "size": null, "mode": "WRITE*", "m": "0", "start": "0", "end": "0", "path": null, "blocker": "3727"},
+      {"command": "p4d_1_bin", "pid": "3727", "type": "FLOCK", "size": null, "mode": "WRITE", "m": "0", "start": "0", "end": "0", "path": null, "blocker": null},
+      {"command": "lsmd", "pid": "913", "type": "FLOCK", "size": "0B", "mode": "WRITE", "m": "0", "start": "0", "end": "0", "path": "/run/lsm/ipc/.lsmd-ipc-lock", "blocker": null}
+   ]
+}"""
+        # Note pseudonimised reconcile commands
+        mondata = r""" 3727 R fred 00:11:09 reconcile -f -m -c default a:\Project_files\Content\__ExternalActo..._Houses\FE7X5.uasset
+ 4620 I swarm      00:09:00 IDLE none
+ 4846 I swarm      00:07:59 IDLE none
+ 6142 R fred 00:04:22 reconcile -f -m -c default a:\Project_files\Content\__ExternalActo..._Houses\FE7X6.uasset
+ 6144 R fred 00:04:24 reconcile -f -m -c default a:\Project_files\Content\__ExternalActo..._Houses\0018T.uasset
+ 7048 I svc_p4d_edge_uswest2 00:00:00 IDLE none
+ 7535 R perforce   00:00:00 monitor show -al"""
+        obj = P4Monitor()
+        m = obj.findLocks(lockdata, mondata)
+        self.assertEqual(0, m.dbReadLocks)
+        self.assertEqual(1, m.dbWriteLocks)
+        self.assertEqual(0, m.clientEntityReadLocks)
+        self.assertEqual(0, m.clientEntityWriteLocks)
+        self.assertEqual(0, m.metaReadLocks)
+        self.assertEqual(0, m.metaWriteLocks)
+        self.assertEqual(2, m.blockedCommands)
+        self.assertEqual(2, len(m.msgs))
+        self.maxDiff = None
+        self.assertEqual("pid 6142, user fred, cmd reconcile, table unknown, blocked by pid 3727, user fred, cmd reconcile, args -f -m -c default a:\Project_files\Content\__ExternalActo..._Houses\FE7X5.uasset",
+                         m.msgs[0])
+        self.assertEqual("pid 6144, user fred, cmd reconcile, table unknown, blocked by pid 3727, user fred, cmd reconcile, args -f -m -c default a:\Project_files\Content\__ExternalActo..._Houses\FE7X5.uasset",
+                         m.msgs[1])
+
+        lines = [x for x in obj.formatMetrics(m) if not x.startswith("#")]
+        exp = """p4_locks_db_read 0
+                 p4_locks_db_write 1
+                 p4_locks_cliententity_read 0
+                 p4_locks_cliententity_write 0
+                 p4_locks_meta_read 0
+                 p4_locks_meta_write 0
+                 p4_locks_cmds_blocked 2""".split("\n")
         exp_lines = [x.strip() for x in exp]
         exp_lines.sort()
         lines.sort()
