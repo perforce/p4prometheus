@@ -388,6 +388,50 @@ monitor_ssl () {
     mv "$tmpfname" "$fname"
 }
 
+
+monitor_has_ssl () {
+    # Check expiry of HAS certificate - it if exists!
+    fname="$metrics_root/p4_has_ssl_info${sdpinst_suffix}-${SERVER_ID}.prom"
+    tmpfname="$fname.$$"
+
+    # Update every 60 mins
+    tmp_has_ssl="$metrics_root/tmp_has_ssl"
+    [[ ! -f "$tmp_has_ssl" || $(find "$tmp_has_ssl" -mmin +60) ]] || return
+    touch "$tmp_has_ssl"
+
+    extExists=$(p4 extension --list --type extensions | grep 'extension Auth::loginhook')
+    if [[ -z "$extExists" ]]; then
+        return
+    fi
+
+    # Find URL - trimming spaces
+    certURL=$(p4 extension --configure Auth::loginhook -o | grep -A1 Service-URL | tail -1 | tr -d '[:space:]')
+    if [[ -z "$certURL" ]]; then
+        return
+    fi
+
+    if ! [[ "$certURL" =~ "https" ]]; then
+        return
+    fi
+
+    certExpiry=$(curl -v --head "$certURL" 2>&1 | grep 'expire date' | sed -e 's/.* expire date: //')
+    if [[ -z "$certExpiry" ]]; then
+        return
+    fi
+    # Builtin date utility will parse for us - we hope!
+    certExpirySecs=$(date -d "$certExpiry" +%s)
+
+    url_label=",url=\"$certURL\""
+
+    rm -f "$tmpfname"
+    echo "# HELP p4_has_ssl_cert_expires P4D SSL certificate expiry epoch seconds" >> "$tmpfname"
+    echo "# TYPE p4_has_ssl_cert_expires gauge" >> "$tmpfname"
+    echo "p4_has_ssl_cert_expires{${serverid_label}${sdpinst_label}${url_label}} $certExpirySecs" >> "$tmpfname"
+
+    chmod 644 "$tmpfname"
+    mv "$tmpfname" "$fname"
+}
+
 monitor_change () {
     # Latest changelist counter as single counter value
     fname="$metrics_root/p4_change${sdpinst_suffix}-${SERVER_ID}.prom"
@@ -460,7 +504,6 @@ monitor_checkpoint () {
 
     # Look for latest checkpoint log which has Start/End (avoids run in progress and rotate_journal logs)
     ckp_log=""
-#    for f in $(ls -t /p4/$SDP_INSTANCE/logs/checkpoint.log*);
     for f in $(find -L /p4/$SDP_INSTANCE/logs -type f -name checkpoint.log* -exec ls -t {} +)
     do
         if [[ `grep -cE "Start p4_$SDP_INSTANCE Checkpoint|End p4_$SDP_INSTANCE Checkpoint" $f` -eq 2 ]]; then
@@ -820,5 +863,6 @@ monitor_license
 monitor_filesys
 monitor_versions
 monitor_ssl
+monitor_has_ssl
 monitor_checkpoint
 monitor_errors
