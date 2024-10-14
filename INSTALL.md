@@ -4,8 +4,8 @@ Note it is possible to perform a [Windows Installation](#windows-installation).
 
 On monitoring server, install:
   - grafana
-  - prometheus
-  - victoria metrics (optional but recommended due to performance and more efficient data storage)
+  - prometheus (configured to store data for 15 days)
+  - victoria metrics (recommended due to performance and more efficient data storage - can store data for 6 months or as long as required)
   - node_exporter
   - alertmanager (optional)
 
@@ -24,6 +24,7 @@ On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc,
 - [Metrics Available](#metrics-available)
 - [Automated Script Installation](#automated-script-installation)
 - [Package Install of Grafana](#package-install-of-grafana)
+  - [Create your first Data Source](#create-your-first-data-source)
   - [Setup of Grafana dashboards](#setup-of-grafana-dashboards)
     - [Script to create Grafana dashboard](#script-to-create-grafana-dashboard)
 - [Install Prometheus](#install-prometheus)
@@ -60,7 +61,7 @@ The metrics available within Grafana are documented in [P4Prometheus README](REA
 # Automated Script Installation
 
 There are scripts which automate the manual installation steps listed below. The scripts can be used with SDP
-structure or not as desired.
+structure or not - as desired.
 
 Checkout  following files:
 * [install_p4prom.sh](scripts/install_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance (`node_exporter`, `p4prometheus`, monitoring scripts)
@@ -85,6 +86,16 @@ Use the appropriate link below depending if you using `apt` or `yum`:
 * https://grafana.com/docs/grafana/latest/installation/debian/
 * https://grafana.com/docs/grafana/latest/installation/rpm/
 
+## Create your first Data Source
+
+Assuming you are using Victoria Metrics:
+
+. Data source > new
+.. Type is Prometheus (VM is API compatible)
+.. Name is `Victoria Metrics`
+.. Target/port: `http://localhost:8428`
+. Click `Save and test`
+
 ## Setup of Grafana dashboards
 
 Once Grafana is installed (and Prometheus/Victoria Metrics) the following dashboards are recommended:
@@ -95,14 +106,17 @@ Once Grafana is installed (and Prometheus/Victoria Metrics) the following dashbo
 * https://grafana.com/grafana/dashboards/1860 - Node Exporter Full
 * https://grafana.com/grafana/dashboards?search=node%20exporter
 
-They can be imported from Grafana dashboard management page. Alternatively see below for experimental 
-script to create dashboards which is easier to customize.
+They can be imported from Grafana dashboard management page. 
+
+. Dashboard > New > Import
+
+Alternatively see below for experimental script to create dashboards which is easier to customize.
 
 See an example of [interpreting Linux prometheus performance metrics](https://brian-candler.medium.com/interpreting-prometheus-metrics-for-linux-disk-i-o-utilization-4db53dfedcfc)
 
 For Windows see [Windows Installation](#windows-installation) since Windows Exporter is used instead of Node Exporter.
 
-If first time with Grafana, the default user/pwd: `admin`/`admin`
+If first time with Grafana, the default user/pwd: `admin`/`admin`. It will prompt you to create a proper password!
 
 ### Script to create Grafana dashboard
 
@@ -133,6 +147,8 @@ You can re-upload the dashboard with the same title (it will create a new versio
 # Install Prometheus
 
 This must be done on the monitoring server only. If not using [automated scripts](#automated-script-installation) then follow these instructions.
+
+IMPORTANT: Once you have installed prometheus you will need to adjust its configuration file!
 
 Run the following as root:
 
@@ -186,7 +202,7 @@ EOF
 
 ## Prometheus config
 
-It is important you edit and adjust the `targets` value appropriately below (see `#####` section) to scrape from your commit/edge/replica servers (and localhost).
+**It is important you edit and adjust the `targets` value appropriately below** (see `#####` section) to scrape from your commit/edge/replica servers (and localhost).
 
 See later section on enabling Alertmanager if required.
 
@@ -197,7 +213,7 @@ global:
   evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
   # scrape_timeout is set to the global default (10s).
 
-# Alertmanager configuration - optional
+# Alertmanager configuration - optional - uncomment if using
 # alerting:
 #   alertmanagers:
 #   - static_configs:
@@ -205,6 +221,7 @@ global:
 #         - localhost:9093
 
 # Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+# Uncomment if using alertmanager
 # rule_files:
   # - "perforce_rules.yml"
 
@@ -219,6 +236,9 @@ scrape_configs:
     static_configs:
     ############################################################
     # CONFIGURE THESE VALUES AS APPROPRIATE FOR YOUR SERVERS!!!!
+    # Note that the names here will appear as labels in your metrics. 
+    # Recommend not using IP address as not user friendly!
+    # The port is going to be 9100 by default for node_exporter unless using Windows Exporter targets
     ############################################################
     - targets: 
         - p4hms:9100
@@ -302,17 +322,19 @@ remote_write:
   - url: http://localhost:8428/api/v1/write
 ```
 
-Note in the above it is possible to customize the port.
+Note in the above it is possible to customize the port - but usually not required.
 
 Either start or restart Prometheus:
 
     sudo systemctl restart prometheus
+    make restart # Convenience command
 
 #### Substituting Victoria Metrics for Prometheus in Grafana
 
 If using Victoria Metrics, then you should:
 
-* Create a suitable data source in Grafana (e.g. `http://localhost:8428`)
+* Create a suitable data source in Grafana (e.g. use the Prometheus type since VM is API compatible, but specify target as `http://localhost:8428`)
+* Click the `Test and Save` button
 * Change existing dashboards to use it instead of Prometheus (it is API compatible)
 
 ### Importing Prometheus data into Victoria Metrics
@@ -686,10 +708,11 @@ rule_files:
 Note that Makefile format requires a `<tab>` char (not spaces) at the start of 'action' lines.
 
 ```
+# Makefile for prometheus - convenience for validating and restarting the service
 validate:
         promtool check config prometheus.yml
 
-restart:
+restart: validate
         systemctl restart prometheus
 ```
 
@@ -908,11 +931,13 @@ receivers:
 Note that Makefile format requires a `<tab>` char (not spaces) at the start of 'action' lines.
 
 ```
+# Makefile for alertmanager
 validate:
         amtool check-config alertmanager.yml
 
-restart:
-        systemctl restart alertmanager
+restart: validate
+        sudo systemctl restart alertmanager
+        sudo systemctl restart prometheus
 ```
 
 Then you can validate your config:
@@ -987,9 +1012,9 @@ Access page http://localhost:9090 in your browser and search for some metrics.
 
 ## Grafana
 
-Check that a suitable data source is setup (i.e. Prometheus)
+Check that a suitable data source is setup (i.e. Victoria Metrics or Prometheus - see below)
 
-Use the `Explore` option to look for some basic metrics, e.g. just start typing `p4_` and it should autocomplete if it has found `p4_` metrics being collected.
+Use the `Explore` option to look for some basic metrics, e.g. just start typing `p4_` and it should autocomplete if it has found `p4_` metrics being collected. Alternatively try `node_time_seconds`
 
 # Advanced config options
 
