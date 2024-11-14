@@ -452,6 +452,7 @@ sdp_instance:   1
 
 # ----------------------
 # log_path: Path to p4d server log - REQUIRED!
+#   Recommended to set an absolute path, e.g. /p4/1/logs/log
 log_path:       /p4/1/logs/log
 
 # ----------------------
@@ -795,7 +796,7 @@ groups:
 
   # Alert if checkpoint takes more than N minutes - adjust as appropriate. Note use of mins in error message.
   - alert: Checkpoint slow
-    expr: (p4_sdp_checkpoint_duration{serverid=~".*master.*"} * 60) > 50
+    expr: (p4_sdp_checkpoint_duration{serverid=~".*master.*"} / 60) > 50
     for: 5m
     labels:
       severity: "warning"
