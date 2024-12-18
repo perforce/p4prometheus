@@ -32,8 +32,6 @@ import re
 import subprocess
 import datetime
 import json
-from collections import defaultdict
-from operator import itemgetter
 
 python3 = (sys.version_info[0] >= 3)
 
@@ -62,7 +60,7 @@ class Blocker:
         self.cmd = cmd
         self.elapsed = elapsed
         self.blockedPids = []
-        self.indirectlyBlocked = 0 # Those pids indirectly blocked
+        self.indirectlyBlocked = 0  # Those pids indirectly blocked
 
 
 class MonitorMetrics:
@@ -80,6 +78,7 @@ class MonitorMetrics:
         self.blockedCommands = 0
         self.msgs = []
         self.blockingCommands = {}
+
 
 class P4Monitor(object):
     """See module doc string for details"""
@@ -162,7 +161,7 @@ class P4Monitor(object):
                 else:
                     result = subprocess.check_call(cmd, stderr=subprocess.STDOUT, shell=True)
                 self.logger.debug('Result: %d' % result)
-        except subprocess.TimeoutExpired as e:
+        except subprocess.TimeoutExpired:
             self.logger.debug("Timeout Expired")
             return ""
         except subprocess.CalledProcessError as e:
@@ -282,7 +281,7 @@ class P4Monitor(object):
                     metrics.dbWriteLocks += 1
             if j["blocker"]:
                 metrics.blockedCommands += 1
-                buser, bcmd, bargs = "unknown", "unknown", "unknown"
+                buser, bcmd, bargs, belapsed = "unknown", "unknown", "unknown", "unknown"
                 bpid = str(j["blocker"])
                 if bpid in pids:
                     buser, bcmd, bargs, belapsed = pids[bpid]
@@ -369,7 +368,7 @@ class P4Monitor(object):
 
     def findBlockers(self, metrics):
         lblockers = [metrics.blockingCommands[x] for x in metrics.blockingCommands]
-        lblockers.sort(key=lambda x:x.elapsed) # Newest first
+        lblockers.sort(key=lambda x: x.elapsed)  # Newest first
         blines = []
         if lblockers:
             blines.append("Blocking commands by oldest, with count")
@@ -381,7 +380,7 @@ class P4Monitor(object):
                 processedPids[p] = 1
                 if p in metrics.blockingCommands:
                     b.indirectlyBlocked += len(metrics.blockingCommands[p].blockedPids)
-        lblockers.sort(key=lambda x:x.elapsed, reverse=True) # Oldest first
+        lblockers.sort(key=lambda x: x.elapsed, reverse=True)  # Oldest first
         for b in lblockers:
             blines.append("blocking cmd: elapsed %s, pid %s, user %s, cmd %s, blocking %d, indirectly %d" % (
                 b.elapsed, b.pid, b.user, b.cmd, len(b.blockedPids), b.indirectlyBlocked))
@@ -404,7 +403,7 @@ class P4Monitor(object):
         monlines = []
         timestamp = ""
         with open(self.options.test_file, "r") as f:
-            stage = 0 # 1 = processing locks, 2 = processing monitor data
+            stage = 0   # 1 = processing locks, 2 = processing monitor data
             for line in f:
                 line = line.rstrip()
                 if stage == 0 and line.startswith("{"):

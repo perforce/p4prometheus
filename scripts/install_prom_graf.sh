@@ -205,10 +205,11 @@ receivers:
 EOF
 
     echo -e "
+# Makefile for alertmanager - default rule is validate
 validate:
 \\tamtool check-config alertmanager.yml
 
-restart:
+restart: validate
 \\tsystemctl restart alertmanager
 " >  /etc/alertmanager/Makefile
 
@@ -396,12 +397,16 @@ scrape_configs:
     static_configs:
     # ==========================================================
     # CONFIGURE THESE VALUES AS APPROPRIATE FOR YOUR SERVERS!!!!
+    # Note that the names here will appear as labels in your metrics.
+    # So recommend not using IP address as not very user friendly!
+    # The port is going to be 9100 by default for node_exporter unless using Windows Exporter targets
     # ==========================================================
     - targets:
         - localhost:9100
+        - my_p4_server:9100
 
   # ==========================================================
-  # This section can be deleted if pushgateway not in use
+  # This section should be deleted if pushgateway not in use
   # ==========================================================
   - job_name: 'pushgateway'
     honor_labels: true
@@ -420,10 +425,12 @@ remote_write:
 EOF
 
     echo -e "
+# Makefile for prometheus - default rule is validate
 validate:
 \\tpromtool check config prometheus.yml
 
-restart:
+# Validate before restarting
+restart: validate
 \\tsystemctl restart prometheus
 " >  /etc/prometheus/Makefile
 
@@ -494,9 +501,16 @@ echo "
 
 Should have installed node_exporter, prometheus and friends.
 
-Please review config files, and adjust as necessary (reloading/restarting services as appropriate):
+Please review the following config files, and adjust as necessary (reloading/restarting services as appropriate):
 
-    /etc/prometheus/prometheus.yml
+AT THE VERY LEAST YOU WILL NEED TO CHANGE THE TARGETS PROMETHEUS IS SCRAPING!!!
+
+    cd /etc/prometheus
+    vi prometheus.yml
+    make
+    make restart
+
+    # Ditto for alertmanager config file if you are using it
     /etc/alertmanager/alertmanager.yml
 
 "
