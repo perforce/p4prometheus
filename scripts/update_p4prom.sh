@@ -16,9 +16,10 @@ fi
 # This might also be /hxlogs/metrics or passed as a parameter (with -m flag)
 metrics_root=/hxlogs/metrics
 metrics_link=/p4/metrics
+local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.8.6"
+VER_P4PROMETHEUS="0.8.7"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -177,10 +178,10 @@ update_node_exporter () {
     download_and_untar "$fname" "https://github.com/prometheus/node_exporter/releases/download/v$PVER/$fname"
 
     msg "Installing node_exporter"
-    mv node_exporter-$PVER.linux-${arch}/node_exporter /usr/local/bin/
+    mv node_exporter-$PVER.linux-${arch}/node_exporter ${local_bin_dir}/
 
     if [[ $SELinuxEnabled -eq 1 ]]; then
-        bin_file=/usr/local/bin/node_exporter
+        bin_file=${local_bin_dir}/node_exporter
         semanage fcontext -a -t bin_t $bin_file
         restorecon -vF $bin_file
     fi
@@ -207,7 +208,7 @@ After=network-online.target
 User=$userid
 Group=$userid
 Type=simple
-ExecStart=/usr/local/bin/node_exporter --collector.systemd \
+ExecStart=${local_bin_dir}/node_exporter --collector.systemd \
   --collector.systemd.unit-include=(p4.*|node_exporter).service \
   --collector.textfile.directory=$metrics_root
 
@@ -242,10 +243,10 @@ update_p4prometheus () {
     
     chmod +x p4prometheus.linux-${arch}
 
-    mv p4prometheus.linux-${arch} /usr/local/bin/p4prometheus
+    mv p4prometheus.linux-${arch} ${local_bin_dir}/p4prometheus
 
     if [[ $SELinuxEnabled -eq 1 ]]; then
-        bin_file=/usr/local/bin/p4prometheus
+        bin_file=${local_bin_dir}/p4prometheus
         semanage fcontext -a -t bin_t $bin_file
         restorecon -vF $bin_file
     fi
@@ -261,7 +262,7 @@ After=network-online.target
 User=$OSUSER
 Group=$OSGROUP
 Type=simple
-ExecStart=/usr/local/bin/p4prometheus --config=$p4prom_config_file
+ExecStart=${local_bin_dir}/p4prometheus --config=$p4prom_config_file
 
 [Install]
 WantedBy=multi-user.target
