@@ -1,5 +1,5 @@
 # FROM ubi8-init AS p4promtestbase
-FROM rockylinux/rockylinux:8-ubi-init AS p4promtestbase
+FROM rockylinux/rockylinux:9-ubi-init AS p4promtestbase
 MAINTAINER Robert Cowham "rcowham@perforce.com"
 
 RUN yum update -y; \
@@ -18,10 +18,14 @@ RUN yum update -y; \
     yum install -y cron; \
     yum install -y gawk; \
     yum install -y cronie; \
+    yum install -y hostname; \
+    yum install -y rsync; \
+    yum install -y policycoreutils-python-utils; \
+    yum install -y passwd; \
     yum autoremove; \
     yum clean all
 
-RUN pip3 install pytest-testinfra
+RUN pip3 install pytest-testinfra p4python
 ADD install_p4prom.sh /root/
 
 # -----------------------------
@@ -45,10 +49,10 @@ ADD tests/test_sdp.py /root/
 
 CMD ["/sbin/init"]
 
-# -----------------------------
-FROM p4promtestbase AS p4promtest-no-p4
+# # -----------------------------
+# FROM p4promtestbase AS p4promtest-no-p4
 
-ADD install_node.sh /root/
-RUN /root/install_node.sh
+# ADD install_node.sh /root/
+# RUN /root/install_node.sh
 
-CMD ["/sbin/init"]
+# CMD ["/sbin/init"]
