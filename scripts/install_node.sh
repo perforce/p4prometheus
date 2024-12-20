@@ -18,6 +18,8 @@ metrics_root=/var/metrics
 
 metrics_bin_dir=/etc/metrics
 
+local_bin_dir=/usr/local/bin
+
 # Version to download
 VER_NODE_EXPORTER="1.3.1"
 
@@ -123,10 +125,10 @@ install_node_exporter () {
 
     tar xvf node_exporter-$PVER.linux-${arch}.tar.gz 
     msg "Installing node_exporter"
-    mv node_exporter-$PVER.linux-${arch}/node_exporter /usr/local/bin/
+    mv node_exporter-$PVER.linux-${arch}/node_exporter ${local_bin_dir}/
 
     if [[ $SELinuxEnabled -eq 1 ]]; then
-        bin_file=/usr/local/bin/node_exporter
+        bin_file=${local_bin_dir}/node_exporter
         semanage fcontext -a -t bin_t $bin_file
         restorecon -vF $bin_file
     fi
@@ -147,7 +149,7 @@ After=network-online.target
 User=$userid
 Group=$userid
 Type=simple
-ExecStart=/usr/local/bin/node_exporter --collector.systemd \
+ExecStart=${local_bin_dir}/node_exporter --collector.systemd \
   --collector.systemd.unit-include=node_exporter.service \
   --collector.textfile.directory=$metrics_root
 
