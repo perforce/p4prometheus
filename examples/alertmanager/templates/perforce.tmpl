@@ -1,0 +1,55 @@
+{{ define "__subject" }} [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .GroupLabels.SortedPairs.Values | join " " }} {{ if gt (len .CommonLabels) (len .GroupLabels) }}({{ with .CommonLabels.Remove .GroupLabels.Names }}{{ .Values | join " " }}{{ end }}) {{ end }} {{ end }}
+
+{{ define "__alertmanagerURL" }}https://monitor.p4demo.com/d/a12345-24232-9b33-79d1a87f9123/active-alerts?orgId=1{{ end }}
+
+{{ define "__text_alert_list" }}{{ range . }}Labels:
+{{ range .Labels.SortedPairs }} - {{ .Name }} = {{ .Value }}
+{{ end }}Annotations:
+{{ range .Annotations.SortedPairs }} - {{ .Name }} = {{ .Value }}
+{{ end }}Instance Info: https://p4demo.com/link/{{ index .Labels "instance" }}
+{{ end }}{{ end }}
+
+
+{{ define "__text_alert_list_markdown" }}{{ range . }}
+Labels:
+{{ range .Labels.SortedPairs }}  - {{ .Name }} = {{ .Value }}
+{{ end }}
+Annotations:
+{{ range .Annotations.SortedPairs }}  - {{ .Name }} = {{ .Value }}
+{{ end }}
+Instance Info: https://p4demo.com/link/{{ index .Labels "instance" }}
+{{ end }}
+{{ end }}
+
+{{/* The pagerduty templates if we want to override them */}}
+{{ define "pagerduty.default.description" }}{{ template "__subject" . }}{{ end }}
+{{ define "pagerduty.default.client" }}{{ template "__alertmanager" . }}{{ end }}
+{{ define "pagerduty.default.clientURL" }}{{ template "__alertmanagerURL" . }}{{ end }}
+{{ define "pagerduty.default.instances" }}{{ template "__text_alert_list" . }}{{ end }}
+
+{{/* The slack templates if we want to override them */}}
+{{ define "slack.default.title" }}{{ template "__subject" . }}{{ end }}
+{{ define "slack.default.username" }}{{ template "__alertmanager" . }}{{ end }}
+{{ define "slack.default.fallback" }}{{ template "slack.default.title" . }} | {{ template "slack.default.titlelink" . }}{{ end }}
+{{ define "slack.default.callbackid" }}{{ end }}
+{{ define "slack.default.pretext" }}{{ end }}
+{{ define "slack.default.titlelink" }}{{ template "__alertmanagerURL" . }}{{ end }}
+{{ define "slack.default.iconemoji" }}{{ end }}
+{{ define "slack.default.iconurl" }}{{ end }}
+{{ define "slack.default.text" }}
+{{ range .Alerts -}}
+*Details:*
+{{ .Annotations.summary }}
+{{ .Annotations.description }}
+{{ range .Labels.SortedPairs }} • *{{ .Name }}:* `{{ .Value }}` {{ end }}
+{{/* We join the following lines together containing links to particular dashboards depending on labels in the alert promQL statement */ -}}
+Links: <https://p4demo.com/link/{{ index .Labels "instance" }}|INFO.md>
+{{- " | " }}<https://p4demo.com/view/docs/RunbookAlertHandling.html{{ if .Annotations.runbook_id -}} # {{- index .Annotations "runbook_id" -}} {{ end }}|Runbook>
+{{- "" }} {{ if .Labels.instance }} | <https://monitor.p4demo.com/d/ApnWnADS/node-exporter-server-metrics?orgId=1&var-node={{ index .Labels "instance" }}|Grafana Nodeexporter> {{ end }}
+{{- "" }} {{ if .Labels.sdpinst }} | <https://monitor.p4demo.com/d/ngDASDfoo/p4prometheus-metrics?orgId=1&refresh=10s&var-instance=
+    {{- index .Labels "instance" }}&var-serverid={{ index .Labels "serverid" }}&var-sdpinst={{ index .Labels "sdpinst" }}|Grafana P4prometheus> {{ end}}
+{{ end }}
+{{ end }}
+
+{{ define "slack.default.footer" }}{{ end }}
+

@@ -1,0 +1,39 @@
+{
+  "receiver": "email",
+  "status": "firing",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "InstanceDown",
+        "instance": "prometheus-client-container:8000",
+        "job": "prometheus",
+        "monitor": "phi-cygni-monitor",
+        "severity": "critical"
+      },
+      "annotations": {
+        "description": "[prometheus-client-container:8000] of job [prometheus] is down.",
+        "summary": "Instance [prometheus-client-container:8000] down"
+      },
+      "startsAt": "0001-01-01T00:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://003082ed7d57:9090/graph?g0.expr=up+%3D%3D+0&g0.tab=1",
+      "fingerprint": "0b128f175486c802"
+    }
+  ],
+  "groupLabels": {
+    "alertname": "InstanceDown"
+  },
+  "commonLabels": {
+    "alertname": "InstanceDown",
+    "instance": "prometheus-client-container:8000",
+    "job": "prometheus",
+    "monitor": "phi-cygni-monitor",
+    "severity": "critical"
+  },
+  "commonAnnotations": {
+    "description": "[prometheus-client-container:8000] of job [prometheus] is down.",
+    "summary": "Instance [prometheus-client-container:8000] down"
+  },
+  "externalURL": "http://58b473c72ff3:9093"
+}

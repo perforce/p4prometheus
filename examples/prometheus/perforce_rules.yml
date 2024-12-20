@@ -1,0 +1,275 @@
+# This file needs to be referenced from prometheus.yml
+# Note the user of some user helpful labels, and also runbook_id attribute which
+# is used in alertmanager config to create nice links in things like Slack integration messages.
+groups:
+- name: alert.rules
+  rules:
+
+  - alert: P4D service not running
+    expr: node_systemd_unit_state{state="active",name=~"p4d_.*.service"} != 1
+    for: 2m
+    labels:
+      severity: "warning"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} p4d service not running"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for 2 mins."
+      runbook_id: _p4d_service_not_running
+
+  - alert: P4prometheus service not running
+    expr: node_systemd_unit_state{state="active",name="p4prometheus.service"} != 1
+    for: 10m
+    labels:
+      severity: "warning"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} p4prometheus service not running"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for 10 mins."
+      runbook_id: _p4prometheus_service_not_running
+
+  - alert: P4D urgent license expiry
+    # Note serverids may be uppercase - we don't want to match edge servers or HA servers - this is urgent alert
+    expr: (p4_license_time_remaining{serverid!~".*ffr.*",serverid!~".*edge.*|.*EDGE.*|.*[-_]ha.*"} / (24 * 60 * 60)) < 5
+    for: 6h
+    labels:
+      severity: "warning"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} license due to expire urgently (in {{ $value | printf "%.02f" }} days)'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been low for 6 hours."
+      runbook_id: _p4d_urgent_license_expiry
+
+  - alert: P4D license expiry
+    # Note serverids may be uppercase. This is 2 week warning
+    expr: (p4_license_time_remaining{serverid!~".*ffr.*",serverid!~".*edge.*|.*EDGE.*|.*[-_]ha.*"} / (24 * 60 * 60)) < 14
+    for: 6h
+    labels:
+      severity: "low"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} license due to expire (in {{ $value  | printf "%.02f" }} days)'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been low for 6 hours."
+      runbook_id: _p4d_license_expiry
+
+  - alert: P4D license data missing
+    expr: absent(p4_license_time_remaining{serverid!~".*ffr.*|.*edge.*"}) == 1
+    for: 1h
+    labels:
+      severity: "low"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} license metric p4_license_time_remaining missing"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been low for 1 hour."
+      runbook_id: _p4d_license_data_missing
+
+  - alert: Checkpoint Not Taken
+    # If it was more than 25 hours since last checkpoint taken
+    expr: ((time() - p4_sdp_checkpoint_log_time{serverid=~".*master.*|.*edge.*|.*EDGE.*",instance!~".*p4p.*|.*proxy.*|.*[-_]ha.*"}) / (60 * 60)) > 25
+    for: 1h
+    labels:
+      severity: "warning"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} checkpoint missing warning ({{ $value | printf "%.02f" }} hours)'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for 1 hour."
+      runbook_id: _checkpoint_not_taken
+
+  - alert: P4D SSL certificate expiry
+    # Certificate expiry within 14 days
+    expr: ((p4_ssl_cert_expires - time()) / (3600 * 24)) < 14
+    for: 2h
+    labels:
+      severity: "warning"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} P4D SSL Certificate expiry warning ({{ $value | printf "%.02f" }} days)'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for 2 hours."
+      runbook_id: _p4d_ssl_certificate_expiry
+
+  - alert: HAS SSL certificate expiry
+    expr: ((p4_has_ssl_cert_expires - time()) / (3600 * 24)) < 14
+    for: 2h
+    labels:
+      severity: "warning"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} HAS (Helix Auth) SSL Certificate expiry warning ({{ $value | printf "%.02f" }} days)'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for 2 hours."
+      runbook_id: _p4d_has_ssl_certificate_expiry
+
+  - alert: Replication Errors
+    # This means we have a p4 pull value of -1 or similar
+    expr: p4_pull_replication_error > 0
+    for: 30m
+    labels:
+      severity: "high"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} replication error occurring'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 30m."
+      runbook_id: _replication_error
+
+  - alert: Replication Slow
+    # Pick an appropriate value for your site, e.g. the below is > 100MB
+    expr: p4_pull_replica_lag / (1024 * 1024) > 100
+    for: 2h
+    labels:
+      severity: "warning"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} replication slow (metadata pull queue {{ $value | humanize }} behind }})'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 2h."
+      runbook_id: _replication_slow
+
+  - alert: Diskspace Percentage Used Above Percentage Threshold
+    # Within 10% of filling up - note we also do a query to return a useful indicator of how much space is free.
+    # Only drawback of doing this is that we can't replay such a query using the Victoria Metrics feature
+    expr: >
+        (100.0 - 100 * (
+             node_filesystem_avail_bytes{mountpoint=~"/hx.*"}
+             / on (instance, mountpoint) node_filesystem_size_bytes{mountpoint=~"/hx.*"}
+        )) > 90
+    for: 2h
+    labels:
+      severity: "warning"
+    annotations:
+      summary: >
+        Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space percentage is {{ $value | printf "%.02f" }}% full
+        ({{ printf "node_filesystem_avail_bytes{mountpoint='%s',instance='%s'}" $labels.mountpoint $labels.instance | query | first | value | humanize1024 }} free of
+        {{ printf "node_filesystem_size_bytes{mountpoint='%s',instance='%s'}" $labels.mountpoint $labels.instance | query | first | value | humanize1024 }} total)
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 2 hours."
+      runbook_id: _diskspace_percentage_used_above_percentage_threshold
+
+  - alert: Diskspace Below Filesys Config /hxlogs - P4D STOPPED!
+    expr: >
+        node_filesystem_free_bytes{mountpoint="/hxlogs"} -
+            on (instance) p4_filesys_min{filesys="P4LOG"} < 0 or
+        node_filesystem_free_bytes{mountpoint="/hxlogs"} -
+            on (instance) p4_filesys_min{filesys="P4JOURNAL"} < 0
+    for: 3m
+    labels:
+      severity: "high"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space is {{$value | humanize}} below filesys.*.min NOW!!!"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 3 mins."
+      runbook_id: _diskspace_below_filesys_config_hxlogs_p4d_stopped
+
+  - alert: Diskspace Below Filesys Config /hxmetadata - P4D STOPPED!
+    expr: >
+        node_filesystem_free_bytes{mountpoint="/hxmetadata"} -
+            on (instance) p4_filesys_min{filesys="P4ROOT"} < 0
+    for: 3m
+    labels:
+      severity: "high"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space is {{$value | humanize}} below filesys.*.min NOW!!!"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 3 mins."
+      runbook_id: _diskspace_below_filesys_config_hxmetadata_p4d_stopped
+
+  - alert: Diskspace Below Filesys Config /hxdepots - P4D STOPPED!
+    expr: >
+        node_filesystem_free_bytes{mountpoint="/hxdepots",instance!~".*proxy.*"} -
+            on (instance) p4_filesys_min{filesys="depot"} < 0
+    for: 3m
+    labels:
+      severity: "high"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space is {{$value | humanize}} below filesys.*.min NOW!!!"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 3 mins."
+      runbook_id: _diskspace_below_filesys_config_hxdepots_p4d_stopped
+
+  - alert: Diskspace Low - Proxy STOPPED!
+    expr: >
+        node_filesystem_free_bytes{mountpoint="/hxdepots",instance=~".*proxy.*"} -
+            on (instance) p4_filesys_min{filesys="depot",instance=~".*proxy.*"} < 0
+    for: 3m
+    labels:
+      severity: "high"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space is {{$value | humanize}} for proxy NOW!!!"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 3 mins."
+      runbook_id: _diskspace_low_proxy_stopped
+
+  - alert: HX Diskspace Predicted Low /hxdepots
+    expr: >
+        predict_linear(node_filesystem_free_bytes{mountpoint="/hxdepots"}[1h], 1 * 24 * 3600) -
+           on (instance) p4_filesys_min{filesys="depot"} < 0
+    for: 4h
+    labels:
+      severity: "warning"
+    annotations:
+      summary: '{{ $labels.instance }} for /hxdepots disk space predicting to go below filesys.*.min (by {{$value | humanize }}) in 24 hours'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 4 hours."
+      runbook_id: _hx_diskspace_predicted_low
+
+  - alert: HX Diskspace Predicted Low /hxlogs
+    expr: >
+        predict_linear(node_filesystem_free_bytes{mountpoint="/hxlogs"}[1h], 1 * 24 * 3600) -
+           on (instance) p4_filesys_min{filesys="P4LOG"} < 0 or
+        predict_linear(node_filesystem_free_bytes{mountpoint="/hxlogs"}[1h], 1 * 24 * 3600) -
+           on (instance) p4_filesys_min{filesys="P4JOURNAL"} < 0
+    for: 4h
+    labels:
+      severity: "warning"
+    annotations:
+      summary: '{{ $labels.instance }} for /hxlogs disk space predicting to go below filesys.*.min (by {{$value | humanize }}) in 24 hours'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 4 hours."
+      runbook_id: _hx_diskspace_predicted_low
+
+  - alert: HX Diskspace Predicted Low /hxmetadata
+    expr: >
+        predict_linear(node_filesystem_free_bytes{mountpoint="/hxmetadata"}[1h], 1 * 24 * 3600) -
+           on (instance) p4_filesys_min{filesys="P4ROOT"} < 0
+    for: 4h
+    labels:
+      severity: "warning"
+    annotations:
+      summary: '{{ $labels.instance }} for /hxmetadata disk space predicting to go below filesys.*.min (by {{$value | humanize }}) in 24 hours'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 4 hours."
+      runbook_id: _hx_diskspace_predicted_low
+
+  - alert: Root Diskspace Predicted Low
+    expr: >
+        predict_linear(node_filesystem_free_bytes{mountpoint="/"}[1h], 1 * 24 * 3600)  < 0
+    for: 2h
+    labels:
+      severity: "warning"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} for root disk space predicting to go below 0 (by {{$value | humanize }}) in 24 hours'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 2 hours."
+      runbook_id: _root_diskspace_predicted_low
+
+  - alert: CPU Usage High
+    expr: >
+        (100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"} [5m]) * 100))) > 80.0
+    for: 90m
+    labels:
+      severity: "warning"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} CPU usage above 80% (actual {{$value | printf "%.02f"}})'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 90 mins."
+      runbook_id: _cpu_usage_high
+
+  - alert: App Memory Usage High
+    expr: >
+        (100 * (
+            node_memory_MemTotal_bytes -
+            node_memory_MemFree_bytes -
+            node_memory_Buffers_bytes -
+            node_memory_Cached_bytes -
+            node_memory_SwapCached_bytes -
+            node_memory_Slab_bytes -
+            node_memory_PageTables_bytes -
+            node_memory_VmallocUsed_bytes)
+            / node_memory_MemTotal_bytes) > 70.0
+    for: 10m
+    labels:
+      severity: "warning"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} for App Memory usage above 70% (actual {{$value | printf "%.02f"}})'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 10 mins."
+      runbook_id: _app_memory_usage_high
+
+  - alert: Hansoft Diskspace Low
+    expr: >
+        predict_linear(node_filesystem_free_bytes{instance=~".*hansoft.*",mountpoint="/"}[1h], 7 * 24 * 3600) < 0 or
+        predict_linear(node_filesystem_free_bytes{instance=~".*hansoft.*",mountpoint="/opt/HansoftServer"}[1h], 7 * 24 * 3600) < 0 or
+        node_filesystem_free_bytes{instance=~".*hansoft.*",mountpoint="/"} / (1024 * 1024 * 1024) < 5 or
+        node_filesystem_free_bytes{instance=~".*hansoft.*",mountpoint="/opt/HansoftServer"} / (1024 * 1024 * 1024) < 15
+    for: 4h
+    labels:
+      severity: "warning"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} Hansoft disk space predicting to go below threshold in 7 days or is below threshold (actual {{$value | printf "%.02f"}})'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 4 hours."
+      runbook_id: _hansoft_diskspace_low

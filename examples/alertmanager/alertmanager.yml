@@ -1,0 +1,39 @@
+global:
+  #smtp_from: alertmanager@helix.p4demo.com
+  #smtp_smarthost: localhost:25
+  #smtp_require_tls: false
+  # Hello is the local machine name
+  #smtp_hello: localhost
+  # Get Slack token from your Slack Admin
+  slack_api_url: 'https://hooks.slack.com/services/T02CD88DSD/B07L87DFASDF/AqSomeKey'
+
+route:
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 60m
+  receiver: HelixDemo-Slack
+  routes:
+  - match:
+      severity: critical
+    repeat_interval: 30m
+  - match:
+      severity: high
+    repeat_interval: 60m
+  - match:
+      severity: warning
+    repeat_interval: 1d
+  - match:
+      severity: low
+    repeat_interval: 1d
+
+receivers:
+- name: HelixDemo-Slack
+  slack_configs:
+  - channel: '#helix-alerts'
+    # Set to false for now - to avoid unnecessary posts
+    send_resolved: false
+
+# The templates used for Slack message formatting
+templates:
+  - templates/*.tmpl

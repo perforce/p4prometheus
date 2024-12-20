@@ -38,9 +38,9 @@ On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc,
     - [Checking for blocked commands](#checking-for-blocked-commands)
   - [Start and enable service](#start-and-enable-service)
 - [Alerting](#alerting)
-    - [Alertmanager config](#alertmanager-config)
+  - [Alertmanager config](#alertmanager-config)
   - [Alerting rules](#alerting-rules)
-  - [Alertmanager config](#alertmanager-config-1)
+  - [Prometheus config to reference alertmanager rules](#prometheus-config-to-reference-alertmanager-rules)
 - [Troubleshooting](#troubleshooting)
   - [p4prometheus](#p4prometheus)
   - [monitor metrics](#monitor-metrics)
@@ -88,17 +88,17 @@ Use the appropriate link below depending if you using `apt` or `yum`:
 
 ## Create your first Data Source
 
-Assuming you are using Victoria Metrics:
+Assuming you are using Victoria Metrics (VM):
 
-. Data source > new
-.. Type is Prometheus (VM is API compatible)
-.. Name is `Victoria Metrics`
-.. Target/port: `http://localhost:8428`
-. Click `Save and test`
+* Data source > new
+  * Type is Prometheus (VM is API compatible)
+  * Name is `Victoria Metrics`
+  * Target/port: `http://localhost:8428`
+* Click `Save and test`
 
 ## Setup of Grafana dashboards
 
-Once Grafana is installed (and Prometheus/Victoria Metrics) the following dashboards are recommended:
+Once Grafana is installed (and Prometheus/Victoria Metrics) the following dashboards are recommended to be imported as starting points for further customisation:
 
 * https://grafana.com/grafana/dashboards/12278 - P4 Stats
 * https://grafana.com/grafana/dashboards/15509 - P4 Stats (non-SDP)
@@ -108,7 +108,7 @@ Once Grafana is installed (and Prometheus/Victoria Metrics) the following dashbo
 
 They can be imported from Grafana dashboard management page. 
 
-. Dashboard > New > Import
+* Dashboard > New > Import
 
 Alternatively see below for experimental script to create dashboards which is easier to customize.
 
@@ -680,252 +680,11 @@ Check logs for service in case of errors:
 
     journalctl -u alertmanager --no-pager | tail
 
-### Alertmanager config
-
-
-## Alerting rules
-
-This is an example, assuming simple email and local postfix or equivalent have been setup.
-
-It would be setup as `/etc/prometheus/perforce_rules.yml`
-
-Then uncomment the relevant section in `prometheus.yml`:
-
-```
-# Alertmanager configuration - optional
-alerting:
-  alertmanagers:
-  - static_configs:
-    - targets:
-        - localhost:9093
-
-# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
-rule_files:
-  - "perforce_rules.yml"
-```
-
-*Strongly recommend*: set up a simple `Makefile` in `/etc/prometheus` which validates config and rules file:
-
-Note that Makefile format requires a `<tab>` char (not spaces) at the start of 'action' lines.
-
-```
-# Makefile for prometheus - convenience for validating and restarting the service
-validate:
-        promtool check config prometheus.yml
-
-restart: validate
-        systemctl restart prometheus
-```
-
-Then you can validate your config:
-
-```
-# make validate
-promtool check config prometheus.yml
-Checking prometheus.yml
-  SUCCESS: 1 rule files found
-
-Checking perforce_rules.yml
-  SUCCESS: 8 rules found
-```
-
-Please customize the below for thresholds and similar. May need to remove SDP specific alerts (e.g. for checkpoints).
-
-```yaml
-groups:
-- name: alert.rules
-  rules:
-
-  - alert: P4D service not running
-    expr: node_systemd_unit_state{state="active",name="p4d_.*.service"} != 1
-    for: 5m
-    labels:
-      severity: "critical"
-    annotations:
-      summary: "Endpoint {{ $labels.instance }} p4d service not running"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for 5 minutes."
-
-  # Higher level warning if < 5 days
-  - alert: P4D urgent license expiry
-    expr: (p4_license_time_remaining{serverid!~".*edge.*"} / (24 * 60 * 60)) < 5
-    for: 6h
-    labels:
-      severity: "warning"
-    annotations:
-      summary: 'Endpoint {{ $labels.instance }} license due to expire urgently (in {{ $value | printf "%.02f" }} days)'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been low for 6 hours."
-
-  # Low warning for less than 14 days
-  - alert: P4D license expiry
-    expr: (p4_license_time_remaining{serverid!~".*edge.*"} / (24 * 60 * 60)) < 14
-    for: 6h
-    labels:
-      severity: "low"
-    annotations:
-      summary: 'Endpoint {{ $labels.instance }} license due to expire (in {{ $value  | printf "%.02f" }} days)'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been low for 6 hours."
-
-  - alert: P4D license data missing
-    expr: absent(p4_license_time_remaining{serverid!~".*edge.*"}) == 1
-    for: 1h
-    labels:
-      severity: "low"
-    annotations:
-      summary: "Endpoint {{ $labels.instance }} license metric p4_license_time_remaining missing"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been low for 1 hour."
-
-  - alert: NoLogs
-    expr: rate(p4_prom_log_lines_read{sdpinst="1",serverid="master"}[1m]) < 100
-    for: 10m
-    labels:
-      severity: "high"
-    annotations:
-      summary: 'Endpoint {{ $labels.instance }} too few log lines (rate per min {{ $value | printf "%.f" }})'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been below target for more than 10 minutes."
-
-  # Include this is you have replicas. Adjust the value as appropriate, e.g. 1GB or 5GB or whatever.
-  - alert: Replication Slow
-    expr: >
-      p4_pull_replica_lag > (500 * 1024 * 1024)
-    for: 10m
-    labels:
-      severity: "high"
-    annotations:
-      summary: 'Endpoint {{ $labels.instance }} replication lag is too great ({{ $value | humanize }})'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 10 minutes."
-
-  # Alert if checkpoint takes more than N minutes - adjust as appropriate. Note use of mins in error message.
-  - alert: Checkpoint slow
-    expr: (p4_sdp_checkpoint_duration{serverid=~".*master.*"} / 60) > 50
-    for: 5m
-    labels:
-      severity: "warning"
-    annotations:
-      summary: 'Endpoint {{ $labels.instance }} checkpoint job duration ({{ $value | printf "%.02f" }} mins) longer than expected'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 1 minutes."
-
-  # SDP - we expect a checkpoint to happen every 24 hours - alert otherwise! Note value is / 3600 to get hours for message
-  - alert: Checkpoint Not Taken
-    expr: ((time() - p4_sdp_checkpoint_log_time{serverid=~".*master.*|.*edge.*"}) / (60 * 60)) > 25
-    for: 1h
-    labels:
-      severity: "warning"
-    annotations:
-      summary: 'Endpoint {{ $labels.instance }} checkpoint not taken warning ({{ $value | printf "%.02f" }} hours since last checkpoint)'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for more than 1 hour."
-
-  # Adjust the below if your mountpoints do not start with /hx (like /hxlogs etc)
-  - alert: Diskspace Percentage Used Above Threshold
-    expr: >
-        (100.0 - 100 * (
-             node_filesystem_avail_bytes{mountpoint=~"/hx.*"}
-             / on (instance, mountpoint) node_filesystem_size_bytes{mountpoint=~"/hx.*"}
-        )) > 95
-    labels:
-      severity: "high"
-    annotations:
-      summary: 'Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space percentage is {{$value | printf "%.02f"}} is above threshold'
-
-  # Adjust the below if your mountpoints are different!
-  - alert: Diskspace Below Threshold
-    expr: >
-        node_filesystem_free_bytes{mountpoint="/hxlogs"} -
-            on (instance) p4_filesys_min{filesys="P4LOG"} < 0 or
-        node_filesystem_free_bytes{mountpoint="/hxdepots"} -
-            on (instance) p4_filesys_min{filesys="depot"} < 0 or
-        node_filesystem_free_bytes{mountpoint="/hxmetadata"} -
-            on (instance) p4_filesys_min{filesys="P4ROOT"} < 0
-    labels:
-      severity: "high"
-    annotations:
-      summary: "Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space is {{$value}} below filesys.*.min NOW!!!"
-
-  # Adjust the below if your mountpoints are different!
-  - alert: Diskspace Predicted Low
-    expr: >
-        predict_linear(node_filesystem_free_bytes{mountpoint="/hxdepots"}[1h], 2 * 24 * 3600) -
-           on (instance) p4_filesys_min{filesys="depot"} < 0 or
-        predict_linear(node_filesystem_free_bytes{mountpoint="/hxmetadata"}[1h], 2 * 24 * 3600) -
-           on (instance) p4_filesys_min{filesys="P4ROOT"} < 0 or
-        predict_linear(node_filesystem_free_bytes{mountpoint="/hxlogs"}[1h], 2 * 24 * 3600) -
-           on (instance) p4_filesys_min{filesys="P4LOGS"} < 0
-    for: 120m
-    labels:
-      severity: "warning"
-    annotations:
-      summary: 'Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space predicting to go below filesys.*.min (by {{$value | printf "%.02f" }}) in 48 hours based on current usage trend'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true 120 minutes."
-
-  # App memory is what's left over when you subtract out the other stuff!
-  - alert: App Memory Usage High
-    expr: >
-        (100 * (
-            node_memory_MemTotal_bytes -
-            node_memory_MemFree_bytes -
-            node_memory_Buffers_bytes -
-            node_memory_Cached_bytes -
-            node_memory_SwapCached_bytes -
-            node_memory_Slab_bytes -
-            node_memory_PageTables_bytes -
-            node_memory_VmallocUsed_bytes)
-            / node_memory_MemTotal_bytes) > 70.0
-    for: 10m
-    labels:
-      severity: "warning"
-    annotations:
-      summary: 'Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} App Memory usage above 70% (actual {{$value | printf "%.02f"}}%)'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true 10 minutes."
-
-  # Value is converted to hours
-  - alert: SSL Expires
-    expr: ((p4_ssl_cert_expires - time()) / (60 * 60)) < 14 * 24
-    for: 12h
-    labels:
-      severity: "warning"
-    annotations:
-      summary: 'Endpoint {{ $labels.instance }} SSL certificate expiry warning (actual {{$value | printf "%.02f"}} hours)'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been below target for more than 12 hours."
-
-```
-
 ## Alertmanager config
 
-This is an example, assuming simple email and local postfix or equivalent setup - `/etc/alertmanager/alertmanager.yml`
+See sample config file here:
 
-```yaml
-global:
-  smtp_from: alertmanager@example.com
-  smtp_smarthost: localhost:25
-  smtp_require_tls: false
-  # Hello is the local machine name
-  smtp_hello: localhost
-
-route:
-  group_by: ['alertname']
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 60m
-  receiver: mail
-  routes:
-  - match:
-      severity: critical
-    repeat_interval: 30m
-  - match:
-      severity: high
-    repeat_interval: 60m
-  - match:
-      severity: warning
-    repeat_interval: 1d
-  - match:
-      severity: low
-    repeat_interval: 1d
-
-receivers:
-- name: mail
-  email_configs:
-  - to: p4-group@example.com
-```
-
+* [EXAMPLES.md](examples/EXAMPLES.md)
 
 *Strongly recommend*: set up a simple `Makefile` in `/etc/alertmanager` which validates config file:
 
@@ -954,6 +713,59 @@ Found:
  - 1 receivers
  - 0 templates
 ```
+
+## Alerting rules
+
+This is an example, assuming simple email and local postfix or equivalent have been setup.
+
+See the version in: [EXAMPLES.md](examples/EXAMPLES.md)
+
+It would be setup as `/etc/prometheus/perforce_rules.yml` 
+
+Then uncomment the relevant section in `prometheus.yml`:
+
+```
+# Alertmanager configuration - optional
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+        - localhost:9093
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+  - "perforce_rules.yml"
+```
+
+## Prometheus config to reference alertmanager rules
+
+*Strongly recommend*: set up a simple `Makefile` in `/etc/prometheus` which validates config and rules file:
+
+Note that Makefile format requires a `<tab>` char (not spaces) at the start of 'action' lines.
+
+```
+# Makefile for prometheus - convenience for validating and restarting the service
+validate:
+        promtool check config prometheus.yml
+
+# Always validates first before restarting
+restart: validate
+        systemctl restart prometheus
+```
+
+Then you can validate your config:
+
+```
+# make validate
+promtool check config prometheus.yml
+Checking prometheus.yml
+  SUCCESS: 1 rule files found
+
+Checking perforce_rules.yml
+  SUCCESS: 8 rules found
+```
+
+For an example of a good starter alertmanager rules file see: [example prometheus_rules.yml file](EXAMPLES/prometheus/perforce_rules.yml)
 
 # Troubleshooting
 
