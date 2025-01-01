@@ -89,7 +89,7 @@ func compareOutput(t *testing.T, expected, actual []string) {
 	nActual := make([]string, 0)
 	// Ignore these elements as the contents varies per test run
 	ignorePrefixes := []string{"p4_prom_cmds_pending", "p4_prom_cpu_user", "p4_prom_cpu_system",
-		"p4_cmd_cpu_"}
+		"p4_cmd_cpu_", "p4_prom_memory"}
 	for _, line := range expected {
 		if !hasPrefix(ignorePrefixes, line) {
 			nExpected = append(nExpected, line)
@@ -115,13 +115,18 @@ func basicTest(t *testing.T, cfg *config.Config, input string, historical bool) 
 
 	linesChan := make(chan string, 100)
 
+	version := &metrics.P4DMetricsVersion{
+		Revision:  "testrevision",
+		GoVersion: runtime.Version(),
+		Version:   "test",
+	}
 	mconfig := &metrics.Config{
 		ServerID:              "myserverid",
 		UpdateInterval:        10 * time.Millisecond,
 		OutputCmdsByUser:      cfg.OutputCmdsByUser,
 		OutputCmdsByUserRegex: cfg.OutputCmdsByUserRegex,
 		OutputCmdsByIP:        cfg.OutputCmdsByIP}
-	p4m := metrics.NewP4DMetricsLogParser(mconfig, logger, historical)
+	p4m := metrics.NewP4DMetricsLogParser(mconfig, version, logger, historical)
 
 	_, metricsChan := p4m.ProcessEvents(ctx, linesChan, false)
 
@@ -180,7 +185,70 @@ p4_sync_bytes_added{serverid="myserverid"} 0
 p4_sync_bytes_updated{serverid="myserverid"} 0
 p4_sync_files_added{serverid="myserverid"} 0
 p4_sync_files_deleted{serverid="myserverid"} 0
-p4_sync_files_updated{serverid="myserverid"} 0`, -1)
+p4_sync_files_updated{serverid="myserverid"} 0
+p4_cmd_mem_mb{serverid="myserverid"} 0
+p4_cmd_mem_peak_mb{serverid="myserverid"} 0
+p4_cmds_paused_cumulative{serverid="myserverid"} 0.000
+p4_cmds_paused_errors{serverid="myserverid"} 0
+p4_cmds_paused_max{serverid="myserverid"} 0
+p4_cmds_paused{serverid="myserverid"} 0
+p4_cmds_running_max{serverid="myserverid"} 0
+p4_cmds_running{serverid="myserverid"} 1
+p4_lbr_binary_checkins{serverid="myserverid"} 0
+p4_lbr_binary_closes{serverid="myserverid"} 0
+p4_lbr_binary_copies{serverid="myserverid"} 0
+p4_lbr_binary_digests{serverid="myserverid"} 0
+p4_lbr_binary_exists{serverid="myserverid"} 0
+p4_lbr_binary_filesizes{serverid="myserverid"} 0
+p4_lbr_binary_modtimes{serverid="myserverid"} 0
+p4_lbr_binary_opens{serverid="myserverid"} 0
+p4_lbr_binary_readbytes{serverid="myserverid"} 0
+p4_lbr_binary_reads{serverid="myserverid"} 0
+p4_lbr_binary_writebytes{serverid="myserverid"} 0
+p4_lbr_binary_writes{serverid="myserverid"} 0
+p4_lbr_compress_checkins{serverid="myserverid"} 0
+p4_lbr_compress_closes{serverid="myserverid"} 0
+p4_lbr_compress_copies{serverid="myserverid"} 0
+p4_lbr_compress_digests{serverid="myserverid"} 0
+p4_lbr_compress_exists{serverid="myserverid"} 0
+p4_lbr_compress_filesizes{serverid="myserverid"} 0
+p4_lbr_compress_modtimes{serverid="myserverid"} 0
+p4_lbr_compress_opens{serverid="myserverid"} 0
+p4_lbr_compress_readbytes{serverid="myserverid"} 0
+p4_lbr_compress_reads{serverid="myserverid"} 0
+p4_lbr_compress_writebytes{serverid="myserverid"} 0
+p4_lbr_compress_writes{serverid="myserverid"} 0
+p4_lbr_rcs_checkins{serverid="myserverid"} 0
+p4_lbr_rcs_closes{serverid="myserverid"} 0
+p4_lbr_rcs_copies{serverid="myserverid"} 0
+p4_lbr_rcs_digests{serverid="myserverid"} 0
+p4_lbr_rcs_exists{serverid="myserverid"} 0
+p4_lbr_rcs_filesizes{serverid="myserverid"} 0
+p4_lbr_rcs_modtimes{serverid="myserverid"} 0
+p4_lbr_rcs_opens{serverid="myserverid"} 0
+p4_lbr_rcs_readbytes{serverid="myserverid"} 0
+p4_lbr_rcs_reads{serverid="myserverid"} 0
+p4_lbr_rcs_writebytes{serverid="myserverid"} 0
+p4_lbr_rcs_writes{serverid="myserverid"} 0
+p4_lbr_uncompress_checkins{serverid="myserverid"} 0
+p4_lbr_uncompress_closes{serverid="myserverid"} 0
+p4_lbr_uncompress_copies{serverid="myserverid"} 0
+p4_lbr_uncompress_digests{serverid="myserverid"} 0
+p4_lbr_uncompress_exists{serverid="myserverid"} 0
+p4_lbr_uncompress_filesizes{serverid="myserverid"} 0
+p4_lbr_uncompress_modtimes{serverid="myserverid"} 0
+p4_lbr_uncompress_opens{serverid="myserverid"} 0
+p4_lbr_uncompress_readbytes{serverid="myserverid"} 0
+p4_lbr_uncompress_reads{serverid="myserverid"} 0
+p4_lbr_uncompress_writebytes{serverid="myserverid"} 0
+p4_lbr_uncompress_writes{serverid="myserverid"} 0
+p4_pause_rate_cpu{serverid="myserverid"} 0
+p4_pause_rate_mem{serverid="myserverid"} 0
+p4_pause_state_cpu{serverid="myserverid"} 0
+p4_pause_state_mem{serverid="myserverid"} 0
+p4_prom_build_info{serverid="myserverid",goversion="go1.21.5",revision="testrevision",version="test"} 1
+p4_prom_memory{serverid="myserverid"} 8283400
+p4_prom_svr_events_processed{serverid="myserverid"} 0`, -1)
 	compareOutput(t, baseExpected, output)
 
 	historical = true
@@ -199,7 +267,70 @@ p4_sync_bytes_added;serverid=myserverid 0 1441207389
 p4_sync_bytes_updated;serverid=myserverid 0 1441207389
 p4_sync_files_added;serverid=myserverid 0 1441207389
 p4_sync_files_deleted;serverid=myserverid 0 1441207389
-p4_sync_files_updated;serverid=myserverid 0 1441207389`, -1)
+p4_sync_files_updated;serverid=myserverid 0 1441207389
+p4_cmd_mem_mb;serverid=myserverid 0 1441207389
+p4_cmd_mem_peak_mb;serverid=myserverid 0 1441207389
+p4_cmds_paused;serverid=myserverid 0 1441207389
+p4_cmds_paused_cumulative;serverid=myserverid 0.000 1441207389
+p4_cmds_paused_errors;serverid=myserverid 0 1441207389
+p4_cmds_paused_max;serverid=myserverid 0 1441207389
+p4_cmds_running;serverid=myserverid 1 1441207389
+p4_cmds_running_max;serverid=myserverid 0 1441207389
+p4_lbr_binary_checkins;serverid=myserverid 0 1441207389
+p4_lbr_binary_closes;serverid=myserverid 0 1441207389
+p4_lbr_binary_copies;serverid=myserverid 0 1441207389
+p4_lbr_binary_digests;serverid=myserverid 0 1441207389
+p4_lbr_binary_exists;serverid=myserverid 0 1441207389
+p4_lbr_binary_filesizes;serverid=myserverid 0 1441207389
+p4_lbr_binary_modtimes;serverid=myserverid 0 1441207389
+p4_lbr_binary_opens;serverid=myserverid 0 1441207389
+p4_lbr_binary_readbytes;serverid=myserverid 0 1441207389
+p4_lbr_binary_reads;serverid=myserverid 0 1441207389
+p4_lbr_binary_writebytes;serverid=myserverid 0 1441207389
+p4_lbr_binary_writes;serverid=myserverid 0 1441207389
+p4_lbr_compress_checkins;serverid=myserverid 0 1441207389
+p4_lbr_compress_closes;serverid=myserverid 0 1441207389
+p4_lbr_compress_copies;serverid=myserverid 0 1441207389
+p4_lbr_compress_digests;serverid=myserverid 0 1441207389
+p4_lbr_compress_exists;serverid=myserverid 0 1441207389
+p4_lbr_compress_filesizes;serverid=myserverid 0 1441207389
+p4_lbr_compress_modtimes;serverid=myserverid 0 1441207389
+p4_lbr_compress_opens;serverid=myserverid 0 1441207389
+p4_lbr_compress_readbytes;serverid=myserverid 0 1441207389
+p4_lbr_compress_reads;serverid=myserverid 0 1441207389
+p4_lbr_compress_writebytes;serverid=myserverid 0 1441207389
+p4_lbr_compress_writes;serverid=myserverid 0 1441207389
+p4_lbr_rcs_checkins;serverid=myserverid 0 1441207389
+p4_lbr_rcs_closes;serverid=myserverid 0 1441207389
+p4_lbr_rcs_copies;serverid=myserverid 0 1441207389
+p4_lbr_rcs_digests;serverid=myserverid 0 1441207389
+p4_lbr_rcs_exists;serverid=myserverid 0 1441207389
+p4_lbr_rcs_filesizes;serverid=myserverid 0 1441207389
+p4_lbr_rcs_modtimes;serverid=myserverid 0 1441207389
+p4_lbr_rcs_opens;serverid=myserverid 0 1441207389
+p4_lbr_rcs_readbytes;serverid=myserverid 0 1441207389
+p4_lbr_rcs_reads;serverid=myserverid 0 1441207389
+p4_lbr_rcs_writebytes;serverid=myserverid 0 1441207389
+p4_lbr_rcs_writes;serverid=myserverid 0 1441207389
+p4_lbr_uncompress_checkins;serverid=myserverid 0 1441207389
+p4_lbr_uncompress_closes;serverid=myserverid 0 1441207389
+p4_lbr_uncompress_copies;serverid=myserverid 0 1441207389
+p4_lbr_uncompress_digests;serverid=myserverid 0 1441207389
+p4_lbr_uncompress_exists;serverid=myserverid 0 1441207389
+p4_lbr_uncompress_filesizes;serverid=myserverid 0 1441207389
+p4_lbr_uncompress_modtimes;serverid=myserverid 0 1441207389
+p4_lbr_uncompress_opens;serverid=myserverid 0 1441207389
+p4_lbr_uncompress_readbytes;serverid=myserverid 0 1441207389
+p4_lbr_uncompress_reads;serverid=myserverid 0 1441207389
+p4_lbr_uncompress_writebytes;serverid=myserverid 0 1441207389
+p4_lbr_uncompress_writes;serverid=myserverid 0 1441207389
+p4_pause_rate_cpu;serverid=myserverid 0 1441207389
+p4_pause_rate_mem;serverid=myserverid 0 1441207389
+p4_pause_state_cpu;serverid=myserverid 0 1441207389
+p4_pause_state_mem;serverid=myserverid 0 1441207389
+p4_prom_build_info;serverid=myserverid;goversion=go1.21.5;revision=testrevision;version=test 1 1441207389
+p4_prom_memory;serverid=myserverid 9405704 1441207389
+p4_prom_svr_events_processed;serverid=myserverid 0 1441207389`, -1)
 	compareOutput(t, baseExpectedHistorical, output)
 
 	// Now change config and expect some extra metrics to be output

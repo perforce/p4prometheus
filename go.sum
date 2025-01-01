@@ -234,8 +234,8 @@ github.com/prometheus/procfs v0.0.0-20190117184657-bf6a532e95b1/go.mod h1:c3At6R
 github.com/prometheus/procfs v0.0.2/go.mod h1:TjEm7ze935MbeOT/UhFTIMYKhuLP4wbCsTZCD3I8kEA=
 github.com/prometheus/procfs v0.0.8/go.mod h1:7Qr8sr6344vo1JqZ6HhLceV9o3AJ1Ff+GxbHq6oeK9A=
 github.com/prometheus/procfs v0.1.3/go.mod h1:lV6e/gmhEcM9IjHGsFOCxxuZ+z1YqCvr4OA4YeYWdaU=
-github.com/rcowham/go-libp4dlog v0.13.1 h1:nO218D0baOh8VrLfQJHojLi/08PRXkXbCyDMIWELsuM=
-github.com/rcowham/go-libp4dlog v0.13.1/go.mod h1:LUq4ZRlPyyW1ugzIaYPPomGVM1XqmETPPPcGmQjoWX0=
+github.com/rcowham/go-libp4dlog v0.13.4 h1:45GANE9gZHANL1h1aLX+d7oN0Osnr7MDLRIcQaBV+3s=
+github.com/rcowham/go-libp4dlog v0.13.4/go.mod h1:LUq4ZRlPyyW1ugzIaYPPomGVM1XqmETPPPcGmQjoWX0=
 github.com/rcowham/go-libtail v0.1.3 h1:4zdh2yi7qB2JuBUk+AddhncNBcvtOLL836NSg/YQLQs=
 github.com/rcowham/go-libtail v0.1.3/go.mod h1:NuvNihMDGrN5X8G06/PQ8lP4Y0mrR7j57Xrc3ItugYo=
 github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=
