@@ -400,14 +400,14 @@ scrape_configs:
     # CONFIGURE THESE VALUES AS APPROPRIATE FOR YOUR SERVERS!!!!
     # Note that the names here will appear as labels in your metrics.
     # So recommend not using IP address as not very user friendly!
-    # The port is going to be 9100 by default for node_exporter unless using Windows Exporter targets
+    # The port is going to be 9100 by default for node_exporter unless using Windows Exporter targets are specified
     # ==========================================================
     - targets:
         - localhost:9100
         - my_p4_server:9100
 
   # ==========================================================
-  # This section should be deleted if pushgateway not in use
+  # This section SHOULD BE DELETED if pushgateway not in use
   # ==========================================================
   - job_name: 'pushgateway'
     honor_labels: true
