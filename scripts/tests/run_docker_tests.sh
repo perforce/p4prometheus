@@ -11,7 +11,7 @@ cname=p4promtest
 podman rm -f $cname
 sleep 1
 
-# docker run -it perforce/p4promtest-nonsdp /root/run_install.sh -nosdp
+# docker run -it perforce/p4promtest-nonsdp /root/run_p4prom_tests.sh -nosdp
 podman run --cap-add=SYS_RESOURCE,AUDIT_WRITE -d --rm --name $cname perforce/p4promtest-sdp
 sleep 1
-podman exec -it $cname /root/run_install.sh
+podman exec -it $cname /root/run_p4prom_tests.sh

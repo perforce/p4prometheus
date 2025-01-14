@@ -22,16 +22,16 @@ function usage
       echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
    fi
  
-   echo "USAGE for run_install.sh:
+   echo "USAGE for run_p4prom_tests.sh:
  
-run_install.sh [-nosdp] [-h]
+run_p4prom_tests.sh [-nosdp] [-h]
  
     -nosdp      Means do the non-SDP version. Default is the SDP version.
 
 Examples:
 
-./run_install.sh
-./run_install.sh -nosdp
+./run_p4prom_tests.sh
+./run_p4prom_tests.sh -nosdp
 
 "
 }
@@ -69,8 +69,11 @@ fi
 cd /root
 
 if [[ $UseSDP -eq 1 ]]; then
+    su - perforce -c "p4d -Gc"
     systemctl start p4d_1
     sleep 3
+    su - perforce -c "p4 trust -y"
+    su - perforce -c "/p4/sdp/Server/setup/configure_new_server.sh 1"
 
     metrics_dir=/hxlogs/metrics
     ./install_p4prom.sh 1

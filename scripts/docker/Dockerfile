@@ -34,7 +34,7 @@ ADD install_p4prom.sh /root/
 # RUN apt-get -y install helix-p4d
 
 # ADD docker/setup_nonsdp.sh /root/
-# ADD docker/run_install.sh /root/
+# ADD docker/run_p4prom_tests.sh /root/
 # ADD tests/test_nosdp.py /root/
 
 # -----------------------------
@@ -44,7 +44,7 @@ ADD docker/setup_sdp.sh /root/
 # ADD docker/bin.linuxarm64/p4 /tmp/
 # ADD docker/bin.linuxarm64/p4d /tmp/
 RUN /root/setup_sdp.sh
-ADD docker/run_install.sh /root/
+ADD docker/run_p4prom_tests.sh /root/
 ADD tests/test_sdp.py /root/
 
 CMD ["/sbin/init"]

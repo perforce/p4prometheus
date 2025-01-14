@@ -13,7 +13,7 @@ curl -L -O https://swarm.workshop.perforce.com/download/guest/perforce_software/
 chmod +x install_sdp.sh
 
 ./install_sdp.sh -C > sdp_install.cfg
-./install_sdp.sh -c sdp_install.cfg -init -demo -no_pkgs -y
+./install_sdp.sh -c sdp_install.cfg -empty -demo -no_pkgs -full_sudo -y
 
 #
 # Helpful profile for perforce user login profile - for manual testing mainly
@@ -29,4 +29,4 @@ EOF
 echo "source /p4/common/bin/p4_vars 1" >> /home/perforce/.bashrc
 chown perforce:perforce $BASH_PROF /home/perforce/.bashrc
 
-sudo su - perforce -c "p4d -Gc"
+# sudo su - perforce -c "p4d -Gc"
