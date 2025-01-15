@@ -8,6 +8,7 @@ if [[ -z "${BASH_VERSINFO}" ]] || [[ -z "${BASH_VERSINFO[0]}" ]] || [[ ${BASH_VE
     exit 1;
 fi
 
+set -euxo pipefail
 
 # ============================================================
 
@@ -69,6 +70,7 @@ fi
 cd /root
 
 if [[ $UseSDP -eq 1 ]]; then
+    source /p4/common/bin/p4_vars 1
     su - perforce -c "p4d -Gc"
     systemctl start p4d_1
     sleep 3
@@ -77,7 +79,6 @@ if [[ $UseSDP -eq 1 ]]; then
 
     metrics_dir=/hxlogs/metrics
     ./install_p4prom.sh 1
-    source /p4/common/bin/p4_vars 1
 else
     ./setup_nonsdp.sh
 
@@ -113,14 +114,14 @@ if [[ $UseSDP -eq 1 ]]; then
 else
     script=$(grep monitor_metrics /tmp/c.out | sed -e 's@.*/etc@/etc@' | sed -e "s/ >.*//")
 fi
-sudo -u perforce $script
+su - perforce -c "$script"
 
 # Restart where we can see output
 sudo systemctl stop node_exporter
 nohup /usr/local/bin/node_exporter --collector.textfile.directory="$metrics_dir" > /tmp/node.out &
 
 sleep 3
-sudo -u perforce p4 configure show
+su - perforce -c "p4 configure show"
 
 if [[ $UseSDP -eq 1 ]]; then
     py.test -v test_sdp.py

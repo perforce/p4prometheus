@@ -22,6 +22,7 @@ RUN yum update -y; \
     yum install -y rsync; \
     yum install -y policycoreutils-python-utils; \
     yum install -y passwd; \
+    yum install -y bc; \
     yum autoremove; \
     yum clean all
 

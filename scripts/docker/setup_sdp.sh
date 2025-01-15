@@ -28,5 +28,3 @@ PS1='\u@\h:\w$ '
 EOF
 echo "source /p4/common/bin/p4_vars 1" >> /home/perforce/.bashrc
 chown perforce:perforce $BASH_PROF /home/perforce/.bashrc
-
-# sudo su - perforce -c "p4d -Gc"

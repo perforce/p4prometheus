@@ -19,8 +19,8 @@ root_dir="$(cd "$script_dir/.."; pwd -P)"
 export BUILDKIT_PROGRESS=plain
 
 echo Building SDP podman/docker containers
-# for image in nonsdp sdp no-p4; do
-for image in sdp no-p4; do
+# for image in sdp no-p4; do
+for image in sdp; do
     docker_dir="$root_dir"
     dockerfile="${docker_dir}/docker/Dockerfile"
     # Build the base Docker for the OS, and then the SDP variant on top
