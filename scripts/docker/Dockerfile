@@ -27,7 +27,6 @@ RUN yum update -y; \
     yum clean all
 
 RUN pip3 install pytest-testinfra p4python
-ADD install_p4prom.sh /root/
 
 # -----------------------------
 # FROM p4promtestbase AS p4promtest-nonsdp
@@ -47,6 +46,7 @@ ADD docker/setup_sdp.sh /root/
 RUN /root/setup_sdp.sh
 ADD docker/run_p4prom_tests.sh /root/
 ADD tests/test_sdp.py /root/
+ADD install_p4prom.sh /root/
 
 CMD ["/sbin/init"]
 

@@ -105,16 +105,11 @@ p4 depots
 
 sleep 1
 
-sudo -u perforce crontab -l > /tmp/c.out
-chmod 644 /tmp/c.out
-
-# Extract the script to run and run it
-if [[ $UseSDP -eq 1 ]]; then
-    script="/p4/common/site/bin/monitor_metrics.sh 1"
-else
-    script=$(grep monitor_metrics /tmp/c.out | sed -e 's@.*/etc@/etc@' | sed -e "s/ >.*//")
-fi
-su - perforce -c "$script"
+systemctl list-timers --output=short-iso | grep monitor_
+wait_time=$(systemctl list-timers --output=short-iso | grep "monitor_" | awk '{print $5}' | head -1 | tr -d 's')
+wait_time=$((wait_time + 1))
+echo "Waiting $wait_time for timer services to run..."
+sleep $wait_time
 
 # Restart where we can see output
 sudo systemctl stop node_exporter

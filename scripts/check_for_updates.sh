@@ -10,6 +10,9 @@ repo_path="scripts"
 github_url="https://api.github.com/repos/perforce/p4prometheus/commits?per_page=1&path=$repo_path"
 github_download_url="https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts"
 
+# Just in case you want to customize this
+local_bin_dir=/usr/local/bin
+
 function msg () { echo -e "$*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
 
@@ -68,10 +71,9 @@ cd "$SCRIPT_DIR" || bail "Can't cd to $SCRIPT_DIR"
 
 # Check for dependencies
 
-curl=$(which curl)
-[[ $? -eq 0 ]] || bail "Failed to find curl in path"
-jq=$(which jq)
-[[ $? -eq 0 ]] || bail "Failed to find jq in path"
+for f in curl jq; do
+    command -v $f 2> /dev/null || bail "Failed to find $f in path"
+done
 
 last_github_sha=""
 last_github_date=""
@@ -84,12 +86,14 @@ fi
 github_sha=$(curl "$github_url" | jq '.[] | .sha')
 github_date=$(curl "$github_url" | jq '.[] | .commit.committer.date')
 
+# For the sake of SELinux and systemd timers, we need to avoid changing attributes for the file (ls -alZ)
+# Thus we overwrite the existing file (having saved a copy) - as that keeps attributes
 if [[ "$last_github_sha" != "$github_sha" ]]; then
     msg "Updating scripts"
     for fname in $FILE_LIST; do
-        [[ -f "$fname" ]] && mv "$fname" "$fname.bak" 
+        [[ -f "$fname" ]] && cp "$fname" "$fname.bak"
         msg "downloading $fname"
-        wget "$github_download_url/$fname"
+        wget -O - "$github_download_url/$fname" > "$fname"
         chmod +x "$fname"
     done
     echo "last_github_sha=$github_sha" > "$ConfigFile"

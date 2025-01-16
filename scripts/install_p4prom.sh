@@ -113,8 +113,7 @@ if [[ $(id -u) -ne 0 ]]; then
    exit 1
 fi
 
-wget=$(which wget)
-[[ $? -eq 0 ]] || bail "Failed to find wget in path"
+command -v wget 2> /dev/null || bail "Failed to find wget in path"
 
 if command -v getenforce > /dev/null; then
     selinux=$(getenforce)
@@ -203,13 +202,15 @@ install_node_exporter () {
     f=$(readlink -f "$metrics_root")
     while [[ $f != / ]]; do chmod 755 "$f"; f=$(dirname "$f"); done;
 
-    if [[ $UseSDP -eq 1 ]]; then
-        ln -s "$metrics_root" "$metrics_link"
+    if [[ $UseSDP -eq 1 ]] && [[ ! -L "$metrics_link" ]]; then
+        ln -sf "$metrics_root" "$metrics_link"
         chown -h "$OSUSER:$OSGROUP" "$metrics_link"
     fi
 
-    msg "Creating service file for node_exporter"
-    cat << EOF > /etc/systemd/system/node_exporter.service
+    service_name="node_exporter"
+    service_file="/etc/systemd/system/${service_name}.service"
+    msg "Creating service file for ${service_name}"
+    cat << EOF > "${service_file}"
 [Unit]
 Description=Node Exporter
 Wants=network-online.target
@@ -227,10 +228,11 @@ ExecStart=${local_bin_dir}/node_exporter --collector.systemd \
 WantedBy=multi-user.target
 EOF
 
+    chmod 644 "${service_file}"
     sudo systemctl daemon-reload
-    sudo systemctl enable node_exporter
-    sudo systemctl start node_exporter
-    sudo systemctl status node_exporter --no-pager
+    sudo systemctl enable "${service_name}"
+    sudo systemctl start "${service_name}"
+    sudo systemctl status "${service_name}" --no-pager
 }
 
 install_p4prometheus () {
@@ -321,8 +323,10 @@ EOF
 
     chown "$OSUSER:$OSGROUP" "$p4prom_config_file"
 
-    msg "Creating service file for p4prometheus"
-    cat << EOF > /etc/systemd/system/p4prometheus.service
+    service_name="p4prometheus"
+    service_file="/etc/systemd/system/${service_name}.service"
+    msg "Creating service file for ${service_name}"
+    cat << EOF > "${service_file}"
 [Unit]
 Description=P4prometheus
 Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
@@ -339,10 +343,11 @@ ExecStart=${local_bin_dir}/p4prometheus --config=$p4prom_config_file
 WantedBy=multi-user.target
 EOF
 
+    chmod 644 "${service_file}"
     systemctl daemon-reload
-    systemctl enable p4prometheus
-    systemctl start p4prometheus
-    systemctl status p4prometheus --no-pager
+    systemctl enable "${service_name}"
+    systemctl start "${service_name}"
+    systemctl status "${service_name}" --no-pager
 
 }
 
@@ -355,7 +360,10 @@ install_monitor_metrics () {
         service_args="-p $P4PORT -u $P4USER -nosdp -m $metrics_root"
     fi
 
-    cd $local_bin_dir || bail "Failed to cd to $local_bin_dir"
+    # We install in /p4/common/site/bin but need to reference the ultimate path without links for SELinux/systemd
+    bin_dir="/p4/common/site/bin"
+    abs_bin_dir=$(readlink -f "$bin_dir")
+    cd "$bin_dir" || bail "Failed to cd to $bin_dir"
     for scriptname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh; do
         [[ -f "$scriptname" ]] && rm "$scriptname"
         echo "downloading $scriptname"
@@ -363,15 +371,18 @@ install_monitor_metrics () {
         chmod 755 "$scriptname"
         chown "$OSUSER:$OSGROUP" "$scriptname"
         if [[ $SELinuxEnabled -eq 1 ]]; then
-            semanage fcontext -a -t bin_t "$scriptname"
-            restorecon -vF "$scriptname"
+            semanage fcontext -a -t bin_t "$abs_bin_dir/$scriptname"
+            restorecon -vF "$abs_bin_dir/$scriptname"
         fi
     done
 
-    msg "Creating service file for monitor_metrics"
-    cat << EOF > /etc/systemd/system/monitor_metrics.service
+    service_name="monitor_metrics"
+    service_file="/etc/systemd/system/${service_name}.service"
+    msg "Creating service file for ${service_name}"
+    cat << EOF > "${service_file}"
 # monitor_metrics.service
-# Service file to run p4prometheus monitor_metrics.sh - ensuring single threading
+# Service file to run p4prometheus monitor_metrics.sh - called by monitor_metrics.timer service
+# This service should not be enabled (just timer service)
 
 [Unit]
 Description=p4prometheus monitor_metrics.sh for p4d metrics gathering
@@ -382,14 +393,17 @@ After=network-online.target
 [Service]
 User=$OSUSER
 Type=oneshot
-ExecStart=${local_bin_dir}/monitor_metrics.sh ${service_args}
+ExecStart=${abs_bin_dir}/monitor_metrics.sh ${service_args}
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    msg "Creating timer file for monitor_metrics"
-    cat << EOF > /etc/systemd/system/monitor_metrics.timer
+    chmod 644 "${service_file}"
+
+    msg "Creating timer file for ${service_name}"
+    service_file="/etc/systemd/system/${service_name}.timer"
+    cat << EOF > "${service_file}"
 # monitor_metrics.timer
 # Timer for service to run p4prometheus monitor_metrics.sh - ensuring single threading
 
@@ -408,8 +422,12 @@ AccuracySec=5s
 WantedBy=timers.target
 EOF
 
-    msg "Creating service file for monitor_locks"
-    cat << EOF > /etc/systemd/system/monitor_locks.service
+    chmod 644 "${service_file}"
+
+    service_name="monitor_locks"
+    service_file="/etc/systemd/system/${service_name}.service"
+    msg "Creating service file for ${service_name}"
+    cat << EOF > "${service_file}"
 # monitor_locks.service
 # Service file to run p4prometheus monitor_wrapper.sh - ensuring single threading
 
@@ -422,14 +440,17 @@ After=network-online.target
 [Service]
 User=$OSUSER
 Type=oneshot
-ExecStart=${local_bin_dir}/monitor_wrapper.sh ${service_args}
+ExecStart=${abs_bin_dir}/monitor_wrapper.sh ${service_args}
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    msg "Creating timer file for monitor_locks"
-    cat << EOF > /etc/systemd/system/monitor_locks.timer
+    chmod 644 "${service_file}"
+
+    msg "Creating timer file for ${service_name}"
+    service_file="/etc/systemd/system/${service_name}.timer"
+    cat << EOF > "${service_file}"
 # monitor_locks.timer
 # Timer for service to run p4prometheus monitor_locks.sh - ensuring single threading
 
@@ -447,6 +468,8 @@ AccuracySec=5s
 [Install]
 WantedBy=timers.target
 EOF
+
+    chmod 644 "${service_file}"
 
     systemctl daemon-reload
     for svc in monitor_metrics monitor_locks; do
@@ -467,11 +490,6 @@ for scriptname in report_instance_data.sh check_for_updates.sh; do
     chmod +x "\$scriptname"
     chown "$OSUSER:$OSGROUP" "\$scriptname"
 done
-# Link to installed
-for scriptname in monitor_metrics.sh monitor_wrapper.sh monitor_metrics.py; do
-    ln -sf "${local_bin_dir}/\$scriptname" .
-done
-
 EOF
 
     chmod 755 "$mon_installer"
@@ -528,15 +546,15 @@ EOF
 install_node_exporter
 install_p4prometheus
 install_monitor_metrics
+systemctl list-timers
 
 echo "
 
 Should have installed node_exporter, p4prometheus and friends.
-Check crontab -l output above (as user $OSUSER)
 
 To review further, please:
 
     ls -al $metrics_link/
 
-    curl localhost:9100/metrics | grep -E ^p4_
+    curl localhost:9100/metrics | grep ^p4_
 "
