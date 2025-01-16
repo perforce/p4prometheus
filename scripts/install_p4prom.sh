@@ -256,7 +256,7 @@ install_p4prometheus () {
     mkdir -p "$p4prom_config_dir" "$p4prom_bin_dir"
     chown "$OSUSER:$OSGROUP" "$p4prom_config_dir" "$p4prom_bin_dir"
 
-cat << EOF > $p4prom_config_file
+cat << EOF > "$p4prom_config_file"
 # ----------------------
 # sdp_instance: SDP instance - typically integer, but can be
 # See: https://swarm.workshop.perforce.com/projects/perforce-software-sdp for more
@@ -348,42 +348,129 @@ EOF
 
 install_monitor_metrics () {
 
+
     if [[ $UseSDP -eq 1 ]]; then
-        cron_args="$SDP_INSTANCE"
+        service_args="$SDP_INSTANCE"
     else
-        cron_args="-p $P4PORT -u $P4USER -nosdp -m $metrics_root"
+        service_args="-p $P4PORT -u $P4USER -nosdp -m $metrics_root"
     fi
+
+    cd $local_bin_dir || bail "Failed to cd to $local_bin_dir"
+    for scriptname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh; do
+        [[ -f "$scriptname" ]] && rm "$scriptname"
+        echo "downloading $scriptname"
+        wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/$scriptname"
+        chmod 755 "$scriptname"
+        chown "$OSUSER:$OSGROUP" "$scriptname"
+        if [[ $SELinuxEnabled -eq 1 ]]; then
+            semanage fcontext -a -t bin_t "$scriptname"
+            restorecon -vF "$scriptname"
+        fi
+    done
+
+    msg "Creating service file for monitor_metrics"
+    cat << EOF > /etc/systemd/system/monitor_metrics.service
+# monitor_metrics.service
+# Service file to run p4prometheus monitor_metrics.sh - ensuring single threading
+
+[Unit]
+Description=p4prometheus monitor_metrics.sh for p4d metrics gathering
+Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
+Wants=monitor_metrics.timer network-online.target
+After=network-online.target
+
+[Service]
+User=$OSUSER
+Type=oneshot
+ExecStart=${local_bin_dir}/monitor_metrics.sh ${service_args}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    msg "Creating timer file for monitor_metrics"
+    cat << EOF > /etc/systemd/system/monitor_metrics.timer
+# monitor_metrics.timer
+# Timer for service to run p4prometheus monitor_metrics.sh - ensuring single threading
+
+[Unit]
+Description=p4prometheus monitor_metrics.sh for p4d metrics gathering
+Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
+Requires=monitor_metrics.service
+
+[Timer]
+Unit=monitor_metrics.service
+# Runs once a minute
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    msg "Creating service file for monitor_locks"
+    cat << EOF > /etc/systemd/system/monitor_locks.service
+# monitor_locks.service
+# Service file to run p4prometheus monitor_wrapper.sh - ensuring single threading
+
+[Unit]
+Description=p4prometheus monitor_wrapper.sh for p4d lock monitoring
+Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
+Wants=monitor_locks.timer network-online.target
+After=network-online.target
+
+[Service]
+User=$OSUSER
+Type=oneshot
+ExecStart=${local_bin_dir}/monitor_wrapper.sh ${service_args}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    msg "Creating timer file for monitor_locks"
+    cat << EOF > /etc/systemd/system/monitor_locks.timer
+# monitor_locks.timer
+# Timer for service to run p4prometheus monitor_locks.sh - ensuring single threading
+
+[Unit]
+Description=p4prometheus monitor_locks.sh for p4d metrics gathering
+Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
+Requires=monitor_locks.service
+
+[Timer]
+Unit=monitor_locks.service
+# Runs once a minute
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    systemctl daemon-reload
+    for svc in monitor_metrics monitor_locks; do
+        systemctl enable $svc.timer
+        systemctl start $svc.timer
+        systemctl status $svc.timer --no-pager
+    done
+
     mon_installer="/tmp/_install_mon.sh"
     cat << EOF > $mon_installer
 # Download latest versions
 mkdir -p $p4prom_bin_dir
 cd $p4prom_bin_dir
-for scriptname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh report_instance_data.sh check_for_updates.sh; do
+for scriptname in report_instance_data.sh check_for_updates.sh; do
     [[ -f "\$scriptname" ]] && rm "\$scriptname"
     echo "downloading \$scriptname"
     wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/\$scriptname"
     chmod +x "\$scriptname"
     chown "$OSUSER:$OSGROUP" "\$scriptname"
 done
-
-# Install in crontab if required
-scriptname="monitor_metrics.sh"
-mytab="/tmp/mycron"
-crontab -l > \$mytab
-if ! grep -q "\$scriptname" "\$mytab" ;then
-    entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname $cron_args > /dev/null 2>&1 ||:"
-    echo "\$entry1" >> "\$mytab"
-fi
-scriptname="monitor_wrapper.sh"
-if ! grep -q "\$scriptname" "\$mytab" ;then
-    entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname $cron_args > /dev/null 2>&1 ||:"
-    echo "\$entry1" >> "\$mytab"
-fi
-crontab "\$mytab"
-
-# List things out for review
-echo "Crontab after updating - showing monitor entries:"
-crontab -l | grep /monitor_
+# Link to installed
+for scriptname in monitor_metrics.sh monitor_wrapper.sh monitor_metrics.py; do
+    ln -sf "${local_bin_dir}/\$scriptname" .
+done
 
 EOF
 
@@ -395,7 +482,7 @@ EOF
     fi
 
     config_file="$p4prom_config_dir/.push_metrics.cfg"
-    cat << EOF > $config_file
+    cat << EOF > "$config_file"
 # Set these values as appropriate according to HRA Procedures document
 metrics_host=https://monitor.hra.p4demo.com:9091
 metrics_user=customerid_CHANGEME
