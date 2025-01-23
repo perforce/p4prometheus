@@ -5,13 +5,17 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
 	"strconv"
 	"strings"
+
+	"github.com/perforce/p4prometheus/cmd/p4metrics/config"
 
 	"github.com/bitfield/script"
 	"github.com/perforce/p4prometheus/version"
@@ -20,6 +24,16 @@ import (
 )
 
 var logger logrus.Logger
+
+func sourceEnvVars() map[string]string {
+	// Return a list of p4 env vars
+	env := make(map[string]string)
+	for _, e := range os.Environ() {
+		pair := strings.SplitN(e, "=", 2)
+		env[pair[0]] = pair[1]
+	}
+	return env
+}
 
 func sourceSDPVars(sdpInstance string) map[string]string {
 	// Source SDP vars and return a list
@@ -87,9 +101,10 @@ type metricStruct struct {
 
 // P4MonitorMetrics structure
 type P4MonitorMetrics struct {
-	// config *config.Config
+	config            *config.Config
 	env               *map[string]string
 	logger            *logrus.Logger
+	p4User            string
 	serverID          string
 	rootDir           string
 	logsDir           string
@@ -103,9 +118,9 @@ type P4MonitorMetrics struct {
 	metrics           []metricStruct
 }
 
-func newP4MonitorMetrics(envVars *map[string]string, logger *logrus.Logger) (p4m *P4MonitorMetrics) {
+func newP4MonitorMetrics(config *config.Config, envVars *map[string]string, logger *logrus.Logger) (p4m *P4MonitorMetrics) {
 	return &P4MonitorMetrics{
-		// config: config,
+		config:  config,
 		env:     envVars,
 		logger:  logger,
 		p4info:  make(map[string]string),
@@ -116,7 +131,8 @@ func newP4MonitorMetrics(envVars *map[string]string, logger *logrus.Logger) (p4m
 func (p4m *P4MonitorMetrics) initVars() {
 	// Note that P4BIN is defined by SDP by sourcing above file, as are P4USER, P4PORT
 	p4m.sdpInstance = getVar(*p4m.env, "SDP_INSTANCE")
-	p4m.p4Cmd = fmt.Sprintf("%s -u %s -p \"%s\"", getVar(*p4m.env, "P4BIN"), getVar(*p4m.env, "P4USER"), getVar(*p4m.env, "P4PORT"))
+	p4m.p4User = getVar(*p4m.env, "P4USER")
+	p4m.p4Cmd = fmt.Sprintf("%s -u %s -p \"%s\"", getVar(*p4m.env, "P4BIN"), p4m.p4User, getVar(*p4m.env, "P4PORT"))
 	p4m.logger.Debugf("p4Cmd: %s", p4m.p4Cmd)
 	i, err := script.Exec(fmt.Sprintf("%s %s", p4m.p4Cmd, "info -s")).Slice()
 	if err != nil {
@@ -262,6 +278,31 @@ func (p4m *P4MonitorMetrics) getCumulativeMetrics() string {
 	return metrics.String()
 }
 
+// Writes metrics to appropriate file - writes to temp file first and renames it after
+func (p4m *P4MonitorMetrics) writeMetricsFile(metrics []byte) {
+	var f *os.File
+	var err error
+	tmpFile := p4m.config.MetricsOutput + ".tmp"
+	f, err = os.Create(tmpFile)
+	if err != nil {
+		p4m.logger.Errorf("Error opening %s: %v", tmpFile, err)
+		return
+	}
+	f.Write(bytes.ToValidUTF8(metrics, []byte{'?'}))
+	err = f.Close()
+	if err != nil {
+		p4m.logger.Errorf("Error closing file: %v", err)
+	}
+	err = os.Chmod(tmpFile, 0644)
+	if err != nil {
+		p4m.logger.Errorf("Error chmod-ing file: %v", err)
+	}
+	err = os.Rename(tmpFile, p4m.config.MetricsOutput)
+	if err != nil {
+		p4m.logger.Errorf("Error renaming: %s to %s - %v", tmpFile, p4m.config.MetricsOutput, err)
+	}
+}
+
 func (p4m *P4MonitorMetrics) monitorUptime() {
 	// Server uptime as a simple seconds parameter - parsed from p4 info:
 	// Server uptime: 168:39:20
@@ -281,35 +322,261 @@ func (p4m *P4MonitorMetrics) monitorUptime() {
 			value: fmt.Sprintf("%d", seconds)})
 }
 
-// monitor_uptime () {
-//     # Server uptime as a simple seconds parameter - parsed from p4 info:
-//     # Server uptime: 168:39:20
-//     fname="$metrics_root/p4_uptime${sdpinst_suffix}-${SERVER_ID}.prom"
+func (p4m *P4MonitorMetrics) monitorLicense() {
+	// Server license expiry - parsed from "p4 license -u" - key fields:
+	// ... userCount 893
+	// ... userLimit 1000
+	// ... licenseExpires 1677628800
+	// ... licenseTimeRemaining 34431485
+	// ... supportExpires 1677628800
+	// Note that sometimes you only get supportExpires - we calculate licenseTimeRemaining in that case
+
+	k := "Server uptime"
+	var seconds int64
+	if v, ok := p4m.p4info[k]; ok {
+		p4m.logger.Debugf("monitorUptime: parsing: %s", v)
+		seconds = p4m.parseUptime(v)
+	} else {
+		p4m.logger.Debugf("monitorUptime: failed to find 'Server uptime' in p4 info")
+		return
+	}
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_server_uptime",
+			help:  "P4D Server uptime (seconds)",
+			mtype: "counter",
+			value: fmt.Sprintf("%d", seconds)})
+}
+
+// monitor_license () {
+//     fname="$metrics_root/p4_license${sdpinst_suffix}-${SERVER_ID}.prom"
 //     tmpfname="$fname.$$"
-//     uptime=$(grep uptime "$tmp_info_data" | awk '{print $3}')
-//     [[ -z "$uptime" ]] && uptime="0:0:0"
-//     uptime=${uptime//:/ }
-//     arr=($uptime)
-//     hours=${arr[0]}
-//     mins=${arr[1]}
-//     secs=${arr[2]}
-//     #echo $hours $mins $secs
-//     # Ensure base 10 arithmetic used to avoid overflow errors
-//     uptime_secs=$(((10#$hours * 3600) + (10#$mins * 60) + 10#$secs))
+//     tmp_license_data="$metrics_root/tmp_license"
+//     # Don't update if there is no license for this server, e.g. a replica
+//     no_license=$(grep -c "Server license: none" "$tmp_info_data")
+//     # Update every 60 mins
+//     [[ ! -f "$tmp_license_data" || $(find "$tmp_license_data" -mmin +60) ]] || return
+//     $p4 license -u 2>&1 > "$tmp_license_data"
+//     [[ $? -ne 0 ]] && return
+
+//     userCount=0
+//     userLimit=0
+//     licenseExpires=0
+//     licenseTimeRemaining=0
+//     supportExpires=0
+//     licenseInfo=""
+//     licenseInfo_label=""
+//     licenseIP=""
+//     licenseIP_label=""
+
+//     if [[ $no_license -ne 1 ]]; then
+//         userCount=$(grep userCount $tmp_license_data | awk '{print $3}')
+//         userLimit=$(grep userLimit $tmp_license_data | awk '{print $3}')
+//         licenseExpires=$(grep "\.\.\. licenseExpires" $tmp_license_data | awk '{print $3}')
+//         licenseTimeRemaining=$(grep "\.\.\. licenseTimeRemaining" $tmp_license_data | awk '{print $3}')
+//         supportExpires=$(grep "\.\.\. supportExpires" $tmp_license_data | awk '{print $3}')
+//         licenseInfo=$(grep "Server license: " "$tmp_info_data" | sed -e "s/Server license: //" | sed -Ee "s/\(expires [^\)]+\)//" | sed -Ee "s/\(support [^\)]+\)//" )
+//         if [[ -z $licenseTimeRemaining && ! -z $supportExpires ]]; then
+//             dt=$(date +%s)
+//             licenseTimeRemaining=$(($supportExpires - $dt))
+//         fi
+//         # Trim trailing spaces
+//         licenseInfo=$(echo $licenseInfo | sed -Ee 's/[ ]+$//')
+//         licenseIP=$(grep "Server license-ip: " "$tmp_info_data" | sed -e "s/Server license-ip: //")
+//     fi
+
+//     licenseInfo_label=",info=\"${licenseInfo:-none}\""
+//     licenseIP_label=",IP=\"${licenseIP:-none}\""
+
 //     rm -f "$tmpfname"
-//     echo "# HELP p4_server_uptime P4D Server uptime (seconds)" >> "$tmpfname"
-//     echo "# TYPE p4_server_uptime counter" >> "$tmpfname"
-//     echo "p4_server_uptime{${serverid_label}${sdpinst_label}} $uptime_secs" >> "$tmpfname"
+//     echo "# HELP p4_licensed_user_count P4D Licensed User count" >> "$tmpfname"
+//     echo "# TYPE p4_licensed_user_count gauge" >> "$tmpfname"
+//     echo "p4_licensed_user_count{${serverid_label}${sdpinst_label}} $userCount" >> "$tmpfname"
+//     echo "# HELP p4_licensed_user_limit P4D Licensed User Limit" >> "$tmpfname"
+//     echo "# TYPE p4_licensed_user_limit gauge" >> "$tmpfname"
+//     echo "p4_licensed_user_limit{${serverid_label}${sdpinst_label}} $userLimit" >> "$tmpfname"
+//     if [[ ! -z $licenseExpires ]]; then
+//         echo "# HELP p4_license_expires P4D License expiry (epoch secs)" >> "$tmpfname"
+//         echo "# TYPE p4_license_expires gauge" >> "$tmpfname"
+//         echo "p4_license_expires{${serverid_label}${sdpinst_label}} $licenseExpires" >> "$tmpfname"
+//     fi
+//     echo "# HELP p4_license_time_remaining P4D License time remaining (secs)" >> "$tmpfname"
+//     echo "# TYPE p4_license_time_remaining gauge" >> "$tmpfname"
+//     echo "p4_license_time_remaining{${serverid_label}${sdpinst_label}} $licenseTimeRemaining" >> "$tmpfname"
+//     if [[ ! -z $supportExpires ]]; then
+//         echo "# HELP p4_license_support_expires P4D License support expiry (epoch secs)" >> "$tmpfname"
+//         echo "# TYPE p4_license_support_expires gauge" >> "$tmpfname"
+//         echo "p4_license_support_expires{${serverid_label}${sdpinst_label}} $supportExpires" >> "$tmpfname"
+//     fi
+//     echo "# HELP p4_license_info P4D License info" >> "$tmpfname"
+//     echo "# TYPE p4_license_info gauge" >> "$tmpfname"
+//     echo "p4_license_info{${serverid_label}${sdpinst_label}${licenseInfo_label}} 1" >> "$tmpfname"
+//     echo "# HELP p4_license_IP P4D Licensed IP" >> "$tmpfname"
+//     echo "# TYPE p4_license_IP" >> "$tmpfname"
+//     echo "p4_license_IP{${serverid_label}${sdpinst_label}${licenseIP_label}} 1" >> "$tmpfname"
+
 //     chmod 644 "$tmpfname"
 //     mv "$tmpfname" "$fname"
 // }
 
+// TaskResponse represents the structure of the JSON response, excluding pingError
+type TaskResponse struct {
+	Tasks          int    `json:"tasks"`
+	FutureTasks    int    `json:"futureTasks"`
+	Workers        int    `json:"workers"`
+	MaxWorkers     int    `json:"maxWorkers"`
+	WorkerLifetime string `json:"workerLifetime"`
+}
+
+// getSwarmQueueInfo performs an HTTP request and parses the JSON response
+func (p4m *P4MonitorMetrics) getSwarmQueueInfo(url, userid, password string) (*TaskResponse, error) {
+	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+	p4m.logger.Debugf("SetBasicAuth: '%s/%s'", userid, password)
+	req.SetBasicAuth(userid, password)
+	client := &http.Client{}
+	p4m.logger.Debugf("req: %v", req)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error sending request: %v", err)
+	}
+	defer resp.Body.Close()
+	p4m.logger.Debugf("Response: %v", resp)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %v", err)
+	}
+	// Parse the JSON response
+	var response TaskResponse
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing JSON: %v", err)
+	}
+	return &response, nil
+}
+
+func (p4m *P4MonitorMetrics) monitorSwarm() {
+	// Find Swarm URL and get information from it
+	//i, err := script.Exec(fmt.Sprintf("%s %s", p4m.p4Cmd, "info -s")).Slice()
+
+	p4m.logger.Debugf("monitorSwarm")
+	buf := new(bytes.Buffer)
+	p := script.NewPipe().WithStderr(buf)
+	cmd := fmt.Sprintf("%s -ztag info -s", p4m.p4Cmd)
+	p4m.logger.Debugf("cmd: %s", cmd)
+	authID, err := p.Exec(cmd).Match("... serverCluster").Column(3).String()
+	if err != nil {
+		logger.Errorf("Error running %s: %v, err:%q", cmd, err, buf.String())
+		return
+	}
+	authID = strings.TrimSpace(authID)
+	// Use authID to find ticket value
+	// localhost:auth.cust (fred) 492F0A7EEF5F7DA68A305274ASDF
+	buf = new(bytes.Buffer)
+	p = script.NewPipe().WithStderr(buf)
+	cmd = fmt.Sprintf("%s tickets", p4m.p4Cmd)
+	p4m.logger.Debugf("cmd: %s", cmd)
+	search := fmt.Sprintf("localhost:%s (%s)", authID, p4m.p4User)
+	p4m.logger.Debugf("search: %s", search)
+	// s, err := p.Exec(cmd).Slice()
+	// p4m.logger.Debugf("tickets: %q", s)
+	ticket, err := p.Exec(cmd).Match(search).Column(3).String()
+	if err != nil {
+		logger.Errorf("Error running %s: %v, err:%q", cmd, err, buf.String())
+		return
+	}
+	ticket = strings.TrimSpace(ticket)
+	p4m.logger.Debugf("ticket: '%s'", ticket)
+
+	// Get Swarm URL
+	buf = new(bytes.Buffer)
+	p = script.NewPipe().WithStderr(buf)
+	cmd = fmt.Sprintf("%s property -l", p4m.p4Cmd)
+	p4m.logger.Debugf("cmd: %s", cmd)
+	url, err := p.Exec(cmd).Match("P4.Swarm.URL").Column(3).String()
+	if err != nil {
+		p4m.logger.Errorf("Error running %s: %v, err:%q", cmd, err, buf.String())
+		return
+	}
+	url = fmt.Sprintf("%s/queue/status", strings.TrimSpace(url))
+	p4m.logger.Debugf("url: %s", url)
+
+	swarmerror := "0"
+	swarminfo, err := p4m.getSwarmQueueInfo(url, p4m.p4User, ticket)
+	if err != nil {
+		swarmerror = "1"
+		p4m.logger.Errorf("error: %v", err)
+	}
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_swarm_error",
+			help:  "Swarm error (0 or 1)",
+			mtype: "gauge",
+			value: swarmerror})
+	if err != nil {
+		return
+	}
+
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_swarm_tasks",
+			help:  "Swarm current task queue size",
+			mtype: "gauge",
+			value: fmt.Sprintf("%d", swarminfo.Tasks)})
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_swarm_future_tasks",
+			help:  "Swarm future task queue size",
+			mtype: "gauge",
+			value: fmt.Sprintf("%d", swarminfo.FutureTasks)})
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_swarm_workers",
+			help:  "Swarm current number of workers",
+			mtype: "gauge",
+			value: fmt.Sprintf("%d", swarminfo.Workers)})
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_swarm_max_workers",
+			help:  "Swarm current max number of workers",
+			mtype: "gauge",
+			value: fmt.Sprintf("%d", swarminfo.MaxWorkers)})
+}
+
+// Reads server id for SDP instance or the server.id path
+func readServerID(logger *logrus.Logger, instance string, path string) string {
+	idfile := path
+	if idfile == "" {
+		idfile = fmt.Sprintf("/p4/%s/root/server.id", instance)
+	}
+	if _, err := os.Stat(idfile); err == nil {
+		buf, err := os.ReadFile(idfile) // just pass the file name
+		if err != nil {
+			logger.Errorf("Failed to read %v - %v", idfile, err)
+			return ""
+		}
+		return string(bytes.TrimRight(buf, " \r\n"))
+	}
+	return ""
+}
+
 func main() {
 	var (
+		configfile = kingpin.Flag(
+			"config",
+			"Config file for p4prometheus.",
+		).Default("p4metrics.yaml").String()
 		sdpInstance = kingpin.Flag(
-			"sdpInstance",
+			"sdp.instance",
 			"SDP Instance, typically 1 or alphanumeric.",
-		).Default("1").String()
+		).Default("").String()
+		// p4port = kingpin.Flag(
+		// 	"p4port",
+		// 	"P4PORT to use (if sdp.instance is not set).",
+		// ).Default("").String()
+		// p4user = kingpin.Flag(
+		// 	"p4user",
+		// 	"P4USER to use (if sdp.instance is not set).",
+		// ).Default("").String()
 		debug = kingpin.Flag(
 			"debug",
 			"Enable debugging.",
@@ -326,9 +593,39 @@ func main() {
 		logger.Level = logrus.DebugLevel
 	}
 
-	env := sourceSDPVars(*sdpInstance)
-	p4m := newP4MonitorMetrics(&env, logger)
+	cfg, err := config.LoadConfigFile(*configfile)
+	if err != nil {
+		logger.Errorf("error loading config file: %v", err)
+		os.Exit(-1)
+	}
+	if len(*sdpInstance) > 0 {
+		cfg.SDPInstance = *sdpInstance
+	}
+
+	logger.Infof("%v", version.Print("p4metrics"))
+	logger.Infof("Processing: output to '%s' SDP instance '%s'",
+		cfg.MetricsOutput, cfg.SDPInstance)
+
+	if cfg.SDPInstance == "" && len(cfg.ServerID) == 0 && cfg.ServerIDPath == "" {
+		logger.Errorf("error loading config file - if no sdp_instance then please specify server_id or server_id_path!")
+		os.Exit(-1)
+	}
+	if len(cfg.ServerID) == 0 && (cfg.SDPInstance != "" || cfg.ServerIDPath != "") {
+		cfg.ServerID = readServerID(logger, cfg.SDPInstance, cfg.ServerIDPath)
+	}
+	logger.Infof("Server id: '%s'", cfg.ServerID)
+
+	var env map[string]string
+	if cfg.SDPInstance != "" {
+		env = sourceSDPVars(*sdpInstance)
+	} else {
+		env = sourceEnvVars()
+	}
+	p4m := newP4MonitorMetrics(cfg, &env, logger)
 	p4m.initVars()
-	p4m.monitorUptime()
+	if cfg.MonitorSwarm {
+		p4m.monitorSwarm()
+	}
+	// p4m.monitorUptime()
 	p4m.logger.Debugf("metrics: %q", p4m.metrics)
 }
