@@ -481,6 +481,27 @@ monitor_processes () {
     pcount=$(ps ax | grep "$proc " | grep -v "grep $proc" | wc -l)
     echo "p4_process_count{${serverid_label}${sdpinst_label}} $pcount" >> "$tmpfname"
 
+    echo "# HELP p4_process_duration P4 running processes" >> "$tmpfname"
+    echo "# TYPE p4_process_duration counter" >> "$tmpfname"
+    #awk '{print $1, $3, $4, $5}' "$monfile" | while read -r pid user duration command
+    awk '{
+        # Split the duration (column 4) into hours, minutes, and seconds
+        split($4, time_parts, ":")
+        hours = time_parts[1]
+        minutes = time_parts[2]
+        seconds = time_parts[3]
+
+        # Convert duration to total seconds
+        total_seconds = (hours * 3600) + (minutes * 60) + seconds
+
+        # Print process ID, user, total_seconds, and command
+        print $1, $3, total_seconds, $5
+    }' "$monfile" | while read -r pid user duration command
+    do
+        echo "p4_process_duration{${serverid_label}$sdpinst_label},user=\"$user\",pid=\"$pid\",command=\"$command\",duration=\"$duration\"}" >> "$tmpfname"
+    done
+
+
     chmod 644 "$tmpfname"
     mv "$tmpfname" "$fname"
 }
