@@ -35,8 +35,9 @@ func sourceEnvVars() map[string]string {
 	return env
 }
 
-func sourceSDPVars(sdpInstance string) map[string]string {
+func sourceSDPVars(sdpInstance string, logger *logrus.Logger) map[string]string {
 	// Source SDP vars and return a list
+	logger.Debugf("sourceSDPVars: %s", sdpInstance)
 	cmd := exec.Command("bash", "-c", fmt.Sprintf("source /p4/common/bin/p4_vars %s && env", sdpInstance))
 
 	// Get the current environment
@@ -133,6 +134,16 @@ func (p4m *P4MonitorMetrics) initVars() {
 	// Note that P4BIN is defined by SDP by sourcing above file, as are P4USER, P4PORT
 	p4m.sdpInstance = getVar(*p4m.env, "SDP_INSTANCE")
 	p4m.p4User = getVar(*p4m.env, "P4USER")
+	p4trust := getVar(*p4m.env, "P4TRUST")
+	if p4trust != "" {
+		p4m.logger.Debugf("setting P4TRUST=%s", p4trust)
+		os.Setenv("P4TRUST", p4trust)
+	}
+	p4tickets := getVar(*p4m.env, "P4TICKETS")
+	if p4tickets != "" {
+		p4m.logger.Debugf("setting P4TICKETS=%s", p4tickets)
+		os.Setenv("P4TICKETS", p4tickets)
+	}
 	p4m.p4Cmd = fmt.Sprintf("%s -u %s -p \"%s\"", getVar(*p4m.env, "P4BIN"), p4m.p4User, getVar(*p4m.env, "P4PORT"))
 	p4m.logger.Debugf("p4Cmd: %s", p4m.p4Cmd)
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("info -s")
@@ -245,7 +256,7 @@ func (p4m *P4MonitorMetrics) formatLabels(mname string, labels []labelStruct) st
 	}
 	vals := make([]string, 0)
 	for _, l := range nonBlankLabels {
-		vals = append(vals, fmt.Sprintf("%s=%s", l.name, l.value))
+		vals = append(vals, fmt.Sprintf("%s=\"%s\"", l.name, l.value))
 	}
 	labelStr := strings.Join(vals, ",")
 	return fmt.Sprintf("%s{%s}", mname, labelStr)
@@ -509,7 +520,7 @@ func (p4m *P4MonitorMetrics) monitorSwarm() {
 		return
 	}
 	url = fmt.Sprintf("%s/queue/status", strings.TrimSpace(url))
-	p4m.logger.Debugf("url: %s", url)
+	p4m.logger.Debugf("url: '%s'", url)
 
 	swarmerror := "0"
 	swarminfo, err := p4m.getSwarmQueueInfo(url, p4m.p4User, ticket)
@@ -634,7 +645,7 @@ func main() {
 
 	var env map[string]string
 	if cfg.SDPInstance != "" {
-		env = sourceSDPVars(*sdpInstance)
+		env = sourceSDPVars(*sdpInstance, logger)
 	} else {
 		env = sourceEnvVars()
 	}
@@ -642,6 +653,8 @@ func main() {
 	p4m.initVars()
 	if cfg.MonitorSwarm {
 		p4m.monitorSwarm()
+		m := p4m.getCumulativeMetrics()
+		p4m.writeMetricsFile([]byte(m))
 	}
 	// p4m.monitorUptime()
 	p4m.logger.Debugf("metrics: %q", p4m.metrics)
