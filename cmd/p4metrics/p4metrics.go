@@ -65,7 +65,8 @@ func sourceSDPVars(sdpInstance string) map[string]string {
 		}
 	}
 
-	otherVars := []string{"LOGS"} // Other interesting env vars
+	// Other interesting env vars
+	otherVars := []string{"KEEPCKPS", "KEEPJNLS", "KEEPLOGS", "CHECKPOINTS", "LOGS", "OSUSER"}
 	for k, v := range newEnv {
 		if strings.HasPrefix(k, "P4") || strings.Contains(k, "SDP") {
 			results[k] = v
@@ -134,8 +135,10 @@ func (p4m *P4MonitorMetrics) initVars() {
 	p4m.p4User = getVar(*p4m.env, "P4USER")
 	p4m.p4Cmd = fmt.Sprintf("%s -u %s -p \"%s\"", getVar(*p4m.env, "P4BIN"), p4m.p4User, getVar(*p4m.env, "P4PORT"))
 	p4m.logger.Debugf("p4Cmd: %s", p4m.p4Cmd)
-	i, err := script.Exec(fmt.Sprintf("%s %s", p4m.p4Cmd, "info -s")).Slice()
+	p4cmd, errbuf, p := p4m.newP4CmdPipe("info -s")
+	i, err := p.Exec(p4cmd).Slice()
 	if err != nil {
+		p4m.logger.Errorf("Error: %v, %q", err, errbuf.String())
 		p4m.logger.Fatalf("Can't connect to P4PORT: %s", getVar(*p4m.env, "P4PORT"))
 	}
 	for _, s := range i {
@@ -420,6 +423,7 @@ func (p4m *P4MonitorMetrics) monitorLicense() {
 
 // TaskResponse represents the structure of the JSON response, excluding pingError
 type TaskResponse struct {
+	Authorized     bool
 	Tasks          int    `json:"tasks"`
 	FutureTasks    int    `json:"futureTasks"`
 	Workers        int    `json:"workers"`
@@ -444,7 +448,11 @@ func (p4m *P4MonitorMetrics) getSwarmQueueInfo(url, userid, password string) (*T
 	defer resp.Body.Close()
 	p4m.logger.Debugf("Response: %v", resp)
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		if resp.StatusCode == http.StatusUnauthorized {
+			return &TaskResponse{Authorized: false}, nil
+		} else {
+			return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		}
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -456,50 +464,48 @@ func (p4m *P4MonitorMetrics) getSwarmQueueInfo(url, userid, password string) (*T
 	if err != nil {
 		return nil, fmt.Errorf("error parsing JSON: %v", err)
 	}
+	response.Authorized = true
 	return &response, nil
+}
+
+func (p4m *P4MonitorMetrics) newP4CmdPipe(cmd string) (string, *bytes.Buffer, *script.Pipe) {
+	errbuf := new(bytes.Buffer)
+	p := script.NewPipe().WithStderr(errbuf)
+	cmd = fmt.Sprintf("%s %s", p4m.p4Cmd, cmd)
+	p4m.logger.Debugf("cmd: %s", cmd)
+	return cmd, errbuf, p
 }
 
 func (p4m *P4MonitorMetrics) monitorSwarm() {
 	// Find Swarm URL and get information from it
-	//i, err := script.Exec(fmt.Sprintf("%s %s", p4m.p4Cmd, "info -s")).Slice()
-
 	p4m.logger.Debugf("monitorSwarm")
-	buf := new(bytes.Buffer)
-	p := script.NewPipe().WithStderr(buf)
-	cmd := fmt.Sprintf("%s -ztag info -s", p4m.p4Cmd)
-	p4m.logger.Debugf("cmd: %s", cmd)
-	authID, err := p.Exec(cmd).Match("... serverCluster").Column(3).String()
+
+	p4cmd, errbuf, p := p4m.newP4CmdPipe("-ztag info -s")
+	authID, err := p.Exec(p4cmd).Match("... serverCluster").Column(3).String()
 	if err != nil {
-		logger.Errorf("Error running %s: %v, err:%q", cmd, err, buf.String())
+		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 	authID = strings.TrimSpace(authID)
+
 	// Use authID to find ticket value
 	// localhost:auth.cust (fred) 492F0A7EEF5F7DA68A305274ASDF
-	buf = new(bytes.Buffer)
-	p = script.NewPipe().WithStderr(buf)
-	cmd = fmt.Sprintf("%s tickets", p4m.p4Cmd)
-	p4m.logger.Debugf("cmd: %s", cmd)
 	search := fmt.Sprintf("localhost:%s (%s)", authID, p4m.p4User)
 	p4m.logger.Debugf("search: %s", search)
-	// s, err := p.Exec(cmd).Slice()
-	// p4m.logger.Debugf("tickets: %q", s)
-	ticket, err := p.Exec(cmd).Match(search).Column(3).String()
+	p4cmd, errbuf, p = p4m.newP4CmdPipe("tickets")
+	ticket, err := p.Exec(p4cmd).Match(search).Column(3).String()
 	if err != nil {
-		logger.Errorf("Error running %s: %v, err:%q", cmd, err, buf.String())
+		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 	ticket = strings.TrimSpace(ticket)
 	p4m.logger.Debugf("ticket: '%s'", ticket)
 
-	// Get Swarm URL
-	buf = new(bytes.Buffer)
-	p = script.NewPipe().WithStderr(buf)
-	cmd = fmt.Sprintf("%s property -l", p4m.p4Cmd)
-	p4m.logger.Debugf("cmd: %s", cmd)
-	url, err := p.Exec(cmd).Match("P4.Swarm.URL").Column(3).String()
+	// Get Swarm URL from property
+	p4cmd, errbuf, p = p4m.newP4CmdPipe("property -l")
+	url, err := p.Exec(p4cmd).Match("P4.Swarm.URL").Column(3).String()
 	if err != nil {
-		p4m.logger.Errorf("Error running %s: %v, err:%q", cmd, err, buf.String())
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 	url = fmt.Sprintf("%s/queue/status", strings.TrimSpace(url))
@@ -513,9 +519,20 @@ func (p4m *P4MonitorMetrics) monitorSwarm() {
 	}
 	p4m.metrics = append(p4m.metrics,
 		metricStruct{name: "p4_swarm_error",
-			help:  "Swarm error (0 or 1)",
+			help:  "Swarm error (0=no or 1=yes)",
 			mtype: "gauge",
 			value: swarmerror})
+	m := metricStruct{name: "p4_swarm_authorized",
+		help:  "Swarm API call authorized (1=yes or 0=no)",
+		mtype: "gauge",
+		value: "1"}
+	if !swarminfo.Authorized {
+		m.value = "0"
+		p4m.metrics = append(p4m.metrics, m)
+		return
+	} else {
+		p4m.metrics = append(p4m.metrics, m)
+	}
 	if err != nil {
 		return
 	}
