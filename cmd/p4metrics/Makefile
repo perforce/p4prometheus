@@ -22,10 +22,11 @@ build:
 
 # Builds distribution
 dist:
-	GOOS=darwin GOARCH=amd64 go build -o bin/${BINARY}-darwin-amd64 ${BINARY}.go
-	GOOS=linux GOARCH=arm64 go build -o bin/${BINARY}-linux-arm64 ${BINARY}.go
-	GOOS=linux GOARCH=amd64 go build -o bin/${BINARY}-linux-amd64 ${BINARY}.go
-	GOOS=windows GOARCH=amd64 go build -o bin/${BINARY}-windows-amd64.exe ${BINARY}.go
+	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o bin/${BINARY}-darwin-arm64 ${BINARY}.go
+	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}-darwin-amd64 ${BINARY}.go
+	GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o bin/${BINARY}-linux-arm64 ${BINARY}.go
+	GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}-linux-amd64 ${BINARY}.go
+	GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}-windows-amd64.exe ${BINARY}.go
 	rm -f bin/${BINARY}*arm64*.gz bin/${BINARY}*amd64*.gz
 	-chmod +x bin/${BINARY}*arm64* bin/${BINARY}*amd64*
 	gzip bin/${BINARY}*arm64* bin/${BINARY}*amd64*
