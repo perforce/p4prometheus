@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -99,6 +100,7 @@ type metricStruct struct {
 	help  string
 	mtype string
 	value string
+	label labelStruct
 }
 
 // P4MonitorMetrics structure
@@ -115,6 +117,7 @@ type P4MonitorMetrics struct {
 	sdpInstanceLabel  string
 	sdpInstanceSuffix string
 	p4info            map[string]string
+	p4license         map[string]string
 	logFile           string
 	errorsFile        string
 	metrics           []metricStruct
@@ -122,11 +125,12 @@ type P4MonitorMetrics struct {
 
 func newP4MonitorMetrics(config *config.Config, envVars *map[string]string, logger *logrus.Logger) (p4m *P4MonitorMetrics) {
 	return &P4MonitorMetrics{
-		config:  config,
-		env:     envVars,
-		logger:  logger,
-		p4info:  make(map[string]string),
-		metrics: make([]metricStruct, 0),
+		config:    config,
+		env:       envVars,
+		logger:    logger,
+		p4info:    make(map[string]string),
+		p4license: make(map[string]string),
+		metrics:   make([]metricStruct, 0),
 	}
 }
 
@@ -336,6 +340,125 @@ func (p4m *P4MonitorMetrics) monitorUptime() {
 			value: fmt.Sprintf("%d", seconds)})
 }
 
+func (p4m *P4MonitorMetrics) parseLicense() {
+	// Called by monitorLicense
+	// Assume that p4m.p4license is already setup with data from p4 license -u
+	// Server license expiry - parsed from "p4 license -u" - key fields:
+	// ... userCount 893
+	// ... userLimit 1000
+	// ... licenseExpires 1677628800
+	// ... licenseTimeRemaining 34431485
+	// ... supportExpires 1677628800
+	// Note that sometimes you only get supportExpires - we calculate licenseTimeRemaining in that case
+
+	// Check for no license
+	licenseInfoFull := ""
+	licenseInfo := ""
+	licenseIP := ""
+	noLicense := false
+	if v, ok := p4m.p4info["Server license"]; ok {
+		licenseInfo = v
+		if v == "none" {
+			noLicense = true
+		}
+	}
+	if v, ok := p4m.p4info["Server license-ip"]; ok {
+		licenseIP = v
+	}
+
+	userCount := ""
+	userLimit := ""
+	licenseExpires := ""
+	licenseTimeRemaining := ""
+	supportExpires := ""
+	if !noLicense {
+		if v, ok := p4m.p4license["userCount"]; ok {
+			userCount = v
+		}
+		if v, ok := p4m.p4license["userLimit"]; ok {
+			userLimit = v
+		}
+		if v, ok := p4m.p4license["licenseExpires"]; ok {
+			licenseExpires = v
+		}
+		if v, ok := p4m.p4license["licenseTimeRemaining"]; ok {
+			licenseTimeRemaining = v
+		}
+		if v, ok := p4m.p4license["supportExpires"]; ok {
+			supportExpires = v
+		}
+		pattern := `\S*(.*?)\S*(\(support [^\)]+\))(\(expires [^\)]+\))`
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			p4m.logger.Errorf("failed to compile regex: %v", err)
+		} else {
+			m := re.FindStringSubmatch(licenseInfoFull)
+			if len(m) < 2 {
+				p4m.logger.Errorf("failed to compile regex: %v", err)
+			} else {
+				licenseInfo = m[1]
+			}
+		}
+
+		// licenseInfo=$(grep "Server license: " "$tmp_info_data" | sed -e "s/Server license: //" | sed -Ee "s/\(expires [^\)]+\)//" | sed -Ee "s/\(support [^\)]+\)//" )
+		// if [[ -z $licenseTimeRemaining && ! -z $supportExpires ]]; then
+		// TODO: subtract date from the value
+		//     dt=$(date +%s)
+		//     licenseTimeRemaining=$(($supportExpires - $dt))
+		// fi
+		// # Trim trailing spaces
+		// licenseInfo=$(echo $licenseInfo | sed -Ee 's/[ ]+$//')
+		// licenseIP=$(grep "Server : " "$tmp_info_data" | sed -e "s/Server license-ip: //")
+
+	}
+
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_licensed_user_count",
+			help:  "P4D Licensed User count",
+			mtype: "gauge",
+			value: userCount})
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_licensed_user_limit",
+			help:  "P4D Licensed User Limit",
+			mtype: "gauge",
+			value: userLimit})
+	if licenseExpires != "" {
+		p4m.metrics = append(p4m.metrics,
+			metricStruct{name: "p4_license_expires",
+				help:  "P4D License expiry (epoch secs)",
+				mtype: "gauge",
+				value: licenseExpires})
+	}
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_license_time_remaining",
+			help:  "P4D License time remaining (secs)",
+			mtype: "gauge",
+			value: licenseTimeRemaining})
+	if supportExpires != "" {
+		p4m.metrics = append(p4m.metrics,
+			metricStruct{name: "p4_license_support_expires",
+				help:  "P4D License support expiry (epoch secs)",
+				mtype: "gauge",
+				value: supportExpires})
+	}
+	if licenseInfo != "" { // Metric where the value is in the label not the series
+		p4m.metrics = append(p4m.metrics,
+			metricStruct{name: "p4_license_info",
+				help:  "P4D License info",
+				mtype: "gauge",
+				value: "1",
+				label: labelStruct{name: "licenseInfo", value: licenseInfo}})
+	}
+	if licenseIP != "" { // Metric where the value is in the label not the series
+		p4m.metrics = append(p4m.metrics,
+			metricStruct{name: "p4_license_IP",
+				help:  "P4D Licensed IP",
+				mtype: "gauge",
+				value: "1",
+				label: labelStruct{name: "licenseIP", value: licenseIP}})
+	}
+}
+
 func (p4m *P4MonitorMetrics) monitorLicense() {
 	// Server license expiry - parsed from "p4 license -u" - key fields:
 	// ... userCount 893
@@ -345,101 +468,30 @@ func (p4m *P4MonitorMetrics) monitorLicense() {
 	// ... supportExpires 1677628800
 	// Note that sometimes you only get supportExpires - we calculate licenseTimeRemaining in that case
 
-	k := "Server uptime"
-	var seconds int64
-	if v, ok := p4m.p4info[k]; ok {
-		p4m.logger.Debugf("monitorUptime: parsing: %s", v)
-		seconds = p4m.parseUptime(v)
-	} else {
-		p4m.logger.Debugf("monitorUptime: failed to find 'Server uptime' in p4 info")
+	// TODO: only check license according to config update value
+	p4cmd, errbuf, p := p4m.newP4CmdPipe("license -u")
+	licenseMap, err := p.Exec(p4cmd).Slice()
+	if err != nil {
+		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
-	p4m.metrics = append(p4m.metrics,
-		metricStruct{name: "p4_server_uptime",
-			help:  "P4D Server uptime (seconds)",
-			mtype: "counter",
-			value: fmt.Sprintf("%d", seconds)})
+	for _, s := range licenseMap {
+		parts := strings.Split(s, " ")
+		if len(parts) == 3 {
+			p4m.p4license[parts[0]] = parts[1]
+		}
+	}
+	p4m.parseLicense()
 }
 
-// monitor_license () {
-//     fname="$metrics_root/p4_license${sdpinst_suffix}-${SERVER_ID}.prom"
-//     tmpfname="$fname.$$"
-//     tmp_license_data="$metrics_root/tmp_license"
-//     # Don't update if there is no license for this server, e.g. a replica
-//     no_license=$(grep -c "Server license: none" "$tmp_info_data")
-//     # Update every 60 mins
-//     [[ ! -f "$tmp_license_data" || $(find "$tmp_license_data" -mmin +60) ]] || return
-//     $p4 license -u 2>&1 > "$tmp_license_data"
-//     [[ $? -ne 0 ]] && return
-
-//     userCount=0
-//     userLimit=0
-//     licenseExpires=0
-//     licenseTimeRemaining=0
-//     supportExpires=0
-//     licenseInfo=""
-//     licenseInfo_label=""
-//     licenseIP=""
-//     licenseIP_label=""
-
-//     if [[ $no_license -ne 1 ]]; then
-//         userCount=$(grep userCount $tmp_license_data | awk '{print $3}')
-//         userLimit=$(grep userLimit $tmp_license_data | awk '{print $3}')
-//         licenseExpires=$(grep "\.\.\. licenseExpires" $tmp_license_data | awk '{print $3}')
-//         licenseTimeRemaining=$(grep "\.\.\. licenseTimeRemaining" $tmp_license_data | awk '{print $3}')
-//         supportExpires=$(grep "\.\.\. supportExpires" $tmp_license_data | awk '{print $3}')
-//         licenseInfo=$(grep "Server license: " "$tmp_info_data" | sed -e "s/Server license: //" | sed -Ee "s/\(expires [^\)]+\)//" | sed -Ee "s/\(support [^\)]+\)//" )
-//         if [[ -z $licenseTimeRemaining && ! -z $supportExpires ]]; then
-//             dt=$(date +%s)
-//             licenseTimeRemaining=$(($supportExpires - $dt))
-//         fi
-//         # Trim trailing spaces
-//         licenseInfo=$(echo $licenseInfo | sed -Ee 's/[ ]+$//')
-//         licenseIP=$(grep "Server license-ip: " "$tmp_info_data" | sed -e "s/Server license-ip: //")
-//     fi
-
-//     licenseInfo_label=",info=\"${licenseInfo:-none}\""
-//     licenseIP_label=",IP=\"${licenseIP:-none}\""
-
-//     rm -f "$tmpfname"
-//     echo "# HELP p4_licensed_user_count P4D Licensed User count" >> "$tmpfname"
-//     echo "# TYPE p4_licensed_user_count gauge" >> "$tmpfname"
-//     echo "p4_licensed_user_count{${serverid_label}${sdpinst_label}} $userCount" >> "$tmpfname"
-//     echo "# HELP p4_licensed_user_limit P4D Licensed User Limit" >> "$tmpfname"
-//     echo "# TYPE p4_licensed_user_limit gauge" >> "$tmpfname"
-//     echo "p4_licensed_user_limit{${serverid_label}${sdpinst_label}} $userLimit" >> "$tmpfname"
-//     if [[ ! -z $licenseExpires ]]; then
-//         echo "# HELP p4_license_expires P4D License expiry (epoch secs)" >> "$tmpfname"
-//         echo "# TYPE p4_license_expires gauge" >> "$tmpfname"
-//         echo "p4_license_expires{${serverid_label}${sdpinst_label}} $licenseExpires" >> "$tmpfname"
-//     fi
-//     echo "# HELP p4_license_time_remaining P4D License time remaining (secs)" >> "$tmpfname"
-//     echo "# TYPE p4_license_time_remaining gauge" >> "$tmpfname"
-//     echo "p4_license_time_remaining{${serverid_label}${sdpinst_label}} $licenseTimeRemaining" >> "$tmpfname"
-//     if [[ ! -z $supportExpires ]]; then
-//         echo "# HELP p4_license_support_expires P4D License support expiry (epoch secs)" >> "$tmpfname"
-//         echo "# TYPE p4_license_support_expires gauge" >> "$tmpfname"
-//         echo "p4_license_support_expires{${serverid_label}${sdpinst_label}} $supportExpires" >> "$tmpfname"
-//     fi
-//     echo "# HELP p4_license_info P4D License info" >> "$tmpfname"
-//     echo "# TYPE p4_license_info gauge" >> "$tmpfname"
-//     echo "p4_license_info{${serverid_label}${sdpinst_label}${licenseInfo_label}} 1" >> "$tmpfname"
-//     echo "# HELP p4_license_IP P4D Licensed IP" >> "$tmpfname"
-//     echo "# TYPE p4_license_IP" >> "$tmpfname"
-//     echo "p4_license_IP{${serverid_label}${sdpinst_label}${licenseIP_label}} 1" >> "$tmpfname"
-
-//     chmod 644 "$tmpfname"
-//     mv "$tmpfname" "$fname"
-// }
-
-// TaskResponse represents the structure of the JSON response, excluding pingError
+// TaskResponse represents the structure of the Swarm JSON response, excluding pingError
 type TaskResponse struct {
-	Authorized     bool
+	Authorized     bool   // Whether successfully authorized or not
 	Tasks          int    `json:"tasks"`
 	FutureTasks    int    `json:"futureTasks"`
 	Workers        int    `json:"workers"`
 	MaxWorkers     int    `json:"maxWorkers"`
-	WorkerLifetime string `json:"workerLifetime"`
+	WorkerLifetime string `json:"workerLifetime"` // We're not particularly interested in this one
 }
 
 // getSwarmQueueInfo performs an HTTP request and parses the JSON response
