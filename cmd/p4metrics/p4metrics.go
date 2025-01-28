@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/perforce/p4prometheus/cmd/p4metrics/config"
 
@@ -23,6 +24,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
+
+// GO standard reference value/format: Mon Jan 2 15:04:05 -0700 MST 2006
+const p4infotimeformat = "2006/01/02 15:04:05 -0700 MST"
 
 var logger logrus.Logger
 
@@ -357,7 +361,7 @@ func (p4m *P4MonitorMetrics) parseLicense() {
 	licenseIP := ""
 	noLicense := false
 	if v, ok := p4m.p4info["Server license"]; ok {
-		licenseInfo = v
+		licenseInfoFull = v
 		if v == "none" {
 			noLicense = true
 		}
@@ -387,29 +391,22 @@ func (p4m *P4MonitorMetrics) parseLicense() {
 		if v, ok := p4m.p4license["supportExpires"]; ok {
 			supportExpires = v
 		}
-		pattern := `\S*(.*?)\S*(\(support [^\)]+\))(\(expires [^\)]+\))`
-		re, err := regexp.Compile(pattern)
-		if err != nil {
-			p4m.logger.Errorf("failed to compile regex: %v", err)
-		} else {
-			m := re.FindStringSubmatch(licenseInfoFull)
-			if len(m) < 2 {
-				p4m.logger.Errorf("failed to compile regex: %v", err)
-			} else {
-				licenseInfo = m[1]
+		reSupport := regexp.MustCompile(`\S*\(support [^\)]+\)`)
+		reExpires := regexp.MustCompile(`\S*\(expires [^\)]+\)`)
+		licenseInfo = reSupport.ReplaceAllString(licenseInfoFull, "")
+		licenseInfo = reExpires.ReplaceAllString(licenseInfo, "")
+		licenseInfo = strings.TrimSpace(licenseInfo)
+		if licenseTimeRemaining == "" && supportExpires != "" {
+			if v, ok := p4m.p4info["Server date"]; ok {
+				expSecs, _ := strconv.ParseInt(supportExpires, 10, 64)
+				expT := time.Unix(expSecs, 0)
+				t, err := time.Parse(p4infotimeformat, v)
+				if err == nil {
+					diff := expT.Sub(t)
+					licenseTimeRemaining = fmt.Sprintf("%.0f", diff.Seconds())
+				}
 			}
 		}
-
-		// licenseInfo=$(grep "Server license: " "$tmp_info_data" | sed -e "s/Server license: //" | sed -Ee "s/\(expires [^\)]+\)//" | sed -Ee "s/\(support [^\)]+\)//" )
-		// if [[ -z $licenseTimeRemaining && ! -z $supportExpires ]]; then
-		// TODO: subtract date from the value
-		//     dt=$(date +%s)
-		//     licenseTimeRemaining=$(($supportExpires - $dt))
-		// fi
-		// # Trim trailing spaces
-		// licenseInfo=$(echo $licenseInfo | sed -Ee 's/[ ]+$//')
-		// licenseIP=$(grep "Server : " "$tmp_info_data" | sed -e "s/Server license-ip: //")
-
 	}
 
 	p4m.metrics = append(p4m.metrics,
