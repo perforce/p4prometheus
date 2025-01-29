@@ -224,30 +224,30 @@ func (p4m *P4MonitorMetrics) parseUptime(value string) int64 {
 	// Takes a string, e.g. 123:23:19
 	parts := strings.Split(value, ":")
 	if len(parts) != 3 {
-		p4m.logger.Debugf("parseUptime: failed to split: '%s'", value)
+		p4m.logger.Warningf("parseUptime: failed to split: '%s'", value)
 		return 0
 	}
 	hours, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		p4m.logger.Debugf("parseUptime: invalid hours: %v", err)
+		p4m.logger.Warningf("parseUptime: invalid hours: %v", err)
 		return 0
 	}
 	minutes, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
-		p4m.logger.Debugf("parseUptime: invalid minutes: %v", err)
+		p4m.logger.Warningf("parseUptime: invalid minutes: %v", err)
 		return 0
 	}
 	if minutes > 59 {
-		p4m.logger.Debugf("parseUptime: minutes must be between 0 and 59")
+		p4m.logger.Warningf("parseUptime: minutes must be between 0 and 59")
 		return 0
 	}
 	seconds, err := strconv.ParseInt(parts[2], 10, 64)
 	if err != nil {
-		p4m.logger.Debugf("parseUptime: invalid seconds: %v", err)
+		p4m.logger.Warningf("parseUptime: invalid seconds: %v", err)
 		return 0
 	}
 	if seconds > 59 {
-		p4m.logger.Debugf("parseUptime: seconds must be between 0 and 59")
+		p4m.logger.Warningf("parseUptime: seconds must be between 0 and 59")
 		return 0
 	}
 	return hours*3600 + minutes*60 + seconds
@@ -479,6 +479,109 @@ func (p4m *P4MonitorMetrics) monitorLicense() {
 		}
 	}
 	p4m.parseLicense()
+}
+
+func (p4m *P4MonitorMetrics) ConvertToBytes(size string) string {
+	// Handle empty input
+	if len(size) == 0 {
+		p4m.logger.Error("empty input string")
+		return "0"
+	}
+	// Find the numeric part and unit
+	var numStr string
+	var unit string
+	for i, char := range size {
+		if !strings.ContainsRune("0123456789.", char) {
+			numStr = size[:i]
+			unit = strings.ToUpper(size[i:])
+			break
+		}
+	}
+	// Parse the numeric part
+	num, err := strconv.ParseFloat(numStr, 64)
+	if err != nil {
+		p4m.logger.Errorf("invalid number format: %v", err)
+		return "0"
+	}
+	// Convert based on unit
+	var multiplier uint64
+	switch unit {
+	case "B":
+		multiplier = 1
+	case "K":
+		multiplier = 1024
+	case "M":
+		multiplier = 1024 * 1024
+	case "G":
+		multiplier = 1024 * 1024 * 1024
+	case "T":
+		multiplier = 1024 * 1024 * 1024 * 1024
+	case "P":
+		multiplier = 1024 * 1024 * 1024 * 1024 * 1024
+	default:
+		p4m.logger.Errorf("unsupported unit: %s", unit)
+		return "0"
+	}
+	return fmt.Sprintf("%d", uint64(num*float64(multiplier)))
+}
+
+func (p4m *P4MonitorMetrics) parseFilesys(values []string) {
+	configurables := strings.Split("filesys.depot.min filesys.P4ROOT.min filesys.P4JOURNAL.min filesys.P4LOG.min filesys.TEMP.min", " ")
+	reConfig := regexp.MustCompile(`\S+=(\S+) \(\S+\)`)
+	reLabel := regexp.MustCompile(`\S+\.(\S+)\.\S+`)
+	for _, c := range configurables {
+		filesysName := reLabel.ReplaceAllString(c, "$1")
+		configuredValue := ""
+		defaultValue := ""
+		for _, v := range values {
+			if strings.HasPrefix(v, c) {
+				if strings.Contains(v, "(configure)") {
+					configuredValue = reConfig.ReplaceAllString(v, "$1")
+				} else if strings.Contains(v, "(default)") {
+					defaultValue = reConfig.ReplaceAllString(v, "$1")
+				}
+			}
+		}
+		value := configuredValue
+		if value == "" {
+			value = defaultValue
+		}
+		if value != "" {
+			m := metricStruct{name: "p4_filesys_min",
+				help:  "Minimum space for filesystem",
+				mtype: "gauge"}
+			m.value = p4m.ConvertToBytes(value)
+			m.label = labelStruct{name: "filesys", value: filesysName}
+			p4m.metrics = append(p4m.metrics, m)
+		}
+	}
+}
+
+func (p4m *P4MonitorMetrics) monitorFilesys() {
+	// Log current filesys.*.min settings
+	// p4 configure show can give 2 values, or just the (default)
+	//    filesys.P4ROOT.min=5G (configure)
+	//    filesys.P4ROOT.min=250M (default)
+	// fname="$metrics_root/p4_filesys${sdpinst_suffix}-${SERVER_ID}.prom"
+	// TODO: check for update frequency
+	// configurables=
+	configurables := strings.Split("filesys.depot.min filesys.P4ROOT.min filesys.P4JOURNAL.min filesys.P4LOG.min filesys.TEMP.min", " ")
+	configValues := make([]string, 0)
+	for _, c := range configurables {
+		p4cmd, errbuf, p := p4m.newP4CmdPipe(fmt.Sprintf("configure show %s", c))
+		vals, err := p.Exec(p4cmd).Slice()
+		if err != nil {
+			logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		}
+		for _, v := range vals {
+			configValues = append(configValues, v)
+		}
+	}
+
+	// rm -f "$tmpfname"
+	// echo "# HELP p4_filesys_min " >> "$tmpfname"
+	// echo "# TYPE p4_filesys_min gauge" >> "$tmpfname"
+
 }
 
 // TaskResponse represents the structure of the Swarm JSON response, excluding pingError
