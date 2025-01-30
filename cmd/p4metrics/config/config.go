@@ -17,6 +17,7 @@ type Config struct {
 	SDPInstance    string        `yaml:"sdp_instance"`
 	UpdateInterval time.Duration `yaml:"update_interval"`
 	MonitorSwarm   bool          `yaml:"monitor_swarm"`
+	CmdsByUser     bool          `yaml:"cmds_by_user"`
 }
 
 // Unmarshal the config
