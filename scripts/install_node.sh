@@ -93,6 +93,12 @@ if [[ $(id -u) -ne 0 ]]; then
    exit 1
 fi
 
+# Check if local_bin_dir exists
+if [[ ! -d "$local_bin_dir" ]]; then
+    echo "Error: Directory $local_bin_dir does not exist. Please create it before running this script."
+    exit 1
+fi
+
 wget=$(which wget)
 [[ $? -eq 0 ]] || bail "Failed to find wget in path"
 
