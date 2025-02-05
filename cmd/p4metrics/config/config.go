@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	yaml "gopkg.in/yaml.v2"
@@ -11,7 +10,7 @@ import (
 
 // Config for p4metrics
 type Config struct {
-	MetricsOutput  string        `yaml:"metrics_output"`
+	MetricsRoot    string        `yaml:"metrics_root"`
 	ServerID       string        `yaml:"server_id"`
 	ServerIDPath   string        `yaml:"server_id_path"`
 	SDPInstance    string        `yaml:"sdp_instance"`
@@ -57,11 +56,11 @@ func LoadConfigString(content []byte) (*Config, error) {
 }
 
 func (c *Config) validate() error {
-	if c.MetricsOutput == "" {
+	if c.MetricsRoot == "" {
 		return fmt.Errorf("invalid metrics_output: please specify name of p4metrics metric file to write, e.g. /hxlogs/metrics/p4_metrics.prom")
 	}
-	if !strings.HasSuffix(c.MetricsOutput, ".prom") {
-		return fmt.Errorf("invalid metrics_output: P4metrics metric file must end in '.prom'")
-	}
+	// if !strings.HasSuffix(c.MetricsRoot, ".prom") {
+	// 	return fmt.Errorf("invalid metrics_output: P4metrics metric file must end in '.prom'")
+	// }
 	return nil
 }

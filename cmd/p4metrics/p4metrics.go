@@ -304,10 +304,12 @@ func (p4m *P4MonitorMetrics) getCumulativeMetrics() string {
 }
 
 // Writes metrics to appropriate file - writes to temp file first and renames it after
-func (p4m *P4MonitorMetrics) writeMetricsFile(metrics []byte) {
+func (p4m *P4MonitorMetrics) writeMetricsFile(filePrefix string, metrics []byte) {
 	var f *os.File
 	var err error
-	tmpFile := p4m.config.MetricsOutput + ".tmp"
+	outputFile := path.Join(p4m.config.MetricsRoot,
+		fmt.Sprintf("%s-%s-%s", filePrefix, p4m.config.SDPInstance, p4m.config.ServerID))
+	tmpFile := outputFile + ".tmp"
 	f, err = os.Create(tmpFile)
 	if err != nil {
 		p4m.logger.Errorf("Error opening %s: %v", tmpFile, err)
@@ -322,9 +324,9 @@ func (p4m *P4MonitorMetrics) writeMetricsFile(metrics []byte) {
 	if err != nil {
 		p4m.logger.Errorf("Error chmod-ing file: %v", err)
 	}
-	err = os.Rename(tmpFile, p4m.config.MetricsOutput)
+	err = os.Rename(tmpFile, outputFile)
 	if err != nil {
-		p4m.logger.Errorf("Error renaming: %s to %s - %v", tmpFile, p4m.config.MetricsOutput, err)
+		p4m.logger.Errorf("Error renaming: %s to %s - %v", tmpFile, outputFile, err)
 	}
 }
 
@@ -338,6 +340,8 @@ func (p4m *P4MonitorMetrics) newP4CmdPipe(cmd string) (string, *bytes.Buffer, *s
 
 func (p4m *P4MonitorMetrics) monitorUptime() {
 	p4m.logger.Debugf("monitorUptime")
+	p4m.metrics = make([]metricStruct, 0)
+	metricsPrefix := "p4_uptime"
 	// Server uptime as a simple seconds parameter - parsed from p4 info:
 	// Server uptime: 168:39:20
 	k := "Server uptime"
@@ -354,9 +358,11 @@ func (p4m *P4MonitorMetrics) monitorUptime() {
 			help:  "P4D Server uptime (seconds)",
 			mtype: "counter",
 			value: fmt.Sprintf("%d", seconds)})
+	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
 }
 
 func (p4m *P4MonitorMetrics) parseLicense() {
+	p4m.metrics = make([]metricStruct, 0)
 	// Called by monitorLicense
 	// Assume that p4m.p4license is already setup with data from p4 license -u
 	// Server license expiry - parsed from "p4 license -u" - key fields:
@@ -470,6 +476,8 @@ func (p4m *P4MonitorMetrics) parseLicense() {
 
 func (p4m *P4MonitorMetrics) monitorLicense() {
 	p4m.logger.Debugf("monitorLicense")
+	p4m.metrics = make([]metricStruct, 0)
+	metricsPrefix := "p4_license"
 	// Server license expiry - parsed from "p4 license -u" - key fields:
 	// ... userCount 893
 	// ... userLimit 1000
@@ -492,6 +500,7 @@ func (p4m *P4MonitorMetrics) monitorLicense() {
 		}
 	}
 	p4m.parseLicense()
+	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
 }
 
 func (p4m *P4MonitorMetrics) ConvertToBytes(size string) string {
@@ -572,6 +581,7 @@ func (p4m *P4MonitorMetrics) parseFilesys(values []string) {
 
 func (p4m *P4MonitorMetrics) monitorFilesys() {
 	p4m.logger.Debugf("monitorFilesys")
+	p4m.metrics = make([]metricStruct, 0)
 	// Log current filesys.*.min settings
 	// p4 configure show can give 2 values, or just the (default)
 	//    filesys.P4ROOT.min=5G (configure)
@@ -596,8 +606,9 @@ func (p4m *P4MonitorMetrics) monitorFilesys() {
 
 func (p4m *P4MonitorMetrics) monitorVersions() {
 	p4m.logger.Debugf("monitorVersions")
+	p4m.metrics = make([]metricStruct, 0)
+	metricsPrefix := "p4_version_info"
 	// P4D and SDP Versions
-	// fname="$metrics_root/p4_version_info${sdpinst_suffix}-${SERVER_ID}.prom"
 
 	p4dVersion := "unknown"
 	p4dServices := "unknown"
@@ -632,12 +643,14 @@ func (p4m *P4MonitorMetrics) monitorVersions() {
 				label: labelStruct{name: "version", value: SDPVersion}})
 		}
 	}
+	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
 }
 
 func (p4m *P4MonitorMetrics) monitorSSL() {
 	p4m.logger.Debugf("monitorSSL")
+	p4m.metrics = make([]metricStruct, 0)
+	metricsPrefix := "p4_ssl_info"
 	// P4D certificate expiry
-	// fname="$metrics_root/p4_ssl_info${sdpinst_suffix}-${SERVER_ID}.prom"
 	certExpiry := ""
 	if v, ok := p4m.p4info["Server cert expires"]; ok {
 		certExpiry = v
@@ -656,6 +669,7 @@ func (p4m *P4MonitorMetrics) monitorSSL() {
 		help:  "P4D SSL certificate expiry epoch seconds",
 		mtype: "gauge",
 		value: fmt.Sprintf("%d", certExpirySecs)})
+	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
 }
 
 func (p4m *P4MonitorMetrics) extractServiceURL(lines []string) string {
@@ -720,17 +734,14 @@ func (p4m *P4MonitorMetrics) getCertificateExpiry(certURL string) (time.Time, er
 
 func (p4m *P4MonitorMetrics) monitorHASSSL() {
 	p4m.logger.Debugf("monitorHASSSL")
+	p4m.metrics = make([]metricStruct, 0)
+	metricsPrefix := "p4_has_ssl_info"
 	// Check expiry of HAS SSL certificate - if it exists!
-	// fname="$metrics_root/p4_has_ssl_info${sdpinst_suffix}-${SERVER_ID}.prom"
 
 	// # Update every 60 mins
 	// tmp_has_ssl="$metrics_root/tmp_has_ssl"
 	// [[ ! -f "$tmp_has_ssl" || $(find "$tmp_has_ssl" -mmin +60) ]] || return
-
-	// extExists=$(p4 extension --list --type extensions | grep 'extension Auth::loginhook')
-	// if [[ -z "$extExists" ]]; then
-	//     return
-	// fi
+	// TODO: update frequency
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("extension --list --type extensions")
 	ext, err := p.Exec(p4cmd).Match("extension Auth::loginhook").Column(2).String()
 	if err != nil {
@@ -766,12 +777,14 @@ func (p4m *P4MonitorMetrics) monitorHASSSL() {
 		mtype: "gauge",
 		value: fmt.Sprintf("%d", certExpiryTime.Unix()),
 		label: labelStruct{name: "url", value: certURL}})
+	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
 }
 
 func (p4m *P4MonitorMetrics) monitorChange() {
 	p4m.logger.Debugf("monitorChange")
+	p4m.metrics = make([]metricStruct, 0)
+	metricsPrefix := "p4_change"
 	// Latest changelist counter as single counter value
-	// fname="$metrics_root/p4_change${sdpinst_suffix}-${SERVER_ID}.prom"
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("counter change")
 	change, err := p.Exec(p4cmd).String()
 	if err != nil {
@@ -782,6 +795,7 @@ func (p4m *P4MonitorMetrics) monitorChange() {
 		help:  "P4D change counter",
 		mtype: "counter",
 		value: change})
+	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
 }
 
 func (p4m *P4MonitorMetrics) getFieldCounts(lines []string, fieldNum int) map[string]int {
@@ -799,8 +813,9 @@ func (p4m *P4MonitorMetrics) getFieldCounts(lines []string, fieldNum int) map[st
 
 func (p4m *P4MonitorMetrics) monitorProcesses() {
 	p4m.logger.Debugf("monitorProcesses")
+	p4m.metrics = make([]metricStruct, 0)
 	// Monitor metrics summarised by cmd or user
-	// fname="$metrics_root/p4_monitor${sdpinst_suffix}-${SERVER_ID}.prom"
+	metricsPrefix := "p4_monitor"
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("monitor show -l")
 	monitorOutput, err := p.Exec(p4cmd).Slice()
 	if err != nil {
@@ -843,10 +858,15 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 		help:  "P4 ps running processes",
 		mtype: "gauge",
 		value: fmt.Sprintf("%d", pcount)})
+
+	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
 }
 
 func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 	p4m.logger.Debugf("monitorCheckpoint")
+	p4m.metrics = make([]metricStruct, 0)
+	metricsPrefix := "p4_checkpoint"
+
 	// Metric for when SDP checkpoint last ran and how long it took.
 	// Not as easy as it might first appear because:
 	// - might be in progress
@@ -858,7 +878,6 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 		return
 	}
 	sdpInstance := p4m.config.SDPInstance
-	// fname="$metrics_root/p4_checkpoint${sdpinst_suffix}-${SERVER_ID}.prom"
 
 	errbuf := new(bytes.Buffer)
 	p := script.NewPipe().WithStderr(errbuf)
@@ -913,6 +932,7 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 		help:  "Time taken for last checkpoint/restore action",
 		mtype: "gauge",
 		value: fmt.Sprintf("%.0f", diff.Seconds())})
+	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
 }
 
 // ServerInfo represents for servers/replicas
@@ -925,8 +945,9 @@ type ServerInfo struct {
 
 func (p4m *P4MonitorMetrics) monitorReplicas() {
 	p4m.logger.Debugf("monitorReplicas")
+	p4m.metrics = make([]metricStruct, 0)
+	metricsPrefix := "p4_replication"
 	// Metric for server replicas
-	// fname = "$metrics_root/p4_replication${sdpinst_suffix}-${SERVER_ID}.prom"
 
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("-F \"%serverID% %type% %services%\" servers")
 	reServices := regexp.MustCompile("standard|replica|commit-server|edge-server|forwarding-replica|build-server|standby|forwarding-standby")
@@ -976,6 +997,7 @@ func (p4m *P4MonitorMetrics) monitorReplicas() {
 			value: s.offset,
 			label: labelStruct{name: "servername", value: s.name}})
 	}
+	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
 }
 
 // monitor_errors () {
@@ -1023,226 +1045,214 @@ func (p4m *P4MonitorMetrics) monitorReplicas() {
 //     mv "$tmpfname" "$fname"
 // }
 
-// monitor_pull () {
-//     # p4 pull metrics - only valid for replica servers
-//     [[ "${P4REPLICA}" == "TRUE" ]] || return
+func (p4m *P4MonitorMetrics) monitorPull() {
+	p4m.logger.Debugf("monitorPull")
+	p4m.metrics = make([]metricStruct, 0)
+	metricsPrefix := "p4_pull"
+	// p4 pull metrics - only valid for replica servers
+	if getVar(*p4m.env, "P4REPLICA") != "TRUE" {
+		p4m.logger.Debugf("Exiting as not a replica")
+		return
+	}
 
-//     fname="$metrics_root/p4_pull${sdpinst_suffix}-${SERVER_ID}.prom"
-//     tmpfname="$fname.$$"
-//     tmp_pull_queue="$metrics_root/pullq.out"
-//     $p4 pull -l > "$tmp_pull_queue" 2> /dev/null
-//     rm -f "$tmpfname"
+	// TODO: use pull -ls
+	tempPullQ := path.Join(p4m.config.MetricsRoot, "pullq.out")
+	p4cmd, errbuf, p := p4m.newP4CmdPipe("pull -l")
+	_, err := p.Exec(p4cmd).WriteFile(tempPullQ)
+	if err != nil {
+		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		return
+	}
 
-//     count=$(grep -cEa "failed\.$" "$tmp_pull_queue")
-//     {
-//         echo "# HELP p4_pull_errors P4 pull transfers failed count"
-//         echo "# TYPE p4_pull_errors counter"
-//         echo "p4_pull_errors{${serverid_label}${sdpinst_label}} $count"
-//     } >> "$tmpfname"
+	reFailed := regexp.MustCompile(`failed\.$`)
+	failedCount, err := script.File(tempPullQ).MatchRegexp(reFailed).CountLines()
+	if err != nil {
+		logger.Errorf("Error counting failed pull errors: %v", err)
+		return
+	}
+	otherCount, err := script.File(tempPullQ).RejectRegexp(reFailed).CountLines()
+	if err != nil {
+		logger.Errorf("Error counting pull queue: %v", err)
+		return
+	}
 
-//     count=$(grep -cvEa "failed\.$" "$tmp_pull_queue")
-//     {
-//         echo "# HELP p4_pull_queue P4 pull files in queue count"
-//         echo "# TYPE p4_pull_queue counter"
-//         echo "p4_pull_queue{${serverid_label}${sdpinst_label}} $count"
-//     } >> "$tmpfname"
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_errors",
+		help:  "Count of p4 pull transfers in failed state",
+		mtype: "gauge",
+		value: fmt.Sprintf("%d", failedCount)})
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_errors",
+		help:  "Count of p4 pull files (not in failed state)",
+		mtype: "gauge",
+		value: fmt.Sprintf("%d", otherCount)})
 
-// #     $ p4 pull -lj
-// #     Current replica journal state is:       Journal 1237,  Sequence 2680510310.
-// #     Current master journal state is:        Journal 1237,  Sequence 2680510310.
-// #     The statefile was last modified at:     2022/03/29 14:15:16.
-// #     The replica server time is currently:   2022/03/29 14:15:18 +0000 GMT
+	// Various possible results from p4 pull
+	// $ p4 pull -lj
+	// Current replica journal state is:       Journal 1237,  Sequence 2680510310.
+	// Current master journal state is:        Journal 1237,  Sequence 2680510310.
+	// The statefile was last modified at:     2022/03/29 14:15:16.
+	// The replica server time is currently:   2022/03/29 14:15:18 +0000 GMT
 
-// #     $ p4 pull -lj
-// #     Perforce password (P4PASSWD) invalid or unset.
-// #     Perforce password (P4PASSWD) invalid or unset.
-// #     Current replica journal state is:       Journal 1237,  Sequence 2568249374.
-// #     Current master journal state is:        Journal 1237,  Sequence -1.
-// #     Current master journal state is:        Journal 0,      Sequence -1.
-// #     The statefile was last modified at:     2022/03/29 13:05:46.
-// #     The replica server time is currently:   2022/03/29 14:13:21 +0000 GMT
+	// $ p4 pull -lj
+	// Perforce password (P4PASSWD) invalid or unset.
+	// Perforce password (P4PASSWD) invalid or unset.
+	// Current replica journal state is:       Journal 1237,  Sequence 2568249374.
+	// Current master journal state is:        Journal 1237,  Sequence -1.
+	// Current master journal state is:        Journal 0,      Sequence -1.
+	// The statefile was last modified at:     2022/03/29 13:05:46.
+	// The replica server time is currently:   2022/03/29 14:13:21 +0000 GMT
 
-// # perforce@gemini20:/p4 p4 -Ztag pull -lj
-// # ... replicaJournalCounter 12671
-// # ... replicaJournalNumber 12671
-// # ... replicaJournalSequence 17984845
-// # ... replicaStatefileModified 1664718313
-// # ... replicaTime 1664718339
-// # ... masterJournalNumber 12671
-// # ... masterJournalSequence 17985009
-// # ... masterJournalNumberLEOF 12671
-// # ... masterJournalSequenceLEOF 17984845
+	// perforce@gemini20:/p4 p4 -Ztag pull -ljv
+	// ... replicaJournalCounter 17823
+	// ... replicaJournalNumber 17823
+	// ... replicaJournalSequence 706254077
+	// ... replicaStatefileModified 1738761870
+	// ... replicaTime 1738761870
+	// ... masterJournalNumber 17823
+	// ... masterJournalSequence 706269139
+	// ... masterJournalNumberLEOF 17823
+	// ... masterJournalSequenceLEOF 706269139
+	// ... journalBytesBehind 15062
+	// ... journalRotationsBehind 0
 
-// # perforce@gemini20:/p4 p4 -Ztag pull -lj
-// # Perforce password (P4PASSWD) invalid or unset.
-// # Perforce password (P4PASSWD) invalid or unset.
-// # ... replicaJournalCounter 12671
-// # ... replicaJournalNumber 12671
-// # ... replicaJournalSequence 17984845
-// # ... replicaStatefileModified 1664718313
-// # ... replicaTime 1664718339
-// # ... masterJournalNumber 12671
-// # ... masterJournalSequence -1
-// # ... currentJournalNumber 0
-// # ... currentJournalSequence -1
-// # ... masterJournalNumberLEOF 12671
-// # ... masterJournalSequenceLEOF -1
-// # ... currentJournalNumberLEOF 0
-// # ... currentJournalSequenceLEOF -1
+	// perforce@gemini20:/p4 p4 -Ztag pull -ljv
+	// Perforce password (P4PASSWD) invalid or unset.
+	// Perforce password (P4PASSWD) invalid or unset.
+	// ... replicaJournalCounter 12671
+	// ... replicaJournalNumber 12671
+	// ... replicaJournalSequence 17984845
+	// ... replicaStatefileModified 1664718313
+	// ... replicaTime 1664718339
+	// ... masterJournalNumber 12671
+	// ... masterJournalSequence -1
+	// ... currentJournalNumber 0
+	// ... currentJournalSequence -1
+	// ... masterJournalNumberLEOF 12671
+	// ... masterJournalSequenceLEOF -1
+	// ... currentJournalNumberLEOF 0
+	// ... currentJournalSequenceLEOF -1
 
-//     tmp_pull_stats="$metrics_root/pull-lj.out"
-//     $p4 -Ztag pull -lj > "$tmp_pull_stats" 2> /dev/null
+	//     tmp_pull_stats="$metrics_root/pull-ljv.out"
+	//     $p4 -Ztag pull -lj > "$tmp_pull_stats" 2> /dev/null
 
-//     replica_jnl_file=$(grep "replicaJournalCounter " "$tmp_pull_stats" | awk '{print $3}' )
-//     master_jnl_file=$(grep "masterJournalNumber " "$tmp_pull_stats" | awk '{print $3}' )
-//     journals_behind=$((master_jnl_file - replica_jnl_file))
+	tempPullStats := path.Join(p4m.config.MetricsRoot, "pull-ljv.out")
+	p4cmd, errbuf, p = p4m.newP4CmdPipe("-Ztag pull -ljv")
+	_, err = p.Exec(p4cmd).WriteFile(tempPullStats)
+	if err != nil {
+		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		return
+	}
 
-//     {
-//         echo "# HELP p4_pull_replica_journals_behind Count of how many journals behind replica is"
-//         echo "# TYPE p4_pull_replica_journals_behind gauge"
-//         echo "p4_pull_replica_journals_behind{${serverid_label}${sdpinst_label}} $journals_behind"
-//     }  >> "$tmpfname"
+	journalRotationsBehind, err := script.File(tempPullStats).Match("... journalRotationsBehind").Column(3).String()
+	if err != nil {
+		p4m.logger.Errorf("Error getting journalRotationsBehind %v", err)
+		return
+	}
+	if journalRotationsBehind == "" {
+		journalRotationsBehind = "-1"
+	}
+	journalBytesBehind, err := script.File(tempPullStats).Match("... journalBytesBehind").Column(3).String()
+	if err != nil {
+		p4m.logger.Errorf("Error getting journalBytesBehind %v", err)
+		return
+	}
+	if journalBytesBehind == "" {
+		journalBytesBehind = "-1"
+	}
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_replica_journals_behind",
+		help:  "Count of how many journals behind replica is",
+		mtype: "gauge",
+		value: journalRotationsBehind})
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_replica_bytes_behind",
+		help:  "Count of how many bytes behind replica is",
+		mtype: "gauge",
+		value: journalBytesBehind})
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_replica_lag",
+		help:  "Count of how many bytes behind replica is",
+		mtype: "gauge",
+		value: journalBytesBehind})
 
-//     replica_jnl_seq=$(grep "replicaJournalSequence " "$tmp_pull_stats" | awk '{print $3}' )
-//     master_jnl_seq=$(grep "masterJournalSequence " "$tmp_pull_stats" | awk '{print $3}' )
-//     {
-//         echo "# HELP p4_pull_replication_error Set to 1 if replication error"
-//         echo "# TYPE p4_pull_replication_error gauge"
-//     } >>  "$tmpfname"
-//     if [[ $master_jnl_seq -lt 0 ]]; then
-//         echo "p4_pull_replication_error{${serverid_label}${sdpinst_label}} 1" >> "$tmpfname"
-//     else
-//         echo "p4_pull_replication_error{${serverid_label}${sdpinst_label}} 0" >> "$tmpfname"
-//     fi
+	masterJournalSequence, err := script.File(tempPullStats).Match("... masterJournalSequence").Column(3).String()
+	if err != nil {
+		p4m.logger.Errorf("Error getting masterJournalSequence %v", err)
+		return
+	}
+	replicationError := "0"
+	if masterJournalSequence == "-1" {
+		replicationError = "1"
+	}
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_replication_error",
+		help:  "Set to 1 if replication error is true",
+		mtype: "gauge",
+		value: replicationError})
 
-//     {
-//         echo "# HELP p4_pull_replica_lag Replica lag count (bytes)"
-//         echo "# TYPE p4_pull_replica_lag gauge"
-//     } >>  "$tmpfname"
+	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+}
 
-//     if [[ $master_jnl_seq -lt 0 ]]; then
-//         echo "p4_pull_replica_lag{${serverid_label}${sdpinst_label}} -1" >> "$tmpfname"
-//     else
-//         # Ensure base 10 arithmetic used to avoid overflow errors
-//         lag_count=$((10#$master_jnl_seq - 10#$replica_jnl_seq))
-//         echo "p4_pull_replica_lag{${serverid_label}${sdpinst_label}} $lag_count" >> "$tmpfname"
-//     fi
+func (p4m *P4MonitorMetrics) monitorRealTime() {
+	p4m.logger.Debugf("monitorRealTime")
+	p4m.metrics = make([]metricStruct, 0)
+	// p4d --show-realtime - only for 2021.1 or greater
+	metricsPrefix := "p4_realtime"
 
-//     chmod 644 "$tmpfname"
-//     mv "$tmpfname" "$fname"
-// }
+	// Intially only available for SDP
+	if p4m.config.SDPInstance == "" {
+		return
+	}
 
-// monitor_realtime () {
-//     # p4d --show-realtime - only for 2021.1 or greater
-//     # Intially only available for SDP
-//     [[ $UseSDP -eq 1 ]] || return
-//     p4dver=$($P4DBIN -V |grep Rev.|awk -F / '{print $3}' )
-//     # shellcheck disable=SC2072
-//     [[ "$p4dver" > "2020.0" ]] || return
+	p4dbin := getVar(*p4m.env, "P4DBIN")
+	if p4dbin == "" {
+		return
+	}
+	errbuf := new(bytes.Buffer)
+	p := script.NewPipe().WithStderr(errbuf)
+	p4dVersion, err := p.Exec(fmt.Sprintf("%s -V", p4dbin)).Match("Rev.").String()
+	if err != nil {
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4dbin, err, errbuf.String())
+		return
+	}
+	parts := strings.Split(p4dVersion, "/")
+	if len(parts) >= 3 {
+		v := parts[2]
+		if strings.Compare("2020.0", v) >= 0 {
+			p4m.logger.Debugf("P4D Version < 2020.0: %s", v)
+			return
+		}
+	}
 
-//     realtimefile="/tmp/show-realtime.out"
-//     $P4DBIN --show-realtime > "$realtimefile" 2> /dev/null || return
-
-//     # File format:
-//     # rtv.db.lockwait (flags 0) 0 max 382
-//     # rtv.db.ckp.active (flags 0) 0
-//     # rtv.db.ckp.records (flags 0) 34 max 34
-//     # rtv.db.io.records (flags 0) 126389592854
-//     # rtv.rpl.behind.bytes (flags 0) 0 max -1
-//     # rtv.rpl.behind.journals (flags 0) 0 max -1
-//     # rtv.svr.sessions.active (flags 0) 110 max 585
-//     # rtv.svr.sessions.total (flags 0) 5997080
-
-//     fname="$metrics_root/p4_realtime${sdpinst_suffix}-${SERVER_ID}.prom"
-//     tmpfname="$fname.$$"
-
-//     rm -f "$tmpfname"
-//     metric_count=0
-//     origname="rtv.db.lockwait"
-//     mname="p4_${origname//./_}"
-//     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-//     if [[ ! -z $count ]]; then
-//         metric_count=$(($metric_count + 1))
-//         echo "# HELP $mname P4 realtime lockwait counter" >> "$tmpfname"
-//         echo "# TYPE $mname gauge" >> "$tmpfname"
-//         echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
-//     fi
-
-//     origname="rtv.db.ckp.active"
-//     mname="p4_${origname//./_}"
-//     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-//     if [[ ! -z $count ]]; then
-//         metric_count=$(($metric_count + 1))
-//         echo "# HELP $mname P4 realtime checkpoint active indicator" >> "$tmpfname"
-//         echo "# TYPE $mname gauge" >> "$tmpfname"
-//         echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
-//     fi
-
-//     origname="rtv.db.ckp.records"
-//     mname="p4_${origname//./_}"
-//     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-//     if [[ ! -z $count ]]; then
-//         metric_count=$(($metric_count + 1))
-//         echo "# HELP $mname P4 realtime checkpoint records counter" >> "$tmpfname"
-//         echo "# TYPE $mname gauge" >> "$tmpfname"
-//         echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
-//     fi
-
-//     origname="rtv.db.io.records"
-//     mname="p4_${origname//./_}"
-//     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-//     if [[ ! -z $count ]]; then
-//         metric_count=$(($metric_count + 1))
-//         echo "# HELP $mname P4 realtime IO records counter" >> "$tmpfname"
-//         echo "# TYPE $mname counter" >> "$tmpfname"
-//         echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
-//     fi
-
-//     origname="rtv.rpl.behind.bytes"
-//     mname="p4_${origname//./_}"
-//     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-//     if [[ ! -z $count ]]; then
-//         metric_count=$(($metric_count + 1))
-//         echo "# HELP $mname P4 realtime replica bytes lag counter" >> "$tmpfname"
-//         echo "# TYPE $mname gauge" >> "$tmpfname"
-//         echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
-//     fi
-
-//     origname="rtv.rpl.behind.journals"
-//     mname="p4_${origname//./_}"
-//     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-//     if [[ ! -z $count ]]; then
-//         metric_count=$(($metric_count + 1))
-//         echo "# HELP $mname P4 realtime replica journal lag counter" >> "$tmpfname"
-//         echo "# TYPE $mname gauge" >> "$tmpfname"
-//         echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
-//     fi
-
-//     origname="rtv.svr.sessions.active"
-//     mname="p4_${origname//./_}"
-//     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-//     if [[ ! -z $count ]]; then
-//         metric_count=$(($metric_count + 1))
-//         echo "# HELP $mname P4 realtime server active sessions counter" >> "$tmpfname"
-//         echo "# TYPE $mname gauge" >> "$tmpfname"
-//         echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
-//     fi
-
-//     origname="rtv.svr.sessions.total"
-//     mname="p4_${origname//./_}"
-//     count=$(grep "$origname" "$realtimefile" | awk '{print $4}')
-//     if [[ ! -z $count ]]; then
-//         metric_count=$(($metric_count + 1))
-//         echo "# HELP $mname P4 realtime server total sessions counter" >> "$tmpfname"
-//         echo "# TYPE $mname counter" >> "$tmpfname"
-//         echo "$mname{${serverid_label}${sdpinst_label}} $count" >> "$tmpfname"
-//     fi
-
-//     if [[ $metric_count -gt 0 ]]; then
-//         chmod 644 "$tmpfname"
-//         mv "$tmpfname" "$fname"
-//     fi
-// }
+	errbuf = new(bytes.Buffer)
+	p = script.NewPipe().WithStderr(errbuf)
+	cmd := fmt.Sprintf("%s --show-realtime", p4dbin)
+	lines, err := p.Exec(cmd).Slice()
+	if err != nil {
+		p4m.logger.Errorf("Error running %s: %v, err:%q", cmd, err, errbuf.String())
+		return
+	}
+	p4m.logger.Debugf("Realtime values: %q", lines)
+	// File format:
+	// rtv.db.lockwait (flags 0) 0 max 382
+	// rtv.db.ckp.active (flags 0) 0
+	// rtv.db.ckp.records (flags 0) 34 max 34
+	// rtv.db.io.records (flags 0) 126389592854
+	// rtv.rpl.behind.bytes (flags 0) 0 max -1
+	// rtv.rpl.behind.journals (flags 0) 0 max -1
+	// rtv.svr.sessions.active (flags 0) 110 max 585
+	// rtv.svr.sessions.total (flags 0) 5997080
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "rtv.") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		name := "p4_" + strings.ReplaceAll(fields[0], ".", "_")
+		p4m.metrics = append(p4m.metrics, metricStruct{name: name,
+			help:  fmt.Sprintf("P4 realtime metric %s", fields[0]),
+			mtype: "gauge",
+			value: fields[3]})
+	}
+	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+}
 
 // TaskResponse represents the structure of the Swarm JSON response, excluding pingError
 type TaskResponse struct {
@@ -1294,6 +1304,8 @@ func (p4m *P4MonitorMetrics) getSwarmQueueInfo(url, userid, password string) (*T
 func (p4m *P4MonitorMetrics) monitorSwarm() {
 	// Find Swarm URL and get information from it
 	p4m.logger.Debugf("monitorSwarm")
+	p4m.metrics = make([]metricStruct, 0)
+	metricsPrefix := "p4_swarm"
 
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("-ztag info -s")
 	authID, err := p.Exec(p4cmd).Match("... serverCluster").Column(3).String()
@@ -1376,6 +1388,7 @@ func (p4m *P4MonitorMetrics) monitorSwarm() {
 			help:  "Swarm current max number of workers",
 			mtype: "gauge",
 			value: fmt.Sprintf("%d", swarminfo.MaxWorkers)})
+	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
 }
 
 // Reads server id for SDP instance or the server.id path
@@ -1440,7 +1453,7 @@ func main() {
 
 	logger.Infof("%v", version.Print("p4metrics"))
 	logger.Infof("Processing: output to '%s' SDP instance '%s'",
-		cfg.MetricsOutput, cfg.SDPInstance)
+		cfg.MetricsRoot, cfg.SDPInstance)
 
 	if cfg.SDPInstance == "" && len(cfg.ServerID) == 0 && cfg.ServerIDPath == "" {
 		logger.Errorf("error loading config file - if no sdp_instance then please specify server_id or server_id_path!")
@@ -1462,34 +1475,17 @@ func main() {
 	if cfg.MonitorSwarm {
 		p4m.monitorSwarm()
 		m := p4m.getCumulativeMetrics()
-		p4m.writeMetricsFile([]byte(m))
+		p4m.writeMetricsFile("p4_swarm", []byte(m))
 	}
 	p4m.monitorUptime()
-	p4m.logger.Debugf("metrics: %q", p4m.metrics)
-	p4m.metrics = make([]metricStruct, 0)
 	p4m.monitorChange()
-	p4m.logger.Debugf("metrics: %q", p4m.metrics)
-	p4m.metrics = make([]metricStruct, 0)
 	p4m.monitorCheckpoint()
-	p4m.logger.Debugf("metrics: %q", p4m.metrics)
-	p4m.metrics = make([]metricStruct, 0)
 	p4m.monitorFilesys()
-	p4m.logger.Debugf("metrics: %q", p4m.metrics)
-	p4m.metrics = make([]metricStruct, 0)
 	p4m.monitorHASSSL()
-	p4m.logger.Debugf("metrics: %q", p4m.metrics)
-	p4m.metrics = make([]metricStruct, 0)
 	p4m.monitorLicense()
-	p4m.logger.Debugf("metrics: %q", p4m.metrics)
-	p4m.metrics = make([]metricStruct, 0)
 	p4m.monitorProcesses()
-	p4m.logger.Debugf("metrics: %q", p4m.metrics)
-	p4m.metrics = make([]metricStruct, 0)
 	p4m.monitorReplicas()
-	p4m.logger.Debugf("metrics: %q", p4m.metrics)
-	p4m.metrics = make([]metricStruct, 0)
 	p4m.monitorSSL()
-	p4m.logger.Debugf("metrics: %q", p4m.metrics)
-	p4m.metrics = make([]metricStruct, 0)
-
+	p4m.monitorPull()
+	p4m.monitorRealTime()
 }
