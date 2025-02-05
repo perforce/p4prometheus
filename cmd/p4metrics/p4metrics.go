@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,8 +29,9 @@ import (
 )
 
 // GO standard reference value/format: Mon Jan 2 15:04:05 -0700 MST 2006
-const p4infotimeformat = "2006/01/02 15:04:05 -0700 MST"
-const openssltimeformat = "Jan 2 15:04:05 2006 MST"
+const p4InfoTimeFormat = "2006/01/02 15:04:05 -0700 MST"
+const checkpointTimeFormat = "2006-01-02 15:04:05"
+const opensslTimeFormat = "Jan 2 15:04:05 2006 MST"
 
 var logger logrus.Logger
 
@@ -127,6 +129,7 @@ type P4MonitorMetrics struct {
 	p4license         map[string]string
 	logFile           string
 	errorsFile        string
+	metricsFilePrefix string
 	metrics           []metricStruct
 }
 
@@ -298,24 +301,43 @@ func (p4m *P4MonitorMetrics) getCumulativeMetrics() string {
 		{name: "sdpinst", value: p4m.sdpInstance}}
 	metrics := new(bytes.Buffer)
 	for _, m := range p4m.metrics {
-		p4m.outputMetric(metrics, m.name, m.help, m.mtype, m.value, fixedLabels)
+		labels := fixedLabels
+		if m.label.name != "" {
+			labels = append(labels, m.label)
+		}
+		p4m.outputMetric(metrics, m.name, m.help, m.mtype, m.value, labels)
 	}
 	return metrics.String()
 }
 
+func (p4m *P4MonitorMetrics) deleteMetricsFile(filePrefix string) {
+	outputFile := path.Join(p4m.config.MetricsRoot,
+		fmt.Sprintf("%s-%s-%s.prom", filePrefix, p4m.config.SDPInstance, p4m.config.ServerID))
+	p4m.metricsFilePrefix = filePrefix
+	if err := os.Remove(outputFile); err != nil && !errors.Is(err, os.ErrNotExist) {
+		p4m.logger.Debugf("Failed to remove: %s, %v", outputFile, err)
+	}
+}
+
 // Writes metrics to appropriate file - writes to temp file first and renames it after
-func (p4m *P4MonitorMetrics) writeMetricsFile(filePrefix string, metrics []byte) {
+func (p4m *P4MonitorMetrics) writeMetricsFile() {
 	var f *os.File
 	var err error
 	outputFile := path.Join(p4m.config.MetricsRoot,
-		fmt.Sprintf("%s-%s-%s", filePrefix, p4m.config.SDPInstance, p4m.config.ServerID))
+		fmt.Sprintf("%s-%s-%s.prom", p4m.metricsFilePrefix, p4m.config.SDPInstance, p4m.config.ServerID))
+	if len(p4m.metrics) == 0 {
+		p4m.logger.Debug("No metrics to write")
+		return
+	}
+	p4m.logger.Debugf("Metrics: %q", p4m.metrics)
 	tmpFile := outputFile + ".tmp"
 	f, err = os.Create(tmpFile)
 	if err != nil {
 		p4m.logger.Errorf("Error opening %s: %v", tmpFile, err)
 		return
 	}
-	f.Write(bytes.ToValidUTF8(metrics, []byte{'?'}))
+
+	f.Write(bytes.ToValidUTF8([]byte(p4m.getCumulativeMetrics()), []byte{'?'}))
 	err = f.Close()
 	if err != nil {
 		p4m.logger.Errorf("Error closing file: %v", err)
@@ -338,12 +360,16 @@ func (p4m *P4MonitorMetrics) newP4CmdPipe(cmd string) (string, *bytes.Buffer, *s
 	return cmd, errbuf, p
 }
 
-func (p4m *P4MonitorMetrics) monitorUptime() {
-	p4m.logger.Debugf("monitorUptime")
+func (p4m *P4MonitorMetrics) startMonitor(functionName, metricsFilePrefix string) {
+	p4m.logger.Debugf("start: %s", functionName)
 	p4m.metrics = make([]metricStruct, 0)
-	metricsPrefix := "p4_uptime"
+	p4m.deleteMetricsFile(metricsFilePrefix)
+}
+
+func (p4m *P4MonitorMetrics) monitorUptime() {
 	// Server uptime as a simple seconds parameter - parsed from p4 info:
 	// Server uptime: 168:39:20
+	p4m.startMonitor("monitorUptime", "p4_uptime")
 	k := "Server uptime"
 	var seconds int64
 	if v, ok := p4m.p4info[k]; ok {
@@ -358,7 +384,7 @@ func (p4m *P4MonitorMetrics) monitorUptime() {
 			help:  "P4D Server uptime (seconds)",
 			mtype: "counter",
 			value: fmt.Sprintf("%d", seconds)})
-	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+	p4m.writeMetricsFile()
 }
 
 func (p4m *P4MonitorMetrics) parseLicense() {
@@ -418,7 +444,7 @@ func (p4m *P4MonitorMetrics) parseLicense() {
 			if v, ok := p4m.p4info["Server date"]; ok {
 				expSecs, _ := strconv.ParseInt(supportExpires, 10, 64)
 				expT := time.Unix(expSecs, 0)
-				t, err := time.Parse(p4infotimeformat, v)
+				t, err := time.Parse(p4InfoTimeFormat, v)
 				if err == nil {
 					diff := expT.Sub(t)
 					licenseTimeRemaining = fmt.Sprintf("%.0f", diff.Seconds())
@@ -427,16 +453,20 @@ func (p4m *P4MonitorMetrics) parseLicense() {
 		}
 	}
 
-	p4m.metrics = append(p4m.metrics,
-		metricStruct{name: "p4_licensed_user_count",
-			help:  "P4D Licensed User count",
-			mtype: "gauge",
-			value: userCount})
-	p4m.metrics = append(p4m.metrics,
-		metricStruct{name: "p4_licensed_user_limit",
-			help:  "P4D Licensed User Limit",
-			mtype: "gauge",
-			value: userLimit})
+	if userCount != "" {
+		p4m.metrics = append(p4m.metrics,
+			metricStruct{name: "p4_licensed_user_count",
+				help:  "P4D Licensed User count",
+				mtype: "gauge",
+				value: userCount})
+	}
+	if userLimit != "" {
+		p4m.metrics = append(p4m.metrics,
+			metricStruct{name: "p4_licensed_user_limit",
+				help:  "P4D Licensed User Limit",
+				mtype: "gauge",
+				value: userLimit})
+	}
 	if licenseExpires != "" {
 		p4m.metrics = append(p4m.metrics,
 			metricStruct{name: "p4_license_expires",
@@ -444,11 +474,13 @@ func (p4m *P4MonitorMetrics) parseLicense() {
 				mtype: "gauge",
 				value: licenseExpires})
 	}
-	p4m.metrics = append(p4m.metrics,
-		metricStruct{name: "p4_license_time_remaining",
-			help:  "P4D License time remaining (secs)",
-			mtype: "gauge",
-			value: licenseTimeRemaining})
+	if licenseTimeRemaining != "" {
+		p4m.metrics = append(p4m.metrics,
+			metricStruct{name: "p4_license_time_remaining",
+				help:  "P4D License time remaining (secs)",
+				mtype: "gauge",
+				value: licenseTimeRemaining})
+	}
 	if supportExpires != "" {
 		p4m.metrics = append(p4m.metrics,
 			metricStruct{name: "p4_license_support_expires",
@@ -475,10 +507,9 @@ func (p4m *P4MonitorMetrics) parseLicense() {
 }
 
 func (p4m *P4MonitorMetrics) monitorLicense() {
-	p4m.logger.Debugf("monitorLicense")
-	p4m.metrics = make([]metricStruct, 0)
-	metricsPrefix := "p4_license"
-	// Server license expiry - parsed from "p4 license -u" - key fields:
+	// Server license expiry - parsed from "p4 license -u"
+	p4m.startMonitor("monitorLicense", "p4_license")
+	// Key fields:
 	// ... userCount 893
 	// ... userLimit 1000
 	// ... licenseExpires 1677628800
@@ -500,7 +531,7 @@ func (p4m *P4MonitorMetrics) monitorLicense() {
 		}
 	}
 	p4m.parseLicense()
-	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+	p4m.writeMetricsFile()
 }
 
 func (p4m *P4MonitorMetrics) ConvertToBytes(size string) string {
@@ -580,9 +611,9 @@ func (p4m *P4MonitorMetrics) parseFilesys(values []string) {
 }
 
 func (p4m *P4MonitorMetrics) monitorFilesys() {
+	// Log current filesys.*.min settings
 	p4m.logger.Debugf("monitorFilesys")
 	p4m.metrics = make([]metricStruct, 0)
-	// Log current filesys.*.min settings
 	// p4 configure show can give 2 values, or just the (default)
 	//    filesys.P4ROOT.min=5G (configure)
 	//    filesys.P4ROOT.min=250M (default)
@@ -597,19 +628,14 @@ func (p4m *P4MonitorMetrics) monitorFilesys() {
 		if err != nil {
 			logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		}
-		for _, v := range vals {
-			configValues = append(configValues, v)
-		}
+		configValues = append(configValues, vals...)
 	}
 	p4m.parseFilesys(configValues)
 }
 
 func (p4m *P4MonitorMetrics) monitorVersions() {
-	p4m.logger.Debugf("monitorVersions")
-	p4m.metrics = make([]metricStruct, 0)
-	metricsPrefix := "p4_version_info"
 	// P4D and SDP Versions
-
+	p4m.startMonitor("monitorVersions", "p4_version_info")
 	p4dVersion := "unknown"
 	p4dServices := "unknown"
 	reDate := regexp.MustCompile(` \([0-9/]+\)`)
@@ -636,6 +662,7 @@ func (p4m *P4MonitorMetrics) monitorVersions() {
 		if err != nil {
 			p4m.logger.Errorf("failed to read sdp version: %v", err)
 		} else {
+			SDPVersion = strings.TrimSpace(SDPVersion)
 			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_version",
 				help:  "SDP Version",
 				mtype: "gauge",
@@ -643,14 +670,12 @@ func (p4m *P4MonitorMetrics) monitorVersions() {
 				label: labelStruct{name: "version", value: SDPVersion}})
 		}
 	}
-	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+	p4m.writeMetricsFile()
 }
 
 func (p4m *P4MonitorMetrics) monitorSSL() {
-	p4m.logger.Debugf("monitorSSL")
-	p4m.metrics = make([]metricStruct, 0)
-	metricsPrefix := "p4_ssl_info"
 	// P4D certificate expiry
+	p4m.startMonitor("monitorSSL", "p4_ssl_info")
 	certExpiry := ""
 	if v, ok := p4m.p4info["Server cert expires"]; ok {
 		certExpiry = v
@@ -658,7 +683,7 @@ func (p4m *P4MonitorMetrics) monitorSSL() {
 		return
 	}
 	// Parse the expiry date
-	timeExpiry, err := time.Parse(openssltimeformat, certExpiry)
+	timeExpiry, err := time.Parse(opensslTimeFormat, certExpiry)
 	if err != nil {
 		p4m.logger.Errorf("failed to read parse sdp cert expiry: %v, %q", err, certExpiry)
 		return
@@ -669,7 +694,7 @@ func (p4m *P4MonitorMetrics) monitorSSL() {
 		help:  "P4D SSL certificate expiry epoch seconds",
 		mtype: "gauge",
 		value: fmt.Sprintf("%d", certExpirySecs)})
-	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+	p4m.writeMetricsFile()
 }
 
 func (p4m *P4MonitorMetrics) extractServiceURL(lines []string) string {
@@ -733,10 +758,8 @@ func (p4m *P4MonitorMetrics) getCertificateExpiry(certURL string) (time.Time, er
 }
 
 func (p4m *P4MonitorMetrics) monitorHASSSL() {
-	p4m.logger.Debugf("monitorHASSSL")
-	p4m.metrics = make([]metricStruct, 0)
-	metricsPrefix := "p4_has_ssl_info"
 	// Check expiry of HAS SSL certificate - if it exists!
+	p4m.startMonitor("monitorHASSSL", "p4_has_ssl_info")
 
 	// # Update every 60 mins
 	// tmp_has_ssl="$metrics_root/tmp_has_ssl"
@@ -777,14 +800,12 @@ func (p4m *P4MonitorMetrics) monitorHASSSL() {
 		mtype: "gauge",
 		value: fmt.Sprintf("%d", certExpiryTime.Unix()),
 		label: labelStruct{name: "url", value: certURL}})
-	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+	p4m.writeMetricsFile()
 }
 
 func (p4m *P4MonitorMetrics) monitorChange() {
-	p4m.logger.Debugf("monitorChange")
-	p4m.metrics = make([]metricStruct, 0)
-	metricsPrefix := "p4_change"
 	// Latest changelist counter as single counter value
+	p4m.startMonitor("monitorChange", "p4_change")
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("counter change")
 	change, err := p.Exec(p4cmd).String()
 	if err != nil {
@@ -795,7 +816,7 @@ func (p4m *P4MonitorMetrics) monitorChange() {
 		help:  "P4D change counter",
 		mtype: "counter",
 		value: change})
-	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+	p4m.writeMetricsFile()
 }
 
 func (p4m *P4MonitorMetrics) getFieldCounts(lines []string, fieldNum int) map[string]int {
@@ -812,10 +833,8 @@ func (p4m *P4MonitorMetrics) getFieldCounts(lines []string, fieldNum int) map[st
 }
 
 func (p4m *P4MonitorMetrics) monitorProcesses() {
-	p4m.logger.Debugf("monitorProcesses")
-	p4m.metrics = make([]metricStruct, 0)
 	// Monitor metrics summarised by cmd or user
-	metricsPrefix := "p4_monitor"
+	p4m.startMonitor("monitorProcesses", "p4_monitor")
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("monitor show -l")
 	monitorOutput, err := p.Exec(p4cmd).Slice()
 	if err != nil {
@@ -859,22 +878,20 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 		mtype: "gauge",
 		value: fmt.Sprintf("%d", pcount)})
 
-	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+	p4m.writeMetricsFile()
 }
 
 func (p4m *P4MonitorMetrics) monitorCheckpoint() {
-	p4m.logger.Debugf("monitorCheckpoint")
-	p4m.metrics = make([]metricStruct, 0)
-	metricsPrefix := "p4_checkpoint"
-
 	// Metric for when SDP checkpoint last ran and how long it took.
+	p4m.startMonitor("monitorCheckpoint", "p4_checkpoint")
 	// Not as easy as it might first appear because:
 	// - might be in progress
 	// - multiple rotate_journal.sh may be run in between daily_checkpoint.sh - and they
 	// both write to checkpoint.log!
 	// The strings searched for have been present in SDP logs for years now...
 
-	if p4m.config.SDPInstance != "" {
+	if p4m.config.SDPInstance == "" {
+		p4m.logger.Debug("No SDP instance")
 		return
 	}
 	sdpInstance := p4m.config.SDPInstance
@@ -883,9 +900,14 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 	p := script.NewPipe().WithStderr(errbuf)
 	// Look for latest checkpoint log which has Start/End (avoids run in progress and rotate_journal logs)
 	cmd := fmt.Sprintf("find -L /p4/%s/logs -type f -name checkpoint.log* -exec ls -t {} +", sdpInstance)
+	p4m.logger.Debugf("Executing: %s", cmd)
 	files, err := p.Exec(cmd).Slice()
 	if err != nil {
-		logger.Errorf("Error running 'find': %v, err:%q", err, errbuf.String())
+		p4m.logger.Errorf("Error running 'find': %v, err:%q", err, errbuf.String())
+		return
+	}
+	if len(files) == 0 {
+		p4m.logger.Error("Error finding checkpoint.log files")
 		return
 	}
 
@@ -903,6 +925,7 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 		p4m.logger.Debugf("Failed to find appropriate checkpoint file")
 		return
 	}
+	p4m.logger.Debugf("Found file: '%s'", ckpLog)
 	fileInfo, err := os.Stat(ckpLog)
 	if err != nil {
 		p4m.logger.Errorf("error getting file info: %v", err)
@@ -912,17 +935,15 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 		help:  "Time of last checkpoint log",
 		mtype: "gauge",
 		value: fmt.Sprintf("%d", fileInfo.ModTime().Unix())})
-	//TODO:
-	// ckpDuration := 0
 	reRemoveNonDate := regexp.MustCompile(` \/p4.*`)
 	startTimeStr := reRemoveNonDate.ReplaceAllString(startEndLines[0], "")
 	endTimeStr := reRemoveNonDate.ReplaceAllString(startEndLines[1], "")
-	startTime, err := time.Parse(p4infotimeformat, startTimeStr)
+	startTime, err := time.Parse(checkpointTimeFormat, startTimeStr)
 	if err != nil {
 		p4m.logger.Errorf("error parsing date/time: %v, %s", err, startTimeStr)
 		return
 	}
-	endTime, err := time.Parse(p4infotimeformat, endTimeStr)
+	endTime, err := time.Parse(checkpointTimeFormat, endTimeStr)
 	if err != nil {
 		p4m.logger.Errorf("error parsing date/time: %v, %s", err, endTimeStr)
 		return
@@ -932,7 +953,7 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 		help:  "Time taken for last checkpoint/restore action",
 		mtype: "gauge",
 		value: fmt.Sprintf("%.0f", diff.Seconds())})
-	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+	p4m.writeMetricsFile()
 }
 
 // ServerInfo represents for servers/replicas
@@ -944,11 +965,8 @@ type ServerInfo struct {
 }
 
 func (p4m *P4MonitorMetrics) monitorReplicas() {
-	p4m.logger.Debugf("monitorReplicas")
-	p4m.metrics = make([]metricStruct, 0)
-	metricsPrefix := "p4_replication"
 	// Metric for server replicas
-
+	p4m.startMonitor("monitorReplicas", "p4_replication")
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("-F \"%serverID% %type% %services%\" servers")
 	reServices := regexp.MustCompile("standard|replica|commit-server|edge-server|forwarding-replica|build-server|standby|forwarding-standby")
 	servers, err := p.Exec(p4cmd).MatchRegexp(reServices).Slice()
@@ -997,7 +1015,7 @@ func (p4m *P4MonitorMetrics) monitorReplicas() {
 			value: s.offset,
 			label: labelStruct{name: "servername", value: s.name}})
 	}
-	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+	p4m.writeMetricsFile()
 }
 
 // monitor_errors () {
@@ -1046,10 +1064,8 @@ func (p4m *P4MonitorMetrics) monitorReplicas() {
 // }
 
 func (p4m *P4MonitorMetrics) monitorPull() {
-	p4m.logger.Debugf("monitorPull")
-	p4m.metrics = make([]metricStruct, 0)
-	metricsPrefix := "p4_pull"
 	// p4 pull metrics - only valid for replica servers
+	p4m.startMonitor("monitorPull", "p4_pull")
 	if getVar(*p4m.env, "P4REPLICA") != "TRUE" {
 		p4m.logger.Debugf("Exiting as not a replica")
 		return
@@ -1185,14 +1201,12 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 		mtype: "gauge",
 		value: replicationError})
 
-	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+	p4m.writeMetricsFile()
 }
 
 func (p4m *P4MonitorMetrics) monitorRealTime() {
-	p4m.logger.Debugf("monitorRealTime")
-	p4m.metrics = make([]metricStruct, 0)
 	// p4d --show-realtime - only for 2021.1 or greater
-	metricsPrefix := "p4_realtime"
+	p4m.startMonitor("monitorRealTime", "p4_realtime")
 
 	// Intially only available for SDP
 	if p4m.config.SDPInstance == "" {
@@ -1251,7 +1265,7 @@ func (p4m *P4MonitorMetrics) monitorRealTime() {
 			mtype: "gauge",
 			value: fields[3]})
 	}
-	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+	p4m.writeMetricsFile()
 }
 
 // TaskResponse represents the structure of the Swarm JSON response, excluding pingError
@@ -1303,9 +1317,7 @@ func (p4m *P4MonitorMetrics) getSwarmQueueInfo(url, userid, password string) (*T
 
 func (p4m *P4MonitorMetrics) monitorSwarm() {
 	// Find Swarm URL and get information from it
-	p4m.logger.Debugf("monitorSwarm")
-	p4m.metrics = make([]metricStruct, 0)
-	metricsPrefix := "p4_swarm"
+	p4m.startMonitor("monitorSwarm", "p4_swarm")
 
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("-ztag info -s")
 	authID, err := p.Exec(p4cmd).Match("... serverCluster").Column(3).String()
@@ -1388,7 +1400,7 @@ func (p4m *P4MonitorMetrics) monitorSwarm() {
 			help:  "Swarm current max number of workers",
 			mtype: "gauge",
 			value: fmt.Sprintf("%d", swarminfo.MaxWorkers)})
-	p4m.writeMetricsFile(metricsPrefix, []byte(p4m.getCumulativeMetrics()))
+	p4m.writeMetricsFile()
 }
 
 // Reads server id for SDP instance or the server.id path
@@ -1474,8 +1486,6 @@ func main() {
 	p4m.initVars()
 	if cfg.MonitorSwarm {
 		p4m.monitorSwarm()
-		m := p4m.getCumulativeMetrics()
-		p4m.writeMetricsFile("p4_swarm", []byte(m))
 	}
 	p4m.monitorUptime()
 	p4m.monitorChange()
@@ -1488,4 +1498,5 @@ func main() {
 	p4m.monitorSSL()
 	p4m.monitorPull()
 	p4m.monitorRealTime()
+	p4m.monitorVersions()
 }
