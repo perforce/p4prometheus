@@ -1,5 +1,7 @@
 // This is a version of monitor_metrics.sh in Go as part of p4prometheus
 // It is intended to be more reliable and cross platform than the original.
+// It should be run permanently as a systemd service on Linux, as it tails
+// the errors.csv file
 package main
 
 import (
@@ -521,7 +523,7 @@ func (p4m *P4MonitorMetrics) monitorLicense() {
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("license -u")
 	licenseMap, err := p.Exec(p4cmd).Slice()
 	if err != nil {
-		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 	for _, s := range licenseMap {
@@ -626,11 +628,13 @@ func (p4m *P4MonitorMetrics) monitorFilesys() {
 		p4cmd, errbuf, p := p4m.newP4CmdPipe(fmt.Sprintf("configure show %s", c))
 		vals, err := p.Exec(p4cmd).Slice()
 		if err != nil {
-			logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+			p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		}
 		configValues = append(configValues, vals...)
 	}
+	p4m.logger.Debugf("Filesys config values: %q", configValues)
 	p4m.parseFilesys(configValues)
+	p4m.writeMetricsFile()
 }
 
 func (p4m *P4MonitorMetrics) monitorVersions() {
@@ -768,7 +772,7 @@ func (p4m *P4MonitorMetrics) monitorHASSSL() {
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("extension --list --type extensions")
 	ext, err := p.Exec(p4cmd).Match("extension Auth::loginhook").Column(2).String()
 	if err != nil {
-		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 	if ext == "" {
@@ -783,7 +787,7 @@ func (p4m *P4MonitorMetrics) monitorHASSSL() {
 	p4cmd, errbuf, p = p4m.newP4CmdPipe("extension --configure Auth::loginhook -o")
 	lines, err := p.Exec(p4cmd).Slice()
 	if err != nil {
-		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 	certURL := p4m.extractServiceURL(lines)
@@ -792,7 +796,7 @@ func (p4m *P4MonitorMetrics) monitorHASSSL() {
 	}
 	certExpiryTime, err := p4m.getCertificateExpiry(certURL)
 	if err != nil {
-		logger.Errorf("Error getting cert url expiry %s: %v", certURL, err)
+		p4m.logger.Errorf("Error getting cert url expiry %s: %v", certURL, err)
 		return
 	}
 	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_has_ssl_cert_expires",
@@ -809,13 +813,13 @@ func (p4m *P4MonitorMetrics) monitorChange() {
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("counter change")
 	change, err := p.Exec(p4cmd).String()
 	if err != nil {
-		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_change_counter",
 		help:  "P4D change counter",
 		mtype: "counter",
-		value: change})
+		value: strings.TrimSpace(change)})
 	p4m.writeMetricsFile()
 }
 
@@ -838,7 +842,7 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("monitor show -l")
 	monitorOutput, err := p.Exec(p4cmd).Slice()
 	if err != nil {
-		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 	cmdCounts := p4m.getFieldCounts(monitorOutput, 5)
@@ -870,7 +874,7 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 	p = script.NewPipe().WithStderr(errbuf)
 	pcount, err := p.Exec("ps ax").Match(proc + " ").CountLines()
 	if err != nil {
-		logger.Errorf("Error running 'ps ax': %v, err:%q", err, errbuf.String())
+		p4m.logger.Errorf("Error running 'ps ax': %v, err:%q", err, errbuf.String())
 		return
 	}
 	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_process_count",
@@ -907,9 +911,10 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 		return
 	}
 	if len(files) == 0 {
-		p4m.logger.Error("Error finding checkpoint.log files")
+		p4m.logger.Warnf("No checkpoint.log files found")
 		return
 	}
+	p4m.logger.Debugf("Checkpoint files to process: %q", files)
 
 	ckpLog := ""
 	reStartEnd := regexp.MustCompile(fmt.Sprintf("Start p4_%s Checkpoint|End p4_%s Checkpoint", sdpInstance, sdpInstance))
@@ -922,7 +927,7 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 		}
 	}
 	if ckpLog == "" {
-		p4m.logger.Debugf("Failed to find appropriate checkpoint file")
+		p4m.logger.Debugf("Failed to find an appropriate checkpoint file")
 		return
 	}
 	p4m.logger.Debugf("Found file: '%s'", ckpLog)
@@ -971,7 +976,7 @@ func (p4m *P4MonitorMetrics) monitorReplicas() {
 	reServices := regexp.MustCompile("standard|replica|commit-server|edge-server|forwarding-replica|build-server|standby|forwarding-standby")
 	servers, err := p.Exec(p4cmd).MatchRegexp(reServices).Slice()
 	if err != nil {
-		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 	p4m.logger.Debugf("servers: %q", servers)
@@ -990,7 +995,7 @@ func (p4m *P4MonitorMetrics) monitorReplicas() {
 	p4cmd, errbuf, p = p4m.newP4CmdPipe("-F \"%serverID% %appliedJnl% %appliedPos%\" servers -J")
 	serverPositions, err := p.Exec(p4cmd).Slice()
 	if err != nil {
-		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 	p4m.logger.Debugf("serverPositions: %q", serverPositions)
@@ -1004,16 +1009,20 @@ func (p4m *P4MonitorMetrics) monitorReplicas() {
 	}
 
 	for _, s := range validServers {
-		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_replica_curr_jnl",
-			help:  "Current journal for server",
-			mtype: "gauge",
-			value: s.journal,
-			label: labelStruct{name: "servername", value: s.name}})
-		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_replica_curr_pos",
-			help:  "Current offset within for server",
-			mtype: "gauge",
-			value: s.offset,
-			label: labelStruct{name: "servername", value: s.name}})
+		if s.journal != "" {
+			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_replica_curr_jnl",
+				help:  "Current journal for server",
+				mtype: "gauge",
+				value: s.journal,
+				label: labelStruct{name: "servername", value: s.name}})
+		}
+		if s.offset != "" {
+			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_replica_curr_pos",
+				help:  "Current offset within for server",
+				mtype: "gauge",
+				value: s.offset,
+				label: labelStruct{name: "servername", value: s.name}})
+		}
 	}
 	p4m.writeMetricsFile()
 }
@@ -1076,19 +1085,19 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("pull -l")
 	_, err := p.Exec(p4cmd).WriteFile(tempPullQ)
 	if err != nil {
-		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 
 	reFailed := regexp.MustCompile(`failed\.$`)
 	failedCount, err := script.File(tempPullQ).MatchRegexp(reFailed).CountLines()
 	if err != nil {
-		logger.Errorf("Error counting failed pull errors: %v", err)
+		p4m.logger.Errorf("Error counting failed pull errors: %v", err)
 		return
 	}
 	otherCount, err := script.File(tempPullQ).RejectRegexp(reFailed).CountLines()
 	if err != nil {
-		logger.Errorf("Error counting pull queue: %v", err)
+		p4m.logger.Errorf("Error counting pull queue: %v", err)
 		return
 	}
 
@@ -1096,7 +1105,7 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 		help:  "Count of p4 pull transfers in failed state",
 		mtype: "gauge",
 		value: fmt.Sprintf("%d", failedCount)})
-	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_errors",
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_queue",
 		help:  "Count of p4 pull files (not in failed state)",
 		mtype: "gauge",
 		value: fmt.Sprintf("%d", otherCount)})
@@ -1154,7 +1163,7 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 	p4cmd, errbuf, p = p4m.newP4CmdPipe("-Ztag pull -ljv")
 	_, err = p.Exec(p4cmd).WriteFile(tempPullStats)
 	if err != nil {
-		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 
@@ -1322,7 +1331,7 @@ func (p4m *P4MonitorMetrics) monitorSwarm() {
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("-ztag info -s")
 	authID, err := p.Exec(p4cmd).Match("... serverCluster").Column(3).String()
 	if err != nil {
-		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 	authID = strings.TrimSpace(authID)
@@ -1334,7 +1343,7 @@ func (p4m *P4MonitorMetrics) monitorSwarm() {
 	p4cmd, errbuf, p = p4m.newP4CmdPipe("tickets")
 	ticket, err := p.Exec(p4cmd).Match(search).Column(3).String()
 	if err != nil {
-		logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
 	ticket = strings.TrimSpace(ticket)
