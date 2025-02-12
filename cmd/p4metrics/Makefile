@@ -16,17 +16,19 @@ REVISION=`git rev-parse --short HEAD`
 MODULE="github.com/perforce/p4prometheus"
 LDFLAGS=-ldflags "-w -s -X ${MODULE}/version.Version=${VERSION} -X ${MODULE}/version.BuildDate=${BUILD_DATE} -X ${MODULE}/version.Branch=${BRANCH} -X ${MODULE}/version.Revision=${REVISION} -X ${MODULE}/version.BuildUser=${USER}"
 
+SRC_FILES=${BINARY}.go p4errors.go
+
 # Builds the project
 build:
 	go build ${LDFLAGS}
 
 # Builds distribution
 dist:
-	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o bin/${BINARY}-darwin-arm64 ${BINARY}.go
-	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}-darwin-amd64 ${BINARY}.go
-	GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o bin/${BINARY}-linux-arm64 ${BINARY}.go
-	GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}-linux-amd64 ${BINARY}.go
-	GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}-windows-amd64.exe ${BINARY}.go
+	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o bin/${BINARY}-darwin-arm64 ${SRC_FILES}
+	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}-darwin-amd64 ${SRC_FILES}
+	GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o bin/${BINARY}-linux-arm64 ${SRC_FILES}
+	GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}-linux-amd64 ${SRC_FILES}
+	GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}-windows-amd64.exe ${SRC_FILES}
 	rm -f bin/${BINARY}*arm64*.gz bin/${BINARY}*amd64*.gz
 	-chmod +x bin/${BINARY}*arm64* bin/${BINARY}*amd64*
 	gzip bin/${BINARY}*arm64* bin/${BINARY}*amd64*

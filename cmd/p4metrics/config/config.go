@@ -10,13 +10,14 @@ import (
 
 // Config for p4metrics
 type Config struct {
-	MetricsRoot    string        `yaml:"metrics_root"`
-	ServerID       string        `yaml:"server_id"`
-	ServerIDPath   string        `yaml:"server_id_path"`
-	SDPInstance    string        `yaml:"sdp_instance"`
-	UpdateInterval time.Duration `yaml:"update_interval"`
-	MonitorSwarm   bool          `yaml:"monitor_swarm"`
-	CmdsByUser     bool          `yaml:"cmds_by_user"`
+	MetricsRoot        string        `yaml:"metrics_root"`
+	ServerID           string        `yaml:"server_id"`
+	ServerIDPath       string        `yaml:"server_id_path"`
+	SDPInstance        string        `yaml:"sdp_instance"`
+	UpdateInterval     time.Duration `yaml:"update_interval"`
+	LongUpdateInterval time.Duration `yaml:"long_update_interval"`
+	MonitorSwarm       bool          `yaml:"monitor_swarm"`
+	CmdsByUser         bool          `yaml:"cmds_by_user"`
 }
 
 // Unmarshal the config

@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/perforce/p4prometheus/cmd/p4metrics/config"
@@ -43,11 +44,15 @@ func compareMetricValues(t *testing.T, expected metricValues, actual []metricStr
 	actualMap := make(map[string]metricValue)
 	for _, metric := range actual {
 		k := metric.name
-		if metric.label.name != "" {
-			k = fmt.Sprintf("%s/%s/%s", k, metric.label.name, metric.label.value)
+		if len(metric.labels) > 0 {
+			if metric.labels[0].name != "" {
+				k = fmt.Sprintf("%s/%s/%s", k, metric.labels[0].name, metric.labels[0].value)
+			}
+			actualMap[k] = metricValue{key: k, name: metric.name, value: metric.value,
+				labelName: metric.labels[0].name, labelValue: metric.labels[0].value}
+		} else {
+			actualMap[k] = metricValue{key: k, name: metric.name, value: metric.value}
 		}
-		actualMap[k] = metricValue{key: k, name: metric.name, value: metric.value,
-			labelName: metric.label.name, labelValue: metric.label.value}
 	}
 	if len(actual) != len(expected) {
 		t.Errorf("metric count mismatch: got %d metrics, want %d",
@@ -158,4 +163,138 @@ func TestP4MetricsFilesys(t *testing.T) {
 	}
 	tlogger.Infof("Metrics: %q", p4m.metrics)
 	compareMetricValues(t, expected, p4m.metrics)
+}
+
+func TestP4MetricsSchemaParsing(t *testing.T) {
+	cfg := config.Config{}
+	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
+	tlogger.SetReportCaller(true)
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, &logger)
+
+	schemaLines := `
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 0
+... f_name f_eventtype
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 1
+... f_name f_timestamp
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 2
+... f_name f_timestamp2
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 3
+... f_name f_date
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 4
+... f_name f_pid
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 5
+... f_name f_cmdident
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 6
+... f_name f_serverid
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 7
+... f_name f_cmdno
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 8
+... f_name f_user
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 9
+... f_name f_client
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 10
+... f_name f_func
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 11
+... f_name f_host
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 12
+... f_name f_prog
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 13
+... f_name f_version
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 14
+... f_name f_args
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 15
+... f_name f_cmdgroup
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 16
+... f_name f_severity
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 17
+... f_name f_subsys
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 18
+... f_name f_subcode
+
+... f_recordType 4
+... f_recordVersion 58
+... f_recordName Error
+... f_field 19
+... f_name f_text
+`
+	lines := strings.Split(schemaLines, "\n")
+	p4m.setupErrorParsing(lines)
+	assert.Equal(t, 16, p4m.indErrSeverity)
+	assert.Equal(t, 17, p4m.indErrSubsys)
 }
