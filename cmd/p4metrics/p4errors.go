@@ -20,10 +20,10 @@ type ErrorSeverity int
 
 const (
 	E_EMPTY  ErrorSeverity = 0 // nothing yet
-	E_INFO                 = 1 // something good happened
-	E_WARN                 = 2 // something not good happened
-	E_FAILED               = 3 // user did somthing wrong
-	E_FATAL                = 4 // system broken -- nothing can continue
+	E_INFO   ErrorSeverity = 1 // something good happened
+	E_WARN   ErrorSeverity = 2 // something not good happened
+	E_FAILED ErrorSeverity = 3 // user did somthing wrong
+	E_FATAL  ErrorSeverity = 4 // system broken -- nothing can continue
 )
 
 type ErrorGeneric int
@@ -31,48 +31,48 @@ type ErrorGeneric int
 const (
 	EV_NONE ErrorGeneric = 0 // misc
 	// The fault of the user
-	EV_USAGE   = 0x01 // request not consistent with dox
-	EV_UNKNOWN = 0x02 // using unknown entity
-	EV_CONTEXT = 0x03 // using entity in wrong context
-	EV_ILLEGAL = 0x04 // trying to do something you can't
-	EV_NOTYET  = 0x05 // something must be corrected first
-	EV_PROTECT = 0x06 // protections prevented operation
+	EV_USAGE   ErrorGeneric = 0x01 // request not consistent with dox
+	EV_UNKNOWN ErrorGeneric = 0x02 // using unknown entity
+	EV_CONTEXT ErrorGeneric = 0x03 // using entity in wrong context
+	EV_ILLEGAL ErrorGeneric = 0x04 // trying to do something you can't
+	EV_NOTYET  ErrorGeneric = 0x05 // something must be corrected first
+	EV_PROTECT ErrorGeneric = 0x06 // protections prevented operation
 	// No fault at all
-	EV_EMPTY = 0x11 // action returned empty results
+	EV_EMPTY ErrorGeneric = 0x11 // action returned empty results
 	// not the fault of the user
-	EV_FAULT   = 0x21 // inexplicable program fault
-	EV_CLIENT  = 0x22 // client side program errors
-	EV_ADMIN   = 0x23 // server administrative action required
-	EV_CONFIG  = 0x24 // client configuration inadequate
-	EV_UPGRADE = 0x25 // client or server too old to interact
-	EV_COMM    = 0x26 // communications error
-	EV_TOOBIG  = 0x27 // not ever Perforce can handle this much
+	EV_FAULT   ErrorGeneric = 0x21 // inexplicable program fault
+	EV_CLIENT  ErrorGeneric = 0x22 // client side program errors
+	EV_ADMIN   ErrorGeneric = 0x23 // server administrative action required
+	EV_CONFIG  ErrorGeneric = 0x24 // client configuration inadequate
+	EV_UPGRADE ErrorGeneric = 0x25 // client or server too old to interact
+	EV_COMM    ErrorGeneric = 0x26 // communications error
+	EV_TOOBIG  ErrorGeneric = 0x27 // not ever Perforce can handle this much
 )
 
 type ErrorSubsystem int
 
 const (
 	ES_OS       ErrorSubsystem = 0  // OS error
-	ES_SUPP                    = 1  // Misc support
-	ES_LBR                     = 2  // librarian
-	ES_RPC                     = 3  // messaging
-	ES_DB                      = 4  // database
-	ES_DBSUPP                  = 5  // database support
-	ES_DM                      = 6  // data manager
-	ES_SERVER                  = 7  // top level of server
-	ES_CLIENT                  = 8  // top level of client
-	ES_INFO                    = 9  // pseudo subsystem for information messages
-	ES_HELP                    = 10 // pseudo subsystem for help messages
-	ES_SPEC                    = 11 // pseudo subsystem for spec/comment messages
-	ES_FTPD                    = 12 // P4FTP server
-	ES_BROKER                  = 13 // Perforce Broker
-	ES_P4QT                    = 14 // P4V and other Qt based clients
-	ES_X3SERVER                = 15 // P4X3 server
-	ES_GRAPH                   = 16 // graph depot messages
-	ES_SCRIPT                  = 17 // scripting
-	ES_SERVER2                 = 18 // server overflow
-	ES_DM2                     = 19 // dm overflow
-	ES_CONFIG                  = 20 // help for configurables
+	ES_SUPP     ErrorSubsystem = 1  // Misc support
+	ES_LBR      ErrorSubsystem = 2  // librarian
+	ES_RPC      ErrorSubsystem = 3  // messaging
+	ES_DB       ErrorSubsystem = 4  // database
+	ES_DBSUPP   ErrorSubsystem = 5  // database support
+	ES_DM       ErrorSubsystem = 6  // data manager
+	ES_SERVER   ErrorSubsystem = 7  // top level of server
+	ES_CLIENT   ErrorSubsystem = 8  // top level of client
+	ES_INFO     ErrorSubsystem = 9  // pseudo subsystem for information messages
+	ES_HELP     ErrorSubsystem = 10 // pseudo subsystem for help messages
+	ES_SPEC     ErrorSubsystem = 11 // pseudo subsystem for spec/comment messages
+	ES_FTPD     ErrorSubsystem = 12 // P4FTP server
+	ES_BROKER   ErrorSubsystem = 13 // Perforce Broker
+	ES_P4QT     ErrorSubsystem = 14 // P4V and other Qt based clients
+	ES_X3SERVER ErrorSubsystem = 15 // P4X3 server
+	ES_GRAPH    ErrorSubsystem = 16 // graph depot messages
+	ES_SCRIPT   ErrorSubsystem = 17 // scripting
+	ES_SERVER2  ErrorSubsystem = 18 // server overflow
+	ES_DM2      ErrorSubsystem = 19 // dm overflow
+	ES_CONFIG   ErrorSubsystem = 20 // help for configurables
 )
 
 var subsystems map[ErrorSubsystem]string = map[ErrorSubsystem]string{
@@ -323,24 +323,3 @@ func (p4m *P4MonitorMetrics) monitorErrors() {
 	}
 	p4m.runLogTailer(p4m.logger, logcfg)
 }
-
-// monitor_errors () {
-//     # Metric for error counts - but only if structured error log exists
-//     fname="$metrics_root/p4_errors${sdpinst_suffix}-${SERVER_ID}.prom"
-//     tmpfname="$fname.$$"
-
-//     rm -f "$tmpfname"
-//     echo "#HELP p4_error_count Server errors by id" >> "$tmpfname"
-//     echo "#TYPE p4_error_count counter" >> "$tmpfname"
-//     while read count level ss_id error_id
-//     do
-//         if [[ ! -z ${ss_id:-} ]]; then
-//             subsystem=${subsystems[$ss_id]}
-//             [[ -z "$subsystem" ]] && subsystem=$ss_id
-//             echo "p4_error_count{${serverid_label}${sdpinst_label},subsystem=\"$subsystem\",error_id=\"$error_id\",level=\"$level\"} $count" >> "$tmpfname"
-//         fi
-//     done < <(awk -F, -v indID="$indID" -v indSS="$indSS" -v indSeverity="$indSeverity" '{printf "%s %s %s\n", $indID, $indSS, $indSeverity}' "$errors_file" | sort | uniq -c)
-
-//     chmod 644 "$tmpfname"
-//     mv "$tmpfname" "$fname"
-// }

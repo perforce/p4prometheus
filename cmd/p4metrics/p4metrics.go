@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"path"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -839,6 +840,48 @@ func (p4m *P4MonitorMetrics) getFieldCounts(lines []string, fieldNum int) map[st
 	return fieldCounts
 }
 
+func (p4m *P4MonitorMetrics) getTime(t string) int {
+	// Convert fields with HH:MM:SS into seconds (hours can be hundreds)
+	parts := strings.Split(t, ":")
+	if len(parts) != 3 {
+		return 0
+	}
+	var h, m, s int
+	var err error
+	if h, err = strconv.Atoi(parts[0]); err == nil {
+		h = h * 3600
+	}
+	if m, err = strconv.Atoi(parts[1]); err == nil {
+		m = m * 60
+	}
+	if s, err = strconv.Atoi(parts[2]); err == nil {
+		return h + m + s
+	}
+	return 0
+}
+
+func (p4m *P4MonitorMetrics) getMaxNonSvcCmdTime(lines []string) int {
+	// Extract the max time for any command which isn't a service user
+	maxTime := 0
+	uFieldNum := 3
+	tFieldNum := 4
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < tFieldNum { // Skip lines that don't have sufficient fields
+			continue
+		}
+		u := fields[uFieldNum-1]
+		if strings.HasPrefix(u, "svc_") { // Ignore service users as very long running
+			continue
+		}
+		t := p4m.getTime(fields[tFieldNum-1])
+		if t > maxTime {
+			maxTime = t
+		}
+	}
+	return maxTime
+}
+
 func (p4m *P4MonitorMetrics) monitorProcesses() {
 	// Monitor metrics summarised by cmd or user
 	p4m.startMonitor("monitorProcesses", "p4_monitor")
@@ -856,7 +899,6 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 			value:  fmt.Sprintf("%d", count),
 			labels: []labelStruct{{name: "cmd", value: cmd}}})
 	}
-
 	if p4m.config.CmdsByUser {
 		userCounts := p4m.getFieldCounts(monitorOutput, 3)
 		for user, count := range userCounts {
@@ -867,24 +909,37 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 				labels: []labelStruct{{name: "user", value: user}}})
 		}
 	}
-	var proc string
-	if p4m.config.SDPInstance != "" {
-		proc = fmt.Sprintf("p4d_%s", p4m.config.SDPInstance)
-	} else {
-		proc = "p4d"
+	stateCounts := p4m.getFieldCounts(monitorOutput, 2)
+	for state, count := range stateCounts {
+		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitor_by_state",
+			help:   "P4 running processes by state in monitor table",
+			mtype:  "gauge",
+			value:  fmt.Sprintf("%d", count),
+			labels: []labelStruct{{name: "state", value: state}}})
 	}
-	errbuf = new(bytes.Buffer)
-	p = script.NewPipe().WithStderr(errbuf)
-	pcount, err := p.Exec("ps ax").Match(proc + " ").CountLines()
-	if err != nil {
-		p4m.logger.Errorf("Error running 'ps ax': %v, err:%q", err, errbuf.String())
-		return
-	}
-	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_process_count",
-		help:  "P4 ps running processes",
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitor_max_cmd_time",
+		help:  "P4 monitor max (non-svc) command run time",
 		mtype: "gauge",
-		value: fmt.Sprintf("%d", pcount)})
-
+		value: fmt.Sprintf("%d", p4m.getMaxNonSvcCmdTime(monitorOutput))})
+	if runtime.GOOS == "linux" { // Don't bother on Windows
+		var proc string
+		if p4m.config.SDPInstance != "" {
+			proc = fmt.Sprintf("p4d_%s", p4m.config.SDPInstance)
+		} else {
+			proc = "p4d"
+		}
+		errbuf = new(bytes.Buffer)
+		p = script.NewPipe().WithStderr(errbuf)
+		pcount, err := p.Exec("ps ax").Match(proc + " ").CountLines()
+		if err != nil {
+			p4m.logger.Errorf("Error running 'ps ax': %v, err:%q", err, errbuf.String())
+			return
+		}
+		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_process_count",
+			help:  "P4 ps running processes",
+			mtype: "gauge",
+			value: fmt.Sprintf("%d", pcount)})
+	}
 	p4m.writeMetricsFile()
 }
 

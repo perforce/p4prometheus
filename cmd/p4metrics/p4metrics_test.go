@@ -298,3 +298,24 @@ func TestP4MetricsSchemaParsing(t *testing.T) {
 	assert.Equal(t, 16, p4m.indErrSeverity)
 	assert.Equal(t, 17, p4m.indErrSubsys)
 }
+
+func TestP4MonitorParsing(t *testing.T) {
+	cfg := config.Config{}
+	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
+	tlogger.SetReportCaller(true)
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, &logger)
+
+	monitorLines := `662053 I swarm      00:03:41 IDLE none
+21104 R fred 01:03:41 sync
+16578 I svc_p4d_edge_CL1 00:04:26 IDLE none
+16647 I svc_p4d_fs_brk 00:04:26 IDLE none
+21104 I svc_p4d_fs_brk 00:04:40 IDLE none
+ 5505 I svc_p4d_edge_CL1 00:04:49 IDLE none
+170076 I svc_p4d_ha_chi 01:15:07 IDLE none
+ 2303 B svc_master-1666 270:49:23 ldapsync -g -i 1800
+ 2304 B svc_master-1666 270:49:23 admin resource-monitor
+`
+	lines := strings.Split(monitorLines, "\n")
+	assert.Equal(t, 3821, p4m.getMaxNonSvcCmdTime(lines))
+}
