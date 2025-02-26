@@ -765,7 +765,7 @@ Checking perforce_rules.yml
   SUCCESS: 8 rules found
 ```
 
-For an example of a good starter alertmanager rules file see: [example prometheus_rules.yml file](EXAMPLES/prometheus/perforce_rules.yml)
+For an example of a good starter alertmanager rules file see: [example prometheus_rules.yml file](examples/prometheus/perforce_rules.yml)
 
 # Troubleshooting
 
