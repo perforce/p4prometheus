@@ -160,25 +160,64 @@ func newP4MonitorMetrics(config *config.Config, envVars *map[string]string, logg
 
 func (p4m *P4MonitorMetrics) initVars() {
 	// Note that P4BIN is defined by SDP by sourcing above file, as are P4USER, P4PORT
-	p4m.sdpInstance = getVar(*p4m.env, "SDP_INSTANCE")
+	p4bin := "p4"
 	p4m.p4User = getVar(*p4m.env, "P4USER")
+	p4port := getVar(*p4m.env, "P4PORT")
 	p4trust := getVar(*p4m.env, "P4TRUST")
+	p4config := getVar(*p4m.env, "P4CONFIG")
+	p4configEnv := ""
+	if p4m.config.SDPInstance == "" {
+		if p4m.config.P4Bin != "" {
+			p4bin = p4m.config.P4Bin
+		}
+		if p4m.config.P4Port != "" {
+			p4port = p4m.config.P4Port
+		}
+		if p4m.config.P4User != "" {
+			p4m.p4User = p4m.config.P4User
+		}
+		if p4m.config.P4Config != "" {
+			p4config = p4m.config.P4Config
+		}
+		if p4config != "" {
+			p4m.logger.Debugf("setting P4CONFIG=%s", p4config)
+			os.Setenv("P4CONFIG", p4config)
+			p4configEnv = fmt.Sprintf("-E %s", p4config)
+		}
+		p4m.sdpInstanceLabel = ""
+		p4m.sdpInstanceSuffix = ""
+	} else {
+		p4m.sdpInstance = getVar(*p4m.env, "SDP_INSTANCE")
+		p4bin = getVar(*p4m.env, "P4BIN")
+		p4m.p4log = getVar(*p4m.env, "P4LOG")
+		p4m.logger.Debugf("logFile: %s", p4m.p4log)
+		p4m.logsDir = getVar(*p4m.env, "LOGS")
+		p4m.logger.Debugf("LOGS: %s", p4m.logsDir)
+		p4m.sdpInstanceLabel = fmt.Sprintf(",sdpinst=\"%s\"", p4m.sdpInstance)
+		p4m.logger.Debugf("sdpInstanceLabel: %s", p4m.sdpInstanceLabel)
+		p4m.sdpInstanceSuffix = fmt.Sprintf("-%s", p4m.sdpInstance)
+		p4m.logger.Debugf("sdpInstanceSuffix: %s", p4m.sdpInstanceSuffix)
+		p4m.p4errorsCSV = path.Join(p4m.logsDir, "errors.csv")
+	}
 	if p4trust != "" {
 		p4m.logger.Debugf("setting P4TRUST=%s", p4trust)
 		os.Setenv("P4TRUST", p4trust)
 	}
-	p4tickets := getVar(*p4m.env, "P4TICKETS")
-	if p4tickets != "" {
-		p4m.logger.Debugf("setting P4TICKETS=%s", p4tickets)
-		os.Setenv("P4TICKETS", p4tickets)
+	p4userStr := ""
+	if p4m.p4User != "" {
+		p4userStr = fmt.Sprintf("-u %s", p4m.p4User)
 	}
-	p4m.p4Cmd = fmt.Sprintf("%s -u %s -p \"%s\"", getVar(*p4m.env, "P4BIN"), p4m.p4User, getVar(*p4m.env, "P4PORT"))
+	p4portStr := ""
+	if p4port != "" {
+		p4userStr = fmt.Sprintf("-p \"%s\"", p4port)
+	}
+	p4m.p4Cmd = fmt.Sprintf("%s %s %s %s", p4bin, p4configEnv, p4userStr, p4portStr)
 	p4m.logger.Debugf("p4Cmd: %s", p4m.p4Cmd)
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("info -s")
 	i, err := p.Exec(p4cmd).Slice()
 	if err != nil {
 		p4m.logger.Errorf("Error: %v, %q", err, errbuf.String())
-		p4m.logger.Fatalf("Can't connect to P4PORT: %s", getVar(*p4m.env, "P4PORT"))
+		p4m.logger.Fatalf("Can't connect to P4PORT: %s", p4port)
 	}
 	for _, s := range i {
 		parts := strings.Split(s, ": ")
@@ -187,16 +226,6 @@ func (p4m *P4MonitorMetrics) initVars() {
 		}
 	}
 	p4m.logger.Debugf("p4info -s: %d %v\n%v", len(i), i, p4m.p4info)
-	p4m.sdpInstanceLabel = fmt.Sprintf(",sdpinst=\"%s\"", p4m.sdpInstance)
-	p4m.logger.Debugf("sdpInstanceLabel: %s", p4m.sdpInstanceLabel)
-	p4m.sdpInstanceSuffix = fmt.Sprintf("-%s", p4m.sdpInstance)
-	p4m.logger.Debugf("sdpInstanceSuffix: %s", p4m.sdpInstanceSuffix)
-	p4m.p4log = getVar(*p4m.env, "P4LOG")
-	p4m.logger.Debugf("logFile: %s", p4m.p4log)
-	p4m.logsDir = getVar(*p4m.env, "LOGS")
-	p4m.logger.Debugf("LOGS: %s", p4m.logsDir)
-	p4m.p4errorsCSV = path.Join(p4m.logsDir, "errors.csv")
-	p4m.logger.Debugf("errorsFile: %s", p4m.p4errorsCSV)
 	// Get server id. Usually server.id files are a single line containing the
 	// ServerID value. However, a server.id file will have a second line if a
 	// 'p4 failover' was done containing an error message displayed to users
@@ -204,7 +233,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 	// post-failover (to avoid split brain). For purposes of this check, we care
 	// only about the ServerID value contained on the first line, so we use
 	// 'head -1' on the server.id file.
-	p4m.rootDir = getVar(*p4m.env, "P4ROOT")
+	p4m.rootDir = p4m.p4info["Server root"]
 	idFile := path.Join(p4m.rootDir, "server.id")
 	if _, err := os.Stat(idFile); err == nil {
 		s, err := script.File(idFile).Slice()
@@ -218,7 +247,27 @@ func (p4m *P4MonitorMetrics) initVars() {
 	if p4m.serverID == "" {
 		p4m.serverID = "UnsetServerID"
 	}
-	p4m.logger.Debugf("serverID: %s", p4m.serverID)
+	p4m.logger.Debugf("serverID: %q", p4m.serverID)
+	p4cmd, errbuf, p = p4m.newP4CmdPipe("configure show")
+	cfg, err := p.Exec(p4cmd).Match("serverlog.").Slice()
+	if err != nil {
+		p4m.logger.Errorf("Error: %v, %q", err, errbuf.String())
+		p4m.logger.Fatal("Can't run configure show")
+	}
+	p4m.logger.Debugf("configure show: %q", cfg)
+	// Searching for a line like:
+	// serverlog.file.3=/p4/1/logs/errors.csv (configure)
+	for _, line := range cfg {
+		parts := strings.Split(line, "=")
+		if len(parts) < 2 {
+			continue
+		}
+		if strings.Contains(parts[1], "errors.csv") {
+			p4m.p4errorsCSV = strings.TrimSpace(strings.Split(parts[1], " ")[0])
+			break
+		}
+	}
+	p4m.logger.Debugf("errorsFile: %s", p4m.p4errorsCSV)
 }
 
 // $ p4 info -s
@@ -311,8 +360,10 @@ func (p4m *P4MonitorMetrics) outputMetric(metrics *bytes.Buffer, mname string, m
 }
 
 func (p4m *P4MonitorMetrics) getCumulativeMetrics() string {
-	fixedLabels := []labelStruct{{name: "serverid", value: p4m.serverID},
-		{name: "sdpinst", value: p4m.sdpInstance}}
+	fixedLabels := []labelStruct{{name: "serverid", value: p4m.serverID}}
+	if p4m.config.SDPInstance != "" {
+		fixedLabels = append(fixedLabels, labelStruct{name: "sdpinst", value: p4m.sdpInstance})
+	}
 	metrics := new(bytes.Buffer)
 	for _, m := range p4m.metrics {
 		labels := fixedLabels
@@ -322,9 +373,17 @@ func (p4m *P4MonitorMetrics) getCumulativeMetrics() string {
 	return metrics.String()
 }
 
+func (p4m *P4MonitorMetrics) metricsFilename(filePrefix string) string {
+	instanceStr := ""
+	if p4m.config.SDPInstance != "" {
+		instanceStr = fmt.Sprintf("-%s", p4m.config.SDPInstance)
+	}
+	return path.Join(p4m.config.MetricsRoot,
+		fmt.Sprintf("%s%s-%s.prom", filePrefix, instanceStr, p4m.serverID))
+}
+
 func (p4m *P4MonitorMetrics) deleteMetricsFile(filePrefix string) {
-	outputFile := path.Join(p4m.config.MetricsRoot,
-		fmt.Sprintf("%s-%s-%s.prom", filePrefix, p4m.config.SDPInstance, p4m.config.ServerID))
+	outputFile := p4m.metricsFilename(filePrefix)
 	p4m.metricsFilePrefix = filePrefix
 	if err := os.Remove(outputFile); err != nil && !errors.Is(err, os.ErrNotExist) {
 		p4m.logger.Debugf("Failed to remove: %s, %v", outputFile, err)
@@ -335,8 +394,7 @@ func (p4m *P4MonitorMetrics) deleteMetricsFile(filePrefix string) {
 func (p4m *P4MonitorMetrics) writeMetricsFile() {
 	var f *os.File
 	var err error
-	outputFile := path.Join(p4m.config.MetricsRoot,
-		fmt.Sprintf("%s-%s-%s.prom", p4m.metricsFilePrefix, p4m.config.SDPInstance, p4m.config.ServerID))
+	outputFile := p4m.metricsFilename(p4m.metricsFilePrefix)
 	if len(p4m.metrics) == 0 {
 		p4m.logger.Debug("No metrics to write")
 		return
@@ -1452,14 +1510,18 @@ func main() {
 			"sdp.instance",
 			"SDP Instance, typically 1 or alphanumeric.",
 		).Default("").String()
-		// p4port = kingpin.Flag(
-		// 	"p4port",
-		// 	"P4PORT to use (if sdp.instance is not set).",
-		// ).Default("").String()
-		// p4user = kingpin.Flag(
-		// 	"p4user",
-		// 	"P4USER to use (if sdp.instance is not set).",
-		// ).Default("").String()
+		p4port = kingpin.Flag(
+			"p4port",
+			"P4PORT to use (if sdp.instance is not set).",
+		).Default("").String()
+		p4user = kingpin.Flag(
+			"p4user",
+			"P4USER to use (if sdp.instance is not set).",
+		).Default("").String()
+		p4config = kingpin.Flag(
+			"p4config",
+			"P4CONFIG file to use (if sdp.instance is not set and no value in config file).",
+		).Default("").String()
 		debug = kingpin.Flag(
 			"debug",
 			"Enable debugging.",
@@ -1489,14 +1551,41 @@ func main() {
 	logger.Infof("Processing: output to '%s' SDP instance '%s'",
 		cfg.MetricsRoot, cfg.SDPInstance)
 
-	if cfg.SDPInstance == "" && len(cfg.ServerID) == 0 && cfg.ServerIDPath == "" {
-		logger.Errorf("error loading config file - if no sdp_instance then please specify server_id or server_id_path!")
-		os.Exit(-1)
+	if *p4port != "" {
+		if cfg.SDPInstance != "" {
+			logger.Warnf("SDP instance %q specified so ignoring --p4port: %q", cfg.SDPInstance, *p4port)
+		} else {
+			if cfg.P4Port != "" {
+				logger.Warnf("--p4port %q overwriting config value %q", *p4port, cfg.P4Port)
+			}
+			cfg.P4Port = *p4port
+		}
 	}
-	if len(cfg.ServerID) == 0 && (cfg.SDPInstance != "" || cfg.ServerIDPath != "") {
-		cfg.ServerID = readServerID(logger, cfg.SDPInstance, cfg.ServerIDPath)
+	if *p4user != "" {
+		if cfg.SDPInstance != "" {
+			logger.Warnf("SDP instance %q specified so ignoring --p4user: %q", cfg.SDPInstance, *p4user)
+		} else {
+			if cfg.P4User != "" {
+				logger.Warnf("--p4user %q overwriting config value %q", *p4user, cfg.P4User)
+			}
+			cfg.P4User = *p4user
+		}
 	}
-	logger.Infof("Server id: '%s'", cfg.ServerID)
+	if *p4config != "" {
+		if cfg.SDPInstance != "" {
+			logger.Warnf("SDP instance %q specified so ignoring --p4config: %q", cfg.SDPInstance, *p4config)
+		} else {
+			if cfg.P4Config != "" {
+				logger.Warnf("--p4config %q overwriting config value %q", *p4config, cfg.P4Config)
+			}
+			cfg.P4Config = *p4config
+		}
+	}
+
+	err = os.MkdirAll(cfg.MetricsRoot, 0755) // Check dir exists
+	if err != nil {
+		logger.Fatalf("Failed to create MetricsRoot: %q, %v", cfg.MetricsRoot, err)
+	}
 
 	var env map[string]string
 	if cfg.SDPInstance != "" {
@@ -1510,12 +1599,6 @@ func main() {
 	ticker := time.NewTicker(p4m.config.UpdateInterval)
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	// go func() {
-	// 	sig := <-sigs
-	// 	p4m.logger.Infof("Terminating - signal %v", sig)
-	// 	tailer.Close()
-	// 	cancel()
-	// }()
 
 	go func() {
 		p4m.monitorErrors() // Special one which manages its own updates and timer on a seperate thread
