@@ -7,7 +7,6 @@ import (
 
 const defaultConfig = `
 metrics_root:				/hxlogs/metrics
-server_id:					myserverid
 sdp_instance: 				1
 update_interval: 			60s
 monitor_swarm:		 		false
@@ -33,8 +32,7 @@ func checkValueBool(t *testing.T, fieldname string, val bool, expected bool) {
 
 func TestValidConfig(t *testing.T) {
 	cfg := loadOrFail(t, defaultConfig)
-	checkValue(t, "MetricsOutput", cfg.MetricsRoot, "/hxlogs/metrics")
-	checkValue(t, "ServerId", cfg.ServerID, "myserverid")
+	checkValue(t, "MetricsRoot", cfg.MetricsRoot, "/hxlogs/metrics")
 	checkValue(t, "SDPInstance", cfg.SDPInstance, "1")
 	checkValueDuration(t, "UpdateInterval", cfg.UpdateInterval, 60*time.Second)
 }

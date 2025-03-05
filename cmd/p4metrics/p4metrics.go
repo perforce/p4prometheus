@@ -139,6 +139,7 @@ type P4MonitorMetrics struct {
 	p4license         map[string]string
 	p4log             string
 	p4errorsCSV       string
+	version           string
 	indErrSeverity    int // Index of Severity in errors.csv
 	indErrSubsys      int // Index of subsys
 	errorMetrics      map[ErrorMetric]int
@@ -198,6 +199,9 @@ func (p4m *P4MonitorMetrics) initVars() {
 		p4m.sdpInstanceSuffix = fmt.Sprintf("-%s", p4m.sdpInstance)
 		p4m.logger.Debugf("sdpInstanceSuffix: %s", p4m.sdpInstanceSuffix)
 		p4m.p4errorsCSV = path.Join(p4m.logsDir, "errors.csv")
+	}
+	if p4bin == "" {
+		p4m.logger.Fatalf("Failed to find P4BIN in environment!")
 	}
 	if p4trust != "" {
 		p4m.logger.Debugf("setting P4TRUST=%s", p4trust)
@@ -702,7 +706,7 @@ func (p4m *P4MonitorMetrics) monitorFilesys() {
 }
 
 func (p4m *P4MonitorMetrics) monitorVersions() {
-	// P4D and SDP Versions
+	// P4D, SDP and p4metrics Versions
 	p4m.startMonitor("monitorVersions", "p4_version_info")
 	p4dVersion := "unknown"
 	p4dServices := "unknown"
@@ -724,6 +728,11 @@ func (p4m *P4MonitorMetrics) monitorVersions() {
 		mtype:  "gauge",
 		value:  "1",
 		labels: []labelStruct{{name: "services", value: p4dServices}}})
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_p4metrics_version",
+		help:   "P4Metrics version",
+		mtype:  "gauge",
+		value:  "1",
+		labels: []labelStruct{{name: "version", value: p4m.version}}})
 
 	if p4m.config.SDPInstance != "" {
 		SDPVersion, err := script.File("/p4/sdp/Version").First(1).String()
@@ -825,6 +834,36 @@ func (p4m *P4MonitorMetrics) getCertificateExpiry(certURL string) (time.Time, er
 	return resp.TLS.PeerCertificates[0].NotAfter, nil
 }
 
+// HASVersionResponse represents the structure of the JSON response
+type HASVersionResponse struct {
+	AppVersion string `json:"app_version"`
+	Status     string `json:"status"`
+}
+
+// getHASVersion retrieves the app version from HAS URL
+func (p4m *P4MonitorMetrics) getHASVersion(url string) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP request failed with status code: %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	var versionResp HASVersionResponse
+	err = json.Unmarshal(body, &versionResp)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse JSON: %v", err)
+	}
+	return versionResp.AppVersion, nil
+}
+
 func (p4m *P4MonitorMetrics) monitorHASSSL() {
 	// Check expiry of HAS SSL certificate - if it exists!
 	p4m.startMonitor("monitorHASSSL", "p4_has_ssl_info")
@@ -850,22 +889,34 @@ func (p4m *P4MonitorMetrics) monitorHASSSL() {
 		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
-	certURL := p4m.extractServiceURL(lines)
-	if !strings.HasPrefix(certURL, "https") {
+	urlHAS := p4m.extractServiceURL(lines)
+	if !strings.HasPrefix(urlHAS, "https") {
 		p4m.logger.Debug("HAS URL not https so exiting")
 		return
 	}
-	p4m.logger.Debugf("HAS URL: %q", certURL)
-	certExpiryTime, err := p4m.getCertificateExpiry(certURL)
+	p4m.logger.Debugf("HAS URL: %q", urlHAS)
+	certExpiryTime, err := p4m.getCertificateExpiry(urlHAS)
 	if err != nil {
-		p4m.logger.Errorf("Error getting cert url expiry %s: %v", certURL, err)
+		p4m.logger.Errorf("Error getting cert url expiry %s: %v", urlHAS, err)
 		return
 	}
 	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_has_ssl_cert_expires",
 		help:   "P4D HAS SSL certificate expiry epoch seconds",
 		mtype:  "gauge",
 		value:  fmt.Sprintf("%d", certExpiryTime.Unix()),
-		labels: []labelStruct{{name: "url", value: certURL}}})
+		labels: []labelStruct{{name: "url", value: urlHAS}}})
+
+	urlStatus := fmt.Sprintf("%s/status", urlHAS)
+	versionString, err := p4m.getHASVersion(urlStatus)
+	if err != nil {
+		p4m.logger.Errorf("Error getting HAS status %s: %v", urlStatus, err)
+	} else {
+		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_has_version",
+			help:   "P4 HAS version string",
+			mtype:  "gauge",
+			value:  "1",
+			labels: []labelStruct{{name: "version", value: versionString}}})
+	}
 	p4m.writeMetricsFile()
 }
 
@@ -1358,6 +1409,39 @@ type SwarmTaskResponse struct {
 	WorkerLifetime string `json:"workerLifetime"` // We're not particularly interested in this one
 }
 
+// SwarmVersionResponse represents the structure of the Swarm version JSON response
+type SwarmVersionResponse struct {
+	Version string `json:"version"`
+	Year    string `json:"year"`
+}
+
+// getSwarmVersion retrieves the version from the Swarm API
+func (p4m *P4MonitorMetrics) getSwarmVersion(url string) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP request failed with status code: %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %v", err)
+	}
+	var versionResp SwarmVersionResponse
+	err = json.Unmarshal(body, &versionResp)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse JSON: %v", err)
+	}
+
+	// Replace escaped slashes with regular slashes
+	// "version":"SWARM\/2024.6-MAIN-TEST_ONLY\/2701191 (2025\/01\/07)"
+	cleanedVersion := strings.ReplaceAll(versionResp.Version, "\\/", "/")
+	return cleanedVersion, nil
+}
+
 // getSwarmQueueInfo performs an HTTP request and parses the JSON response
 func (p4m *P4MonitorMetrics) getSwarmQueueInfo(url, userid, password string) (*SwarmTaskResponse, error) {
 	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
@@ -1422,20 +1506,21 @@ func (p4m *P4MonitorMetrics) monitorSwarm() {
 
 	// Get Swarm URL from property
 	p4cmd, errbuf, p = p4m.newP4CmdPipe("property -l")
-	url, err := p.Exec(p4cmd).Match("P4.Swarm.URL").Column(3).String()
+	urlSwarm, err := p.Exec(p4cmd).Match("P4.Swarm.URL").Column(3).String()
 	if err != nil {
 		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
-	if url == "" {
+	if urlSwarm == "" {
 		p4m.logger.Warningf("No Swarm property")
 		return
 	}
-	url = fmt.Sprintf("%s/queue/status", strings.TrimSpace(url))
-	p4m.logger.Debugf("url: '%s'", url)
+	urlSwarm = strings.TrimSpace(urlSwarm)
+	urlStatus := fmt.Sprintf("%s/queue/status", urlSwarm)
+	p4m.logger.Debugf("url: '%s'", urlStatus)
 
 	swarmerror := "0"
-	swarminfo, err := p4m.getSwarmQueueInfo(url, p4m.p4User, ticket)
+	swarminfo, err := p4m.getSwarmQueueInfo(urlStatus, p4m.p4User, ticket)
 	if err != nil {
 		swarmerror = "1"
 		p4m.logger.Errorf("error: %v", err)
@@ -1458,6 +1543,19 @@ func (p4m *P4MonitorMetrics) monitorSwarm() {
 	}
 	if err != nil {
 		return
+	}
+
+	urlVersion := fmt.Sprintf("%s/api/version", urlSwarm)
+	p4m.logger.Debugf("urlVersion: '%s'", urlVersion)
+	versionString, err := p4m.getSwarmVersion(urlVersion)
+	if err != nil {
+		p4m.logger.Errorf("Error getting Swarm status %s: %v", urlVersion, err)
+	} else {
+		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_swarm_version",
+			help:   "P4 Swarm version string",
+			mtype:  "gauge",
+			value:  "1",
+			labels: []labelStruct{{name: "version", value: versionString}}})
 	}
 
 	p4m.metrics = append(p4m.metrics,
@@ -1538,6 +1636,7 @@ func main() {
 		logger.Level = logrus.DebugLevel
 	}
 
+	logger.Debugf("Loading config file: %q", *configfile)
 	cfg, err := config.LoadConfigFile(*configfile)
 	if err != nil {
 		logger.Errorf("error loading config file: %v", err)
@@ -1594,6 +1693,7 @@ func main() {
 		env = sourceEnvVars()
 	}
 	p4m := newP4MonitorMetrics(cfg, &env, logger)
+	p4m.version = version.Version
 	p4m.initVars()
 
 	ticker := time.NewTicker(p4m.config.UpdateInterval)

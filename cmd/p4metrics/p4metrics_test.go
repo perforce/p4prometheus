@@ -102,7 +102,7 @@ func TestP4MetricsLicense(t *testing.T) {
 		"supportExpires":       "1677628800"}
 	p4m.parseLicense()
 	assert.Equal(t, 5, len(p4m.metrics))
-	tlogger.Infof("Metrics: %q", p4m.metrics)
+	tlogger.Debugf("Metrics: %q", p4m.metrics)
 
 	p4m.metrics = make([]metricStruct, 0)
 	p4m.p4license = map[string]string{
@@ -113,7 +113,7 @@ func TestP4MetricsLicense(t *testing.T) {
 	p4m.p4info["Server date"] = "2025/01/28 03:29:58 -0800 PST"
 	p4m.parseLicense()
 	assert.Equal(t, 5, len(p4m.metrics))
-	tlogger.Infof("Metrics: %q", p4m.metrics)
+	tlogger.Debugf("Metrics: %q", p4m.metrics)
 	expected := metricValues{
 		{name: "p4_licensed_user_count", value: "893"},
 		{name: "p4_licensed_user_limit", value: "1000"},
@@ -135,7 +135,7 @@ func TestP4MetricsFilesys(t *testing.T) {
 	expected := metricValues{
 		{name: "p4_filesys_min", value: "5368709120", labelName: "filesys", labelValue: "P4ROOT"},
 	}
-	tlogger.Infof("Metrics: %q", p4m.metrics)
+	tlogger.Debugf("Metrics: %q", p4m.metrics)
 	compareMetricValues(t, expected, p4m.metrics)
 
 	p4m = newP4MonitorMetrics(&cfg, &env, &logger)
@@ -143,7 +143,7 @@ func TestP4MetricsFilesys(t *testing.T) {
 	expected = metricValues{
 		{name: "p4_filesys_min", value: "262144000", labelName: "filesys", labelValue: "P4ROOT"},
 	}
-	tlogger.Infof("Metrics: %q", p4m.metrics)
+	tlogger.Debugf("Metrics: %q", p4m.metrics)
 	compareMetricValues(t, expected, p4m.metrics)
 
 	p4m = newP4MonitorMetrics(&cfg, &env, &logger)
@@ -161,7 +161,7 @@ func TestP4MetricsFilesys(t *testing.T) {
 		{name: "p4_filesys_min", value: "2147483648", labelName: "filesys", labelValue: "P4LOG"},
 		{name: "p4_filesys_min", value: "524288000", labelName: "filesys", labelValue: "TEMP"},
 	}
-	tlogger.Infof("Metrics: %q", p4m.metrics)
+	tlogger.Debugf("Metrics: %q", p4m.metrics)
 	compareMetricValues(t, expected, p4m.metrics)
 }
 
