@@ -21,7 +21,7 @@ metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.8.8"
+VER_P4PROMETHEUS="0.9.0"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -169,6 +169,7 @@ else
 fi
 
 p4prom_config_file="$p4prom_config_dir/p4prometheus.yaml"
+p4metrics_config_file="$p4prom_config_dir/p4metrics.yaml"
 
 download_and_untar () {
     fname=$1
@@ -244,21 +245,20 @@ EOF
 install_p4prometheus () {
 
     PVER="$VER_P4PROMETHEUS"
-    fname="p4prometheus.linux-${arch}.gz"
+    progname="p4prometheus"
+    fname="${progname}.linux-${arch}.gz"
     url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
     msg "downloading and extracting $url"
     wget -q "$url"
 
     gunzip "$fname"
-    
-    chmod +x p4prometheus.linux-${arch}
-
-    mv p4prometheus.linux-${arch} ${local_bin_dir}/p4prometheus
+    chmod +x "${progname}.linux-${arch}"
+    mv "${progname}.linux-${arch}" "${local_bin_dir}/${progname}"
 
     if [[ $SELinuxEnabled -eq 1 ]]; then
-        bin_file=${local_bin_dir}/p4prometheus
-        semanage fcontext -a -t bin_t $bin_file
-        restorecon -vF $bin_file
+        bin_file="${local_bin_dir}/${progname}"
+        semanage fcontext -a -t bin_t "$bin_file"
+        restorecon -vF "$bin_file"
     fi
 
     mkdir -p "$p4prom_config_dir" "$p4prom_bin_dir"
@@ -357,8 +357,114 @@ EOF
 
 }
 
-install_monitor_metrics () {
 
+install_p4metrics () {
+
+    PVER="$VER_P4PROMETHEUS"
+    progname="p4metrics"
+    fname="${progname}.linux-${arch}.gz"
+    url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
+    msg "downloading and extracting $url"
+    wget -q "$url"
+
+    gunzip "$fname"
+    chmod +x "${progname}.linux-${arch}"
+    mv "${progname}.linux-${arch}" "${local_bin_dir}/${progname}"
+
+    if [[ $SELinuxEnabled -eq 1 ]]; then
+        bin_file="${local_bin_dir}/${progname}"
+        semanage fcontext -a -t bin_t "$bin_file"
+        restorecon -vF "$bin_file"
+    fi
+
+    mkdir -p "$p4prom_config_dir" "$p4prom_bin_dir"
+    chown "$OSUSER:$OSGROUP" "$p4prom_config_dir" "$p4prom_bin_dir"
+
+cat << EOF > "$p4metrics_config_file"
+# ----------------------
+# metrics_root: REQUIRED! Directory into which to write metrics files for processing by node_exporter.
+# Ensure that node_exporter user has read access to this folder.
+metrics_root: $metrics_root
+
+# ----------------------
+# sdp_instance: SDP instance - typically integer, but can be alphanumeric
+# See: https://swarm.workshop.perforce.com/projects/perforce-software-sdp for more
+# If this value is blank then it is assumed to be a non-SDP instance, and you will want
+# to set other values with a prefix of p4 below.
+sdp_instance:   $SDP_INSTANCE
+
+# ----------------------
+# p4port: The value of P4PORT to use
+# IGNORED if sdp_instance is non-blank!
+p4port:         $p4port
+
+# ----------------------
+# p4user: The value of P4USER to use
+# IGNORED if sdp_instance is non-blank!
+p4user:         $p4user
+
+# ----------------------
+# p4config: The value of a P4CONFIG to use
+# This is very useful and should be set to an absolute path if you need values like P4TRUST/P4TICKETS etc
+# IGNORED if sdp_instance is non-blank!
+p4config:      
+
+# ----------------------
+# p4bin: The value of the p4 binary to be used - important if not available in your PATH
+# IGNORED if sdp_instance is non-blank!
+p4bin:      p4
+
+# ----------------------
+# update_interval: how frequently metrics should be written - defaults to 1m
+# Values are as parsed by Go, e.g. 1m or 30s etc.
+update_interval:    1m
+
+# ----------------------
+# cmds_by_user: true/false - Whether to output metrics p4_monitor_by_user
+# Normally this should be set to true as the metrics are useful.
+# If you have a p4d instance with hundreds/thousands of users you may find the number
+# of metrics labels is too great (one per distinct user), so set this to false.
+# Or set it to false if any personal information concerns
+cmds_by_user:   true
+
+# ----------------------
+# monitor_swarm: true/false - Whether to monitor status and version of swarm
+# Normally this should be set to true - won't run if there is no Swarm property
+monitor_swarm:   true
+
+EOF
+
+    chown "$OSUSER:$OSGROUP" "$p4metrics_config_file"
+
+    service_name="${progname}"
+    service_file="/etc/systemd/system/${service_name}.service"
+    msg "Creating service file for ${service_name}"
+    cat << EOF > "${service_file}"
+[Unit]
+Description=P4prometheus
+Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=$OSUSER
+Group=$OSGROUP
+Type=simple
+ExecStart=${local_bin_dir}/${progname} --config=${p4metrics_config_file}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    chmod 644 "${service_file}"
+    systemctl daemon-reload
+    systemctl enable "${service_name}"
+    systemctl start "${service_name}"
+    systemctl status "${service_name}" --no-pager
+
+}
+
+install_monitor_locks () {
 
     if [[ $UseSDP -eq 1 ]]; then
         service_args="$SDP_INSTANCE"
@@ -370,7 +476,7 @@ install_monitor_metrics () {
     bin_dir="/p4/common/site/bin"
     abs_bin_dir=$(readlink -f "$bin_dir")
     cd "$bin_dir" || bail "Failed to cd to $bin_dir"
-    for scriptname in monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh; do
+    for scriptname in monitor_metrics.py monitor_wrapper.sh; do
         [[ -f "$scriptname" ]] && rm "$scriptname"
         echo "downloading $scriptname"
         wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/$scriptname"
@@ -381,54 +487,6 @@ install_monitor_metrics () {
             restorecon -vF "$abs_bin_dir/$scriptname"
         fi
     done
-
-    service_name="monitor_metrics"
-    service_file="/etc/systemd/system/${service_name}.service"
-    msg "Creating service file for ${service_name}"
-    cat << EOF > "${service_file}"
-# monitor_metrics.service
-# Service file to run p4prometheus monitor_metrics.sh - called by monitor_metrics.timer service
-# This service should not be enabled (just timer service)
-
-[Unit]
-Description=p4prometheus monitor_metrics.sh for p4d metrics gathering
-Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
-Wants=monitor_metrics.timer network-online.target
-After=network-online.target
-
-[Service]
-User=$OSUSER
-Type=oneshot
-ExecStart=${abs_bin_dir}/monitor_metrics.sh ${service_args}
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    chmod 644 "${service_file}"
-
-    msg "Creating timer file for ${service_name}"
-    service_file="/etc/systemd/system/${service_name}.timer"
-    cat << EOF > "${service_file}"
-# monitor_metrics.timer
-# Timer for service to run p4prometheus monitor_metrics.sh - ensuring single threading
-
-[Unit]
-Description=p4prometheus monitor_metrics.sh for p4d metrics gathering
-Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
-Requires=monitor_metrics.service
-
-[Timer]
-Unit=monitor_metrics.service
-# Runs once a minute
-OnCalendar=*-*-* *:*:00
-AccuracySec=5s
-
-[Install]
-WantedBy=timers.target
-EOF
-
-    chmod 644 "${service_file}"
 
     service_name="monitor_locks"
     service_file="/etc/systemd/system/${service_name}.service"
@@ -478,7 +536,7 @@ EOF
     chmod 644 "${service_file}"
 
     systemctl daemon-reload
-    for svc in monitor_metrics monitor_locks; do
+    for svc in monitor_locks; do
         systemctl enable $svc.timer
         systemctl start $svc.timer
         systemctl status $svc.timer --no-pager
@@ -551,7 +609,8 @@ EOF
 
 install_node_exporter
 install_p4prometheus
-install_monitor_metrics
+install_p4metrics
+install_monitor_locks
 systemctl list-timers
 
 echo "
