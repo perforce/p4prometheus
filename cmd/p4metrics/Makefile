@@ -24,11 +24,11 @@ build:
 
 # Builds distribution
 dist:
-	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o bin/${BINARY}-darwin-arm64 ${SRC_FILES}
-	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}-darwin-amd64 ${SRC_FILES}
-	GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o bin/${BINARY}-linux-arm64 ${SRC_FILES}
-	GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}-linux-amd64 ${SRC_FILES}
-	GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}-windows-amd64.exe ${SRC_FILES}
+	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o bin/${BINARY}.darwin-arm64 ${SRC_FILES}
+	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}.darwin-amd64 ${SRC_FILES}
+	GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o bin/${BINARY}.linux-arm64 ${SRC_FILES}
+	GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}.linux-amd64 ${SRC_FILES}
+	GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}.windows-amd64.exe ${SRC_FILES}
 	rm -f bin/${BINARY}*arm64*.gz bin/${BINARY}*amd64*.gz
 	-chmod +x bin/${BINARY}*arm64* bin/${BINARY}*amd64*
 	gzip bin/${BINARY}*arm64* bin/${BINARY}*amd64*

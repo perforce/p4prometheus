@@ -165,6 +165,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 	p4m.p4User = getVar(*p4m.env, "P4USER")
 	p4port := getVar(*p4m.env, "P4PORT")
 	p4trust := getVar(*p4m.env, "P4TRUST")
+	p4tickets := getVar(*p4m.env, "P4TICKETS")
 	p4config := getVar(*p4m.env, "P4CONFIG")
 	p4configEnv := ""
 	if p4m.config.SDPInstance == "" {
@@ -206,6 +207,10 @@ func (p4m *P4MonitorMetrics) initVars() {
 	if p4trust != "" {
 		p4m.logger.Debugf("setting P4TRUST=%s", p4trust)
 		os.Setenv("P4TRUST", p4trust)
+	}
+	if p4tickets != "" {
+		p4m.logger.Debugf("setting P4TICKETS=%s", p4tickets)
+		os.Setenv("P4TICKETS", p4tickets)
 	}
 	p4userStr := ""
 	if p4m.p4User != "" {
