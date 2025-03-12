@@ -144,6 +144,7 @@ type P4MonitorMetrics struct {
 	indErrSubsys      int // Index of subsys
 	errorMetrics      map[ErrorMetric]int
 	metricsFilePrefix string
+	lastMetricName    string // Used when printing to avoid duplicate headers
 	metrics           []metricStruct
 }
 
@@ -364,12 +365,17 @@ func (p4m *P4MonitorMetrics) printMetric(metrics *bytes.Buffer, mname string, la
 }
 
 func (p4m *P4MonitorMetrics) outputMetric(metrics *bytes.Buffer, mname string, mhelp string, mtype string, metricVal string, fixedLabels []labelStruct) {
-	p4m.printMetricHeader(metrics, mname, mhelp, mtype)
+	if mname != p4m.lastMetricName {
+		// Only write metric header once
+		p4m.printMetricHeader(metrics, mname, mhelp, mtype)
+	}
+	p4m.lastMetricName = mname
 	p4m.printMetric(metrics, mname, fixedLabels, metricVal)
 }
 
 func (p4m *P4MonitorMetrics) getCumulativeMetrics() string {
 	fixedLabels := []labelStruct{{name: "serverid", value: p4m.serverID}}
+	p4m.lastMetricName = ""
 	if p4m.config.SDPInstance != "" {
 		fixedLabels = append(fixedLabels, labelStruct{name: "sdpinst", value: p4m.sdpInstance})
 	}

@@ -163,6 +163,17 @@ func TestP4MetricsFilesys(t *testing.T) {
 	}
 	tlogger.Debugf("Metrics: %q", p4m.metrics)
 	compareMetricValues(t, expected, p4m.metrics)
+	expString := `# HELP p4_filesys_min Minimum space for filesystem
+# TYPE p4_filesys_min gauge
+p4_filesys_min{filesys="depot"} 10737418240
+p4_filesys_min{filesys="P4ROOT"} 209715200
+p4_filesys_min{filesys="P4JOURNAL"} 1073741824
+p4_filesys_min{filesys="P4LOG"} 2147483648
+p4_filesys_min{filesys="TEMP"} 524288000
+`
+	buf := p4m.getCumulativeMetrics()
+	tlogger.Debugf("Metrics: %q", buf)
+	assert.Equal(t, expString, buf)
 }
 
 func TestP4MetricsSchemaParsing(t *testing.T) {
