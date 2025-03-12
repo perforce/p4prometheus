@@ -597,18 +597,18 @@ func (p4m *P4MonitorMetrics) monitorLicense() {
 	// Note that sometimes you only get supportExpires - we calculate licenseTimeRemaining in that case
 
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("license -u")
-	licenseMap, err := p.Exec(p4cmd).Slice()
+	licenseArr, err := p.Exec(p4cmd).Slice()
 	if err != nil {
 		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
-	p4m.logger.Debugf("License: %q", licenseMap)
-	for _, s := range licenseMap {
+	for _, s := range licenseArr {
 		parts := strings.Split(s, " ")
 		if len(parts) == 3 {
-			p4m.p4license[parts[0]] = parts[1]
+			p4m.p4license[parts[1]] = parts[2]
 		}
 	}
+	p4m.logger.Debugf("License: %q, %q", licenseArr, p4m.p4license)
 	p4m.parseLicense()
 	p4m.writeMetricsFile()
 }
