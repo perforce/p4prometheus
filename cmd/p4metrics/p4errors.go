@@ -242,7 +242,7 @@ func (p4m *P4MonitorMetrics) writeErrorMetrics() {
 	p4m.startMonitor("monitorErrors", "p4_errors")
 	for m, count := range p4m.errorMetrics {
 		p4m.metrics = append(p4m.metrics,
-			metricStruct{name: "p4_error_count",
+			metricStruct{name: "p4_errors_count",
 				help:  "P4D error count by subsystem and level",
 				mtype: "counter",
 				value: fmt.Sprintf("%d", count),
@@ -303,6 +303,10 @@ func (p4m *P4MonitorMetrics) runLogTailer(logger *logrus.Logger, logcfg *logConf
 func (p4m *P4MonitorMetrics) monitorErrors() {
 	// Parse the errors.csv file
 	p4m.startMonitor("monitorErrors", "p4_errors")
+	if p4m.p4errorsCSV == "" {
+		p4m.logger.Debugf("monitorErrors exiting as no errors.csv")
+		return
+	}
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("logschema -a")
 	schema, err := p.Exec(p4cmd).Slice()
 	if err != nil {
@@ -316,7 +320,7 @@ func (p4m *P4MonitorMetrics) monitorErrors() {
 	p4m.setupErrorParsing(schema)
 	logcfg := &logConfig{
 		Type:                 "file",
-		Path:                 "/p4/1/logs/errors.csv",
+		Path:                 p4m.p4errorsCSV,
 		PollInterval:         time.Second * 30,
 		Readall:              false,
 		FailOnMissingLogfile: false,
