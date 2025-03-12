@@ -488,12 +488,8 @@ func (p4m *P4MonitorMetrics) parseLicense() {
 	licenseInfoFull := ""
 	licenseInfo := ""
 	licenseIP := ""
-	noLicense := false
 	if v, ok := p4m.p4info["Server license"]; ok {
 		licenseInfoFull = v
-		if v == "none" {
-			noLicense = true
-		}
 	}
 	if v, ok := p4m.p4info["Server license-ip"]; ok {
 		licenseIP = v
@@ -504,36 +500,34 @@ func (p4m *P4MonitorMetrics) parseLicense() {
 	licenseExpires := ""
 	licenseTimeRemaining := ""
 	supportExpires := ""
-	if !noLicense {
-		if v, ok := p4m.p4license["userCount"]; ok {
-			userCount = v
-		}
-		if v, ok := p4m.p4license["userLimit"]; ok {
-			userLimit = v
-		}
-		if v, ok := p4m.p4license["licenseExpires"]; ok {
-			licenseExpires = v
-		}
-		if v, ok := p4m.p4license["licenseTimeRemaining"]; ok {
-			licenseTimeRemaining = v
-		}
-		if v, ok := p4m.p4license["supportExpires"]; ok {
-			supportExpires = v
-		}
-		reSupport := regexp.MustCompile(`\S*\(support [^\)]+\)`)
-		reExpires := regexp.MustCompile(`\S*\(expires [^\)]+\)`)
-		licenseInfo = reSupport.ReplaceAllString(licenseInfoFull, "")
-		licenseInfo = reExpires.ReplaceAllString(licenseInfo, "")
-		licenseInfo = strings.TrimSpace(licenseInfo)
-		if licenseTimeRemaining == "" && supportExpires != "" {
-			if v, ok := p4m.p4info["Server date"]; ok {
-				expSecs, _ := strconv.ParseInt(supportExpires, 10, 64)
-				expT := time.Unix(expSecs, 0)
-				t, err := time.Parse(p4InfoTimeFormat, v)
-				if err == nil {
-					diff := expT.Sub(t)
-					licenseTimeRemaining = fmt.Sprintf("%.0f", diff.Seconds())
-				}
+	if v, ok := p4m.p4license["userCount"]; ok {
+		userCount = v
+	}
+	if v, ok := p4m.p4license["userLimit"]; ok {
+		userLimit = v
+	}
+	if v, ok := p4m.p4license["licenseExpires"]; ok {
+		licenseExpires = v
+	}
+	if v, ok := p4m.p4license["licenseTimeRemaining"]; ok {
+		licenseTimeRemaining = v
+	}
+	if v, ok := p4m.p4license["supportExpires"]; ok {
+		supportExpires = v
+	}
+	reSupport := regexp.MustCompile(`\S*\(support [^\)]+\)`)
+	reExpires := regexp.MustCompile(`\S*\(expires [^\)]+\)`)
+	licenseInfo = reSupport.ReplaceAllString(licenseInfoFull, "")
+	licenseInfo = reExpires.ReplaceAllString(licenseInfo, "")
+	licenseInfo = strings.TrimSpace(licenseInfo)
+	if licenseTimeRemaining == "" && supportExpires != "" {
+		if v, ok := p4m.p4info["Server date"]; ok {
+			expSecs, _ := strconv.ParseInt(supportExpires, 10, 64)
+			expT := time.Unix(expSecs, 0)
+			t, err := time.Parse(p4InfoTimeFormat, v)
+			if err == nil {
+				diff := expT.Sub(t)
+				licenseTimeRemaining = fmt.Sprintf("%.0f", diff.Seconds())
 			}
 		}
 	}
@@ -608,6 +602,7 @@ func (p4m *P4MonitorMetrics) monitorLicense() {
 		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
+	p4m.logger.Debugf("License: %q", licenseMap)
 	for _, s := range licenseMap {
 		parts := strings.Split(s, " ")
 		if len(parts) == 3 {

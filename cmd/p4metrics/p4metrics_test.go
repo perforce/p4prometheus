@@ -112,8 +112,6 @@ func TestP4MetricsLicense(t *testing.T) {
 	p4m.p4info["Server license"] = "Perforce Software, Inc. 999 users (support ends 2025/02/28)"
 	p4m.p4info["Server date"] = "2025/01/28 03:29:58 -0800 PST"
 	p4m.parseLicense()
-	assert.Equal(t, 5, len(p4m.metrics))
-	tlogger.Debugf("Metrics: %q", p4m.metrics)
 	expected := metricValues{
 		{name: "p4_licensed_user_count", value: "893"},
 		{name: "p4_licensed_user_limit", value: "1000"},
@@ -121,6 +119,35 @@ func TestP4MetricsLicense(t *testing.T) {
 		{name: "p4_license_support_expires", value: "1772323200"},
 		{name: "p4_license_info", value: "1", labelName: "licenseInfo", labelValue: "Perforce Software, Inc. 999 users"},
 	}
+	assert.Equal(t, len(expected), len(p4m.metrics))
+	tlogger.Debugf("Metrics: %q", p4m.metrics)
+	compareMetricValues(t, expected, p4m.metrics)
+
+	p4m.metrics = make([]metricStruct, 0)
+	p4m.p4license = map[string]string{
+		"isLicensed":      "no",
+		"userCount":       "1",
+		"userLimit":       "unlimited",
+		"userSoftLimit":   "5",
+		"clientCount":     "0",
+		"clientLimit":     "unlimited",
+		"clientSoftLimit": "20",
+		"fileCount":       "0",
+		"fileLimit":       "unlimited",
+		"fileSoftLimit":   "1000",
+		"repoCount":       "0",
+		"repoLimit":       "3",
+		"repoSoftLimit":   "3"}
+	p4m.p4info["Server license"] = "none"
+	p4m.p4info["Server date"] = "2025/01/28 03:29:58 -0800 PST"
+	p4m.parseLicense()
+	expected = metricValues{
+		{name: "p4_licensed_user_count", value: "1"},
+		{name: "p4_licensed_user_limit", value: "unlimited"},
+		{name: "p4_license_info", value: "1", labelName: "licenseInfo", labelValue: "none"},
+	}
+	assert.Equal(t, len(expected), len(p4m.metrics))
+	tlogger.Debugf("Metrics: %q", p4m.metrics)
 	compareMetricValues(t, expected, p4m.metrics)
 }
 
