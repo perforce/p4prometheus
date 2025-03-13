@@ -854,6 +854,9 @@ func (p4m *P4MonitorMetrics) getHASVersion(url string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound { // Pre 2022.2 versions of HAS - or status page disabled
+		return "unknown", nil
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("HTTP request failed with status code: %d", resp.StatusCode)
 	}
@@ -1177,8 +1180,15 @@ func (p4m *P4MonitorMetrics) monitorReplicas() {
 		if len(fields) < 3 {
 			continue
 		}
-		validServers[fields[0]].journal = fields[1]
-		validServers[fields[0]].offset = fields[2]
+		serverID := fields[0]
+		journal := fields[1]
+		offset := fields[2]
+		if _, ok := validServers[serverID]; ok {
+			validServers[serverID].journal = journal
+			validServers[serverID].offset = offset
+		} else {
+			p4m.logger.Warningf("Error finding server: %q", serverID)
+		}
 	}
 
 	for _, s := range validServers {
