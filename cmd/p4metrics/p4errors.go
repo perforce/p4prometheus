@@ -234,23 +234,10 @@ func (p4m *P4MonitorMetrics) parseErrorLine(line string) {
 		}
 	}
 	p4m.logger.Debugf("Incrementing error count %v", m)
+	p4m.errLock.Lock() // Because accessing on a different thread
 	p4m.errorMetrics[m] += 1
+	p4m.errLock.Unlock()
 	p4m.logger.Debugf("All error count %v", p4m.errorMetrics)
-}
-
-func (p4m *P4MonitorMetrics) writeErrorMetrics() {
-	p4m.startMonitor("monitorErrors", "p4_errors")
-	for m, count := range p4m.errorMetrics {
-		p4m.metrics = append(p4m.metrics,
-			metricStruct{name: "p4_errors_count",
-				help:  "P4D error count by subsystem and level",
-				mtype: "counter",
-				value: fmt.Sprintf("%d", count),
-				labels: []labelStruct{{name: "subsys", value: m.Subsystem},
-					{name: "severity", value: m.Severity},
-				}})
-	}
-	p4m.writeMetricsFile()
 }
 
 // Loop reading tailing error log and writing metrics when appropriate
@@ -270,13 +257,8 @@ func (p4m *P4MonitorMetrics) runLogTailer(logger *logrus.Logger, logcfg *logConf
 		tailer.Close()
 	}()
 
-	ticker := time.NewTicker(p4m.config.UpdateInterval)
-
 	for {
 		select {
-		case <-ticker.C:
-			p4m.logger.Debug("Writing error metrics")
-			p4m.writeErrorMetrics()
 		case line, ok := <-tailer.Lines():
 			if ok {
 				p4m.logger.Debugf("Error line %q", line.Line)
@@ -300,9 +282,8 @@ func (p4m *P4MonitorMetrics) runLogTailer(logger *logrus.Logger, logcfg *logConf
 	}
 }
 
-func (p4m *P4MonitorMetrics) monitorErrors() {
+func (p4m *P4MonitorMetrics) setupErrorMonitoring() {
 	// Parse the errors.csv file
-	p4m.startMonitor("monitorErrors", "p4_errors")
 	if p4m.p4errorsCSV == "" {
 		p4m.logger.Debugf("monitorErrors exiting as no errors.csv")
 		return

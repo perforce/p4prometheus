@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -143,6 +144,7 @@ type P4MonitorMetrics struct {
 	indErrSeverity    int // Index of Severity in errors.csv
 	indErrSubsys      int // Index of subsys
 	errorMetrics      map[ErrorMetric]int
+	errLock           sync.Mutex
 	metricsFilePrefix string
 	metricNames       map[string]int // Used when printing to avoid duplicate headers
 	metrics           []metricStruct
@@ -846,8 +848,8 @@ type HASVersionResponse struct {
 	Status     string `json:"status"`
 }
 
-// getHASVersion retrieves the app version from HAS URL
-func (p4m *P4MonitorMetrics) getHASVersion(url string) (string, error) {
+// getAuthVersion retrieves the app version from Helix Auth URL
+func (p4m *P4MonitorMetrics) getAuthVersion(url string) (string, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("failed to send request: %v", err)
@@ -873,9 +875,9 @@ func (p4m *P4MonitorMetrics) getHASVersion(url string) (string, error) {
 	return versionResp.AppVersion, nil
 }
 
-func (p4m *P4MonitorMetrics) monitorHASSSL() {
+func (p4m *P4MonitorMetrics) monitorHelixAuthSvc() {
 	// Check expiry of HAS SSL certificate - if it exists!
-	p4m.startMonitor("monitorHASSSL", "p4_has_ssl_info")
+	p4m.startMonitor("monitorHelixAuthSvc", "p4_auth_ssl_info")
 	// TODO: update frequency
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("extension --list --type extensions")
 	ext, err := p.Exec(p4cmd).Match("extension Auth::loginhook").Column(2).String()
@@ -898,30 +900,30 @@ func (p4m *P4MonitorMetrics) monitorHASSSL() {
 		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
-	urlHAS := p4m.extractServiceURL(lines)
-	if !strings.HasPrefix(urlHAS, "https") {
-		p4m.logger.Debug("HAS URL not https so exiting")
+	urlAuth := p4m.extractServiceURL(lines)
+	if !strings.HasPrefix(urlAuth, "https") {
+		p4m.logger.Debug("Auth URL not https so exiting")
 		return
 	}
-	p4m.logger.Debugf("HAS URL: %q", urlHAS)
-	certExpiryTime, err := p4m.getCertificateExpiry(urlHAS)
+	p4m.logger.Debugf("Auth URL: %q", urlAuth)
+	certExpiryTime, err := p4m.getCertificateExpiry(urlAuth)
 	if err != nil {
-		p4m.logger.Errorf("Error getting cert url expiry %s: %v", urlHAS, err)
+		p4m.logger.Errorf("Error getting cert url expiry %s: %v", urlAuth, err)
 		return
 	}
-	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_has_ssl_cert_expires",
-		help:   "P4D HAS SSL certificate expiry epoch seconds",
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_auth_ssl_cert_expires",
+		help:   "P4D Auth SSL certificate expiry epoch seconds",
 		mtype:  "gauge",
 		value:  fmt.Sprintf("%d", certExpiryTime.Unix()),
-		labels: []labelStruct{{name: "url", value: urlHAS}}})
+		labels: []labelStruct{{name: "url", value: urlAuth}}})
 
-	urlStatus := fmt.Sprintf("%s/status", urlHAS)
-	versionString, err := p4m.getHASVersion(urlStatus)
+	urlStatus := fmt.Sprintf("%s/status", urlAuth)
+	versionString, err := p4m.getAuthVersion(urlStatus)
 	if err != nil {
-		p4m.logger.Errorf("Error getting HAS status %s: %v", urlStatus, err)
+		p4m.logger.Errorf("Error getting Auth status %s: %v", urlStatus, err)
 	} else {
-		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_has_version",
-			help:   "P4 HAS version string",
+		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_auth_version",
+			help:   "P4 Auth Svc version string",
 			mtype:  "gauge",
 			value:  "1",
 			labels: []labelStruct{{name: "version", value: versionString}}})
@@ -1654,21 +1656,21 @@ func (p4m *P4MonitorMetrics) monitorSwarm() {
 	p4m.writeMetricsFile()
 }
 
-// Reads server id for SDP instance or the server.id path
-func readServerID(logger *logrus.Logger, instance string, path string) string {
-	idfile := path
-	if idfile == "" {
-		idfile = fmt.Sprintf("/p4/%s/root/server.id", instance)
+func (p4m *P4MonitorMetrics) monitorErrors() {
+	p4m.startMonitor("monitorErrors", "p4_errors")
+	p4m.errLock.Lock()
+	defer p4m.errLock.Unlock()
+	for m, count := range p4m.errorMetrics {
+		p4m.metrics = append(p4m.metrics,
+			metricStruct{name: "p4_errors_count",
+				help:  "P4D error count by subsystem and level",
+				mtype: "counter",
+				value: fmt.Sprintf("%d", count),
+				labels: []labelStruct{{name: "subsys", value: m.Subsystem},
+					{name: "severity", value: m.Severity},
+				}})
 	}
-	if _, err := os.Stat(idfile); err == nil {
-		buf, err := os.ReadFile(idfile) // just pass the file name
-		if err != nil {
-			logger.Errorf("Failed to read %v - %v", idfile, err)
-			return ""
-		}
-		return string(bytes.TrimRight(buf, " \r\n"))
-	}
-	return ""
+	p4m.writeMetricsFile()
 }
 
 func main() {
@@ -1774,7 +1776,7 @@ func main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		p4m.monitorErrors() // Special one which manages its own updates and timer on a seperate thread
+		p4m.setupErrorMonitoring() // Manages its own updates on a seperate thread because of log tailing
 	}()
 
 	for {
@@ -1790,12 +1792,13 @@ func main() {
 			p4m.monitorChange()
 			p4m.monitorCheckpoint()
 			p4m.monitorFilesys()
-			p4m.monitorHASSSL()
+			p4m.monitorHelixAuthSvc()
 			p4m.monitorLicense()
 			p4m.monitorProcesses()
 			p4m.monitorReplicas()
 			p4m.monitorSSL()
 			p4m.monitorPull()
+			p4m.monitorErrors()
 			p4m.monitorRealTime()
 			p4m.monitorVersions()
 		}
