@@ -357,3 +357,33 @@ func TestP4MonitorParsing(t *testing.T) {
 	lines := strings.Split(monitorLines, "\n")
 	assert.Equal(t, 3821, p4m.getMaxNonSvcCmdTime(lines))
 }
+
+func TestP4PullParsing(t *testing.T) {
+	cfg := config.Config{}
+	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
+	tlogger.SetReportCaller(true)
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, &logger)
+
+	pullLines := `... replicaTransfersActive 0
+... replicaTransfersTotal 169
+... replicaBytesActive 0
+... replicaBytesTotal 460828016
+... replicaOldestChange 0`
+
+	lines := strings.Split(pullLines, "\n")
+	transfersTotal, bytesTotal := p4m.getPullTransfersAndBytes(lines)
+	assert.Equal(t, int64(169), transfersTotal)
+	assert.Equal(t, int64(460828016), bytesTotal)
+
+	pullLines = `... replicaTransfersActive 0
+... replicaTransfersTotal 0
+... replicaBytesActive 0
+... replicaBytesTotal 0
+... replicaOldestChange 0`
+
+	lines = strings.Split(pullLines, "\n")
+	transfersTotal, bytesTotal = p4m.getPullTransfersAndBytes(lines)
+	assert.Equal(t, int64(0), transfersTotal)
+	assert.Equal(t, int64(0), bytesTotal)
+}

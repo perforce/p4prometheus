@@ -144,7 +144,7 @@ type P4MonitorMetrics struct {
 	indErrSubsys      int // Index of subsys
 	errorMetrics      map[ErrorMetric]int
 	metricsFilePrefix string
-	lastMetricName    string // Used when printing to avoid duplicate headers
+	metricNames       map[string]int // Used when printing to avoid duplicate headers
 	metrics           []metricStruct
 }
 
@@ -365,17 +365,17 @@ func (p4m *P4MonitorMetrics) printMetric(metrics *bytes.Buffer, mname string, la
 }
 
 func (p4m *P4MonitorMetrics) outputMetric(metrics *bytes.Buffer, mname string, mhelp string, mtype string, metricVal string, fixedLabels []labelStruct) {
-	if mname != p4m.lastMetricName {
-		// Only write metric header once
+	if _, ok := p4m.metricNames[mname]; !ok {
+		// Only write metric header once for any particular name
 		p4m.printMetricHeader(metrics, mname, mhelp, mtype)
 	}
-	p4m.lastMetricName = mname
+	p4m.metricNames[mname] = 1
 	p4m.printMetric(metrics, mname, fixedLabels, metricVal)
 }
 
 func (p4m *P4MonitorMetrics) getCumulativeMetrics() string {
 	fixedLabels := []labelStruct{{name: "serverid", value: p4m.serverID}}
-	p4m.lastMetricName = ""
+	p4m.metricNames = make(map[string]int, 0)
 	if p4m.config.SDPInstance != "" {
 		fixedLabels = append(fixedLabels, labelStruct{name: "sdpinst", value: p4m.sdpInstance})
 	}
@@ -1003,12 +1003,16 @@ func (p4m *P4MonitorMetrics) getMaxNonSvcCmdTime(lines []string) int {
 func (p4m *P4MonitorMetrics) monitorProcesses() {
 	// Monitor metrics summarised by cmd or user
 	p4m.startMonitor("monitorProcesses", "p4_monitor")
+	// Exepected columns in monitor show -l output:
+	// Pid, state, user, time, cmd
+	// 	8764 R user 00:00:00 edit
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("monitor show -l")
 	monitorOutput, err := p.Exec(p4cmd).Slice()
 	if err != nil {
 		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
 		return
 	}
+	p4m.logger.Debugf("Monitor output: %q", monitorOutput)
 	cmdCounts := p4m.getFieldCounts(monitorOutput, 5)
 	for cmd, count := range cmdCounts {
 		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitor_by_cmd",
@@ -1051,12 +1055,12 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 		pcount, err := p.Exec("ps ax").Match(proc + " ").CountLines()
 		if err != nil {
 			p4m.logger.Errorf("Error running 'ps ax': %v, err:%q", err, errbuf.String())
-			return
+		} else {
+			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_process_count",
+				help:  "P4 ps running processes",
+				mtype: "gauge",
+				value: fmt.Sprintf("%d", pcount)})
 		}
-		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_process_count",
-			help:  "P4 ps running processes",
-			mtype: "gauge",
-			value: fmt.Sprintf("%d", pcount)})
 	}
 	p4m.writeMetricsFile()
 }
@@ -1071,7 +1075,11 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 	// The strings searched for have been present in SDP logs for years now...
 
 	if p4m.config.SDPInstance == "" {
-		p4m.logger.Debug("No SDP instance")
+		p4m.logger.Debug("No SDP instance so exiting")
+		return
+	}
+	if runtime.GOOS != "linux" { // Don't bother on Windows
+		p4m.logger.Debug("Not running on Windows so exiting")
 		return
 	}
 	sdpInstance := p4m.config.SDPInstance
@@ -1210,6 +1218,30 @@ func (p4m *P4MonitorMetrics) monitorReplicas() {
 	p4m.writeMetricsFile()
 }
 
+func (p4m *P4MonitorMetrics) getPullTransfersAndBytes(pullOutput []string) (int64, int64) {
+	// pull -ls output - tagged:
+	// ... replicaTransfersActive 0
+	// ... replicaTransfersTotal 169
+	// ... replicaBytesActive 0
+	// ... replicaBytesTotal 460828016
+	// ... replicaOldestChange 0
+	transfersTotal := int64(-1)
+	bytesTotal := int64(-1)
+	for _, line := range pullOutput {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		f := fields[1]
+		if f == "replicaTransfersTotal" {
+			transfersTotal, _ = strconv.ParseInt(fields[2], 10, 64)
+		} else if f == "replicaBytesTotal" {
+			bytesTotal, _ = strconv.ParseInt(fields[2], 10, 64)
+		}
+	}
+	return transfersTotal, bytesTotal
+}
+
 func (p4m *P4MonitorMetrics) monitorPull() {
 	// p4 pull metrics - only valid for replica servers
 	p4m.startMonitor("monitorPull", "p4_pull")
@@ -1218,35 +1250,56 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 		return
 	}
 
-	// TODO: use pull -ls
-	tempPullQ := path.Join(p4m.config.MetricsRoot, "pullq.out")
-	p4cmd, errbuf, p := p4m.newP4CmdPipe("pull -l")
-	_, err := p.Exec(p4cmd).WriteFile(tempPullQ)
+	p4cmd, errbuf, p := p4m.newP4CmdPipe("-Ztag pull -ls")
+	pullOutput, err := p.Exec(p4cmd).Slice()
+	var transfersTotal, bytesTotal int64
 	if err != nil {
 		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
-		return
+	} else {
+		p4m.logger.Debugf("pull ls: %q", pullOutput)
+		transfersTotal, bytesTotal = p4m.getPullTransfersAndBytes(pullOutput)
+		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_queue_total",
+			help:  "Count of p4 pull queue total files",
+			mtype: "gauge",
+			value: fmt.Sprintf("%d", transfersTotal)})
+		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_queue_bytes",
+			help:  "Count of p4 pull total bytes",
+			mtype: "gauge",
+			value: fmt.Sprintf("%d", bytesTotal)})
 	}
 
-	reFailed := regexp.MustCompile(`failed\.$`)
-	failedCount, err := script.File(tempPullQ).MatchRegexp(reFailed).CountLines()
-	if err != nil {
-		p4m.logger.Errorf("Error counting failed pull errors: %v", err)
-		return
-	}
-	otherCount, err := script.File(tempPullQ).RejectRegexp(reFailed).CountLines()
-	if err != nil {
-		p4m.logger.Errorf("Error counting pull queue: %v", err)
-		return
-	}
+	// Only process pull queue looking for errors if below some magic number - 10k seems reasonable!
+	// The reason is that large pull queues tend to thrash and this command produces a lot of output and takes a long time!
+	if transfersTotal != -1 && transfersTotal < 10000 {
+		tempPullQ := path.Join(p4m.config.MetricsRoot, "pullq.out")
+		p4cmd, errbuf, p = p4m.newP4CmdPipe("pull -l")
+		_, err = p.Exec(p4cmd).WriteFile(tempPullQ)
+		if err != nil {
+			p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+			return
+		}
 
-	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_errors",
-		help:  "Count of p4 pull transfers in failed state",
-		mtype: "gauge",
-		value: fmt.Sprintf("%d", failedCount)})
-	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_queue",
-		help:  "Count of p4 pull files (not in failed state)",
-		mtype: "gauge",
-		value: fmt.Sprintf("%d", otherCount)})
+		reFailed := regexp.MustCompile(`failed\.$`)
+		failedCount, err := script.File(tempPullQ).MatchRegexp(reFailed).CountLines()
+		if err != nil {
+			p4m.logger.Errorf("Error counting failed pull errors: %v", err)
+			p4m.writeMetricsFile()
+			return
+		}
+		otherCount, err := script.File(tempPullQ).RejectRegexp(reFailed).CountLines()
+		if err != nil {
+			p4m.logger.Errorf("Error counting pull queue: %v", err)
+		} else {
+			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_errors",
+				help:  "Count of p4 pull transfers in failed state",
+				mtype: "gauge",
+				value: fmt.Sprintf("%d", failedCount)})
+			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_queue",
+				help:  "Count of p4 pull files (not in failed state)",
+				mtype: "gauge",
+				value: fmt.Sprintf("%d", otherCount)})
+		}
+	}
 
 	// Various possible results from p4 pull
 	// $ p4 pull -lj
@@ -1302,12 +1355,14 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 	_, err = p.Exec(p4cmd).WriteFile(tempPullStats)
 	if err != nil {
 		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+		p4m.writeMetricsFile()
 		return
 	}
 
 	journalRotationsBehind, err := script.File(tempPullStats).Match("... journalRotationsBehind").Column(3).String()
 	if err != nil {
 		p4m.logger.Errorf("Error getting journalRotationsBehind %v", err)
+		p4m.writeMetricsFile()
 		return
 	}
 	if journalRotationsBehind == "" {
@@ -1316,6 +1371,7 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 	journalBytesBehind, err := script.File(tempPullStats).Match("... journalBytesBehind").Column(3).String()
 	if err != nil {
 		p4m.logger.Errorf("Error getting journalBytesBehind %v", err)
+		p4m.writeMetricsFile()
 		return
 	}
 	if journalBytesBehind == "" {
@@ -1337,6 +1393,7 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 	masterJournalSequence, err := script.File(tempPullStats).Match("... masterJournalSequence").Column(3).String()
 	if err != nil {
 		p4m.logger.Errorf("Error getting masterJournalSequence %v", err)
+		p4m.writeMetricsFile()
 		return
 	}
 	replicationError := "0"
