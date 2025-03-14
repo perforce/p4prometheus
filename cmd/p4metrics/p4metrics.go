@@ -581,7 +581,7 @@ func (p4m *P4MonitorMetrics) parseLicense() {
 		p4m.metrics = append(p4m.metrics,
 			metricStruct{name: "p4_license_IP",
 				help:   "P4D Licensed IP",
-				mtype:  "gauge",
+				mtype:  "", // Should be a gauge but for backwards compatibility we leave as untyped
 				value:  "1",
 				labels: []labelStruct{{name: "licenseIP", value: licenseIP}}})
 	}
@@ -1019,7 +1019,7 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 	for cmd, count := range cmdCounts {
 		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitor_by_cmd",
 			help:   "P4 running processes by cmd in monitor table",
-			mtype:  "gauge",
+			mtype:  "counter",
 			value:  fmt.Sprintf("%d", count),
 			labels: []labelStruct{{name: "cmd", value: cmd}}})
 	}
@@ -1028,7 +1028,7 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 		for user, count := range userCounts {
 			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitor_by_user",
 				help:   "P4 running processes by user in monitor table",
-				mtype:  "gauge",
+				mtype:  "counter",
 				value:  fmt.Sprintf("%d", count),
 				labels: []labelStruct{{name: "user", value: user}}})
 		}
@@ -1058,8 +1058,10 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 		if err != nil {
 			p4m.logger.Errorf("Error running 'ps ax': %v, err:%q", err, errbuf.String())
 		} else {
-			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_process_count",
-				help:  "P4 ps running processes",
+			// Old monitor_metrics.sh has p4_process_count but as a counter - should be a gauge!
+			// So new name
+			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_processes_count",
+				help:  "P4 count of running processes (via ps)",
 				mtype: "gauge",
 				value: fmt.Sprintf("%d", pcount)})
 		}
@@ -1205,14 +1207,14 @@ func (p4m *P4MonitorMetrics) monitorReplicas() {
 		if s.journal != "" {
 			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_replica_curr_jnl",
 				help:   "Current journal for server",
-				mtype:  "gauge",
+				mtype:  "counter",
 				value:  s.journal,
 				labels: []labelStruct{{name: "servername", value: s.name}}})
 		}
 		if s.offset != "" {
 			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_replica_curr_pos",
 				help:   "Current offset within for server",
-				mtype:  "gauge",
+				mtype:  "counter", // Probably should be a gauge but kept for compatibility
 				value:  s.offset,
 				labels: []labelStruct{{name: "servername", value: s.name}}})
 		}
@@ -1292,11 +1294,13 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 		if err != nil {
 			p4m.logger.Errorf("Error counting pull queue: %v", err)
 		} else {
-			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_errors",
+			// Old monitor_metrics.sh has p4_pull_errors - but incorrectly as a counter
+			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_error_count",
 				help:  "Count of p4 pull transfers in failed state",
 				mtype: "gauge",
 				value: fmt.Sprintf("%d", failedCount)})
-			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_queue",
+			// Old monitor_metrics.sh has p4_pull_queue - but incorrectly as a counter
+			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_queue_count",
 				help:  "Count of p4 pull files (not in failed state)",
 				mtype: "gauge",
 				value: fmt.Sprintf("%d", otherCount)})
@@ -1466,9 +1470,13 @@ func (p4m *P4MonitorMetrics) monitorRealTime() {
 			continue
 		}
 		name := "p4_" + strings.ReplaceAll(fields[0], ".", "_")
+		mtype := "gauge"
+		if fields[0] == "rtv.db.io.records" || fields[0] == "rtv.svr.sessions.total" {
+			mtype = "counter" // For backwards compatibility with monitor_metrics.sh and historical data
+		}
 		p4m.metrics = append(p4m.metrics, metricStruct{name: name,
 			help:  fmt.Sprintf("P4 realtime metric %s", fields[0]),
-			mtype: "gauge",
+			mtype: mtype,
 			value: fields[3]})
 	}
 	p4m.writeMetricsFile()
