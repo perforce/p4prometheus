@@ -383,7 +383,7 @@ install_p4metrics () {
 cat << EOF > "$p4metrics_config_file"
 # ----------------------
 # metrics_root: REQUIRED! Directory into which to write metrics files for processing by node_exporter.
-# Ensure that node_exporter user has read access to this folder.
+# Ensure that node_exporter user has read access to this folder (and any parent directories)!
 metrics_root: $metrics_root
 
 # ----------------------
@@ -410,8 +410,9 @@ p4user:         $p4user
 p4config:      
 
 # ----------------------
-# p4bin: The value of the p4 binary to be used - important if not available in your PATH
-# IGNORED if sdp_instance is non-blank!
+# p4bin: The absolute path to the p4 binary to be used - important if not available in your PATH
+# E.g. /some/path/to/p4
+# IGNORED if sdp_instance is non-blank! (Will use /p4/<instance>/bin/p4_<instance>)
 p4bin:      p4
 
 # ----------------------
