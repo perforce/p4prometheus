@@ -211,7 +211,7 @@ class P4Monitor(object):
             parts = line.split()
             if len(parts) < 9:
                 if line != "":
-                    self.logger.warning("Failed to parse: %s" % line)
+                    self.logger.warning("Warning (not enough fields) - failed to parse: %s" % line)
                 continue
             if parts[0] == "COMMAND" or parts[3] == "START":
                 continue
@@ -245,10 +245,13 @@ class P4Monitor(object):
         "Finds appropriate locks by parsing data"
         pids = self.parseMonitorData(mondata)
         metrics = MonitorMetrics()
+        if lockdata in ["", "{}"]:
+            self.logger.debug("Empty json for lockdata")
+            return metrics
         try:
             jlock = json.loads(lockdata)
         except Exception as e:
-            self.logger.warning("Failed to load json: %s", str(e))
+            self.logger.warning("Warning - failed to load json: %s\n%s", str(e), lockdata)
             jlock = []
         if 'locks' not in jlock:
             return metrics

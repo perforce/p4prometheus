@@ -61,6 +61,33 @@ class TestMonitorMetrics(unittest.TestCase):
         self.assertEqual(0, m.blockedCommands)
         self.assertEqual(0, len(m.msgs))
 
+    def testNoLocks(self):
+        """Check parsing of lockdata when no results returned"""
+        lockdata = """{}"""
+        mondata = """     562 I perforce 00:01:01 monitor
+          2502 I fred 00:01:01 sync //...
+        """
+        obj = P4Monitor()
+        m = obj.findLocks("", "")
+        self.assertEqual(0, m.dbReadLocks)
+        self.assertEqual(0, m.dbWriteLocks)
+        self.assertEqual(0, m.clientEntityReadLocks)
+        self.assertEqual(0, m.clientEntityWriteLocks)
+        self.assertEqual(0, m.metaReadLocks)
+        self.assertEqual(0, m.metaWriteLocks)
+        self.assertEqual(0, m.blockedCommands)
+        self.assertEqual(0, len(m.msgs))
+
+        m = obj.findLocks(lockdata, mondata)
+        self.assertEqual(0, m.dbReadLocks)
+        self.assertEqual(0, m.dbWriteLocks)
+        self.assertEqual(0, m.clientEntityReadLocks)
+        self.assertEqual(0, m.clientEntityWriteLocks)
+        self.assertEqual(0, m.metaReadLocks)
+        self.assertEqual(0, m.metaWriteLocks)
+        self.assertEqual(0, m.blockedCommands)
+        self.assertEqual(0, len(m.msgs))
+
     def testTextLslocksParse(self):
         """Check parsing of textual form"""
         lockdata = """COMMAND           PID   TYPE SIZE MODE  M START END PATH                       BLOCKER
@@ -210,9 +237,9 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         self.assertEqual(2, m.blockedCommands)
         self.assertEqual(2, len(m.msgs))
         self.maxDiff = None
-        self.assertEqual("pid 6142, user fred, cmd reconcile, table unknown, blocked by pid 3727, user fred, cmd reconcile, args -f -m -c default a:\Project_files\Content\__ExternalActo..._Houses\FE7X5.uasset",
+        self.assertEqual(r"pid 6142, user fred, cmd reconcile, table unknown, blocked by pid 3727, user fred, cmd reconcile, args -f -m -c default a:\Project_files\Content\__ExternalActo..._Houses\FE7X5.uasset",
                          m.msgs[0])
-        self.assertEqual("pid 6144, user fred, cmd reconcile, table unknown, blocked by pid 3727, user fred, cmd reconcile, args -f -m -c default a:\Project_files\Content\__ExternalActo..._Houses\FE7X5.uasset",
+        self.assertEqual(r"pid 6144, user fred, cmd reconcile, table unknown, blocked by pid 3727, user fred, cmd reconcile, args -f -m -c default a:\Project_files\Content\__ExternalActo..._Houses\FE7X5.uasset",
                          m.msgs[1])
 
         lines = [x for x in obj.formatMetrics(m) if not x.startswith("#")]
