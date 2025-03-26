@@ -405,6 +405,7 @@ class P4Monitor(object):
         locklines = []
         monlines = []
         timestamp = ""
+        isJSON = True
         with open(self.options.test_file, "r") as f:
             stage = 0   # 1 = processing locks, 2 = processing monitor data
             for line in f:
@@ -413,9 +414,19 @@ class P4Monitor(object):
                     stage = 1
                     locklines.append(line)
                     continue
+                if stage == 0 and line.startswith("COMMAND"): # Non-JSON
+                    stage = 1
+                    isJSON = False
+                    locklines.append(line)
+                    continue
                 if stage == 1:
                     locklines.append(line)
-                    if line == "}":
+                    if isJSON and line == "}":
+                        stage = 2
+                    if not isJSON and "parsed TextLockInfo:" in line:
+                        ind = line.index("{")
+                        locklines = line[ind:].replace("'", '"')
+                        locklines = locklines.replace(" None", " null")
                         stage = 2
                     continue
                 if stage == 2 and line.endswith("Output:"):
@@ -424,7 +435,10 @@ class P4Monitor(object):
                     continue
                 if stage == 3:
                     if line == "":
-                        metrics = self.findLocks("\n".join(locklines), "\n".join(monlines))
+                        if isJSON:
+                            metrics = self.findLocks("\n".join(locklines), "\n".join(monlines))
+                        else:
+                            metrics = self.findLocks(locklines, "\n".join(monlines))
                         self.writeLog(self.formatLog(metrics))
                         blines = self.findBlockers(metrics)
                         self.writeLog([timestamp + x for x in blines])
@@ -435,7 +449,10 @@ class P4Monitor(object):
                     else:
                         monlines.append(line)
         if monlines or locklines:
-            metrics = self.findLocks("\n".join(locklines), "\n".join(monlines))
+            if isJSON:
+                metrics = self.findLocks("\n".join(locklines), "\n".join(monlines))
+            else:
+                metrics = self.findLocks(locklines, "\n".join(monlines))
             self.writeLog(self.formatLog(metrics))
             self.findBlockers(metrics)
             self.writeMetrics(self.formatMetrics(metrics))
