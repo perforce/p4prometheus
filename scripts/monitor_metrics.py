@@ -61,6 +61,7 @@ class Blocker:
         self.elapsed = elapsed
         self.blockedPids = []
         self.indirectlyBlocked = 0  # Those pids indirectly blocked
+        self.moreIndirectlyBlocked = 0  # Those pids indirectly blocked at a further level
 
 
 class MonitorMetrics:
@@ -383,10 +384,26 @@ class P4Monitor(object):
                 processedPids[p] = 1
                 if p in metrics.blockingCommands:
                     b.indirectlyBlocked += len(metrics.blockingCommands[p].blockedPids)
+        # Check if blocked files have children who are blocked!
+        processedPids = {}
+        for b in metrics.blockingCommands.values():
+            if b.indirectlyBlocked == 0:
+                    continue
+            for p in b.blockedPids:
+                if p in processedPids:
+                    continue
+                processedPids[p] = 1
+                if p in metrics.blockingCommands:
+                    b.moreIndirectlyBlocked += metrics.blockingCommands[p].indirectlyBlocked
         lblockers.sort(key=lambda x: x.elapsed, reverse=True)  # Oldest first
+        bcount = bindcount = bmoreindcount = 0
         for b in lblockers:
-            blines.append("blocking cmd: elapsed %s, pid %s, user %s, cmd %s, blocking %d, indirectly %d" % (
-                b.elapsed, b.pid, b.user, b.cmd, len(b.blockedPids), b.indirectlyBlocked))
+            blines.append("blocking cmd: elapsed %s, pid %s, user %s, cmd %s, blocking %d, indirectly %d, more indirectly %d" % (
+                b.elapsed, b.pid, b.user, b.cmd, len(b.blockedPids), b.indirectlyBlocked, b.moreIndirectlyBlocked))
+            bcount += len(b.blockedPids)
+            bindcount += b.indirectlyBlocked
+            bmoreindcount += b.moreIndirectlyBlocked
+        blines.append("blocking totals: blocking %d, indirectly %d, more indirectly %d, total %d" % (bcount, bindcount, bmoreindcount, bcount + bindcount + bmoreindcount))
         return blines
 
     def parseTestFile(self):
