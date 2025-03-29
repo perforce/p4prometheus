@@ -1,4 +1,5 @@
-# -*- encoding: UTF8 -*-
+#!/usr/bin/env python3
+# # -*- encoding: UTF8 -*-
 # Test harness for monitor_metrics.py
 
 from __future__ import print_function
@@ -161,24 +162,22 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         lockdata = """{
    "locks": [
       {"command":"master", "pid":2023, "type":"FLOCK", "size":"33B", "mode":"WRITE", "m":false, "start":0, "end":0, "path":"/var/spool/postfix/pid/master.pid", "blocker":null},
-      {"command":"p4d_1", "pid":92210, "type":"FLOCK", "size":"14.6G", "mode":"WRITE*", "m":false, "start":0, "end":0, "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":92079},
+      {"command":"p4d_1", "pid":910, "type":"FLOCK", "size":"14.6G", "mode":"WRITE*", "m":false, "start":0, "end":0, "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":92079},
       {"command":"p4d_1", "pid":92079, "type":"FLOCK", "size":"14.6G", "mode":"WRITE", "m":false, "start":0, "end":0, "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":null},
-      {"command":"snapd", "pid":1328, "type":"FLOCK", "size":null, "mode":"WRITE", "m":false, "start":0, "end":0, "path":"/var/lib/snapd/state.lock", "blocker":null},
-      {"command":"p4d_1", "pid":92126, "type":"FLOCK", "size":null, "mode":"READ", "m":false, "start":0, "end":0, "path":"/hxmetadata/p4/1/db1/server.locks/meta/db", "blocker":null},
-      {"command":"cron", "pid":1787, "type":"FLOCK", "size":"5B", "mode":"WRITE", "m":false, "start":0, "end":0, "path":"/run/crond.pid", "blocker":null}
+      {"command":"p4d_1", "pid":921, "type":"FLOCK", "size":null, "mode":"READ", "m":false, "start":0, "end":0, "path":"/hxmetadata/p4/1/db1/server.locks/meta/db", "blocker":null}
    ]
 }"""
         mondata = """ 2033 B svc_master-1666 633:31:21 ldapsync -g -i 1800
  7009 I svc_p4d_fs_brk 00:00:34 IDLE none
 12857 I svc_p4d_edge_CL1 00:02:32 IDLE none
-92014 R jteam      00:00:09 transmit -t91900 -b8 -s524288
-92061 R ecagent    00:00:07 sync //...@2579187
-92063 R ecagent    00:00:06 transmit -t92061 -b8 -s524288
-92077 R jteam      00:00:06 sync -p -q /swarmJenkins/workspace/docker-development-Jest/...@2579187
-92079 R jteam      00:00:06 sync -p -q /swarmJenkins/workspace/docker-development-Jest/...@2579187
-92081 R jteam      00:00:06 sync -p -q /swarmJenkins/workspace/docker-development-Jest/...@2579187
-92126 R jteam      00:00:04 sync -p -q /swarmJenkins/workspace/docker-development-Jest/...@2579187
-92210 R jteam      00:00:02 transmit -t92074 -b8 -s524288
+925 R jteam      00:00:09 transmit -b8
+92061 R ecagent    00:00:07 sync //...
+922 R ecagent    00:00:06 transmit -t92061 -b8 -s524288
+923 R jteam      00:00:06 sync ...
+92079 R jteam      00:00:06 sync ...
+924 R jteam      00:00:06 sync ...
+921 R jteam      00:00:04 sync ...
+910 R jteam      00:00:02 transmit -t92074 -b8 -s524288
 92264 I swarm      00:00:00 IDLE none
 609936 I svc_p4d_ha_chi 23:30:43 IDLE none"""
         obj = P4Monitor()
@@ -191,7 +190,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         self.assertEqual(0, m.metaWriteLocks)
         self.assertEqual(1, m.blockedCommands)
         self.assertEqual(1, len(m.msgs))
-        self.assertEqual("pid 92210, user jteam, cmd transmit, table db.sendq, blocked by pid 92079, user jteam, cmd sync, args -p -q /swarmJenkins/workspace/docker-development-Jest/...@2579187", m.msgs[0])
+        self.assertEqual("pid 910, user jteam, cmd transmit, table db.sendq, blocked by pid 92079, user jteam, cmd sync, args ...", m.msgs[0])
 
         lines = [x for x in obj.formatMetrics(m) if not x.startswith("#")]
         exp = """p4_locks_db_read 0
@@ -206,6 +205,61 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         lines.sort()
         self.maxDiff = None
         self.assertEqual(exp_lines, lines)
+
+    def testFindBlockers3(self):
+        """Check analysis of blockers"""
+        lockdata = """{
+   "locks": [
+      {"command":"p4d_1", "pid":910, "mode":"WRITE*", "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":920},
+      {"command":"p4d_1", "pid":920, "mode":"WRITE", "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":921},
+      {"command":"p4d_1", "pid":921, "mode":"READ", "path":"/hxmetadata/p4/1/db1/server.locks/meta/db", "blocker":900},
+      {"command":"p4d_1", "pid":900, "mode":"READ", "path":"/hxmetadata/p4/1/db1/server.locks/meta/db", "blocker":null}
+   ]
+}"""
+        mondata = """925 R jteam      00:00:09 transmit -b8
+922 R ecagent    00:00:06 transmit -t92061 -b8 -s524288
+923 R jteam      00:00:06 sync ...
+920 R jteam      00:00:06 sync ...
+924 R jteam      00:00:06 sync ...
+921 R jteam      00:00:04 sync ...
+900 R jteam      00:00:04 sync ...
+910 R jteam      00:00:02 transmit -b8"""
+        obj = P4Monitor()
+        metrics = obj.findLocks(lockdata, mondata)
+        self.assertEqual(3, len(metrics.msgs))
+        self.assertEqual(r"pid 910, user jteam, cmd transmit, table db.sendq, blocked by pid 920, user jteam, cmd sync, args ...",
+                         metrics.msgs[0])
+        self.assertEqual(r"pid 920, user jteam, cmd sync, table db.sendq, blocked by pid 921, user jteam, cmd sync, args ...",
+                         metrics.msgs[1])
+        self.assertEqual(r"pid 921, user jteam, cmd sync, table , blocked by pid 900, user jteam, cmd sync, args ...",
+                         metrics.msgs[2])
+        blines = obj.findBlockers(metrics)
+        print(json.dumps(obj.blocking_tree, indent=4))
+        self.assertEqual(3, len(blines))
+        self.assertEqual("Blocking commands by oldest, with count", blines[0])
+        self.assertRegex(blines[1], ".+ pid 900, .* blocking directly/indirectly: 1/1/1, total 3", blines[1])
+        self.assertEqual("blocking totals: 3", blines[2])
+
+        lockdata = """{
+   "locks": [
+      {"command":"p4d_1", "pid":910, "mode":"WRITE*", "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":920},
+      {"command":"p4d_1", "pid":920, "mode":"WRITE", "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":null},
+      {"command":"p4d_1", "pid":921, "mode":"READ", "path":"/hxmetadata/p4/1/db1/server.locks/meta/db", "blocker":900},
+      {"command":"p4d_1", "pid":900, "mode":"READ", "path":"/hxmetadata/p4/1/db1/server.locks/meta/db", "blocker":null}
+   ]
+}"""
+        obj = P4Monitor()
+        metrics = obj.findLocks(lockdata, mondata)
+        self.assertEqual(2, len(metrics.msgs))
+        blines = obj.findBlockers(metrics)
+        # Pretty print the blocking tree
+        print(json.dumps(obj.blocking_tree, indent=4))
+        self.assertEqual(4, len(blines))
+        self.assertEqual("Blocking commands by oldest, with count", blines[0])
+        self.assertRegex(blines[1], ".+ pid 920, .* blocking directly/indirectly: 1, total 1")
+        self.assertRegex(blines[2], ".+ pid 900, .* blocking directly/indirectly: 1, total 1")
+        self.assertEqual("blocking totals: 2", blines[3])
+
 
     def testFindBlockersNoPath(self):
         """Check parsing of lockdata"""

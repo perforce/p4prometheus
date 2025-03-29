@@ -60,8 +60,7 @@ class Blocker:
         self.cmd = cmd
         self.elapsed = elapsed
         self.blockedPids = []
-        self.indirectlyBlocked = 0  # Those pids indirectly blocked
-        self.moreIndirectlyBlocked = 0  # Those pids indirectly blocked at a further level
+        self.indirectlyBlocked = []  # Those pids indirectly blocked - index 0 = children, 1 = grand-children
 
 
 class MonitorMetrics:
@@ -80,6 +79,91 @@ class MonitorMetrics:
         self.msgs = []
         self.blockingCommands = {}
 
+def build_blocking_tree(blockingCommands):
+    """
+    Build a tree structure representing blocking relationships between PIDs.
+    Args:
+    blockingCommands (dict): A dictionary of Blocker objects, indexed by pid
+    Returns:
+    dict: A tree-like dictionary where each key is a root PID and value is its blocking tree
+    """
+
+    def create_subtree(pid):
+        """
+        Recursively create a subtree for a given PID
+        Args:
+        pid (str): The PID to create a subtree for
+        Returns:
+        dict: A subtree representing the blocking relationships
+        """
+        # If the PID is not in blockingCommands, it means it doesn't block anything
+        if pid not in blockingCommands:
+            return {pid: {}}
+        blocker = blockingCommands[pid]
+        if not blocker.blockedPids:
+            return {pid: {}}
+        
+        subtree = {pid: {}}
+        for blocked_pid in blocker.blockedPids:
+            blocked_subtree = create_subtree(blocked_pid)
+            for key, value in blocked_subtree.items():
+                subtree[pid][key] = value
+        return subtree
+
+    # Build the full blocking tree
+    blocking_tree = {}
+    for pid in blockingCommands:
+        # Only include root-level PIDs (those not blocked by any other PID)
+        if not any(pid in blocker.blockedPids for blocker in blockingCommands.values()):
+            blocking_tree.update(create_subtree(pid))
+    return blocking_tree
+
+def count_blocking(blocking_tree):
+    """
+    Recursively traverse the blocking tree and count descendants up to 9 levels.
+    Args:
+    blocking_tree (dict): A tree-like dictionary of blocking relationships
+    Returns:
+    list: A list of strings describing the blocking counts for each root PID
+    """
+    def recursive_descendant_count(subtree, max_depth=9):
+        """
+        Recursively count descendants at each level, up to max_depth.
+        Args:
+        subtree (dict): A subtree of the blocking relationships
+        max_depth (int): Maximum depth of descendant counting
+        Returns:
+        blocking_counts (dict): For each pid a list of descendant counts at each level
+        """
+        if not subtree or max_depth == 0:
+            return []
+        # There should be only one key in the subtree (the current PID)
+        pid = list(subtree.keys())[0]
+        children = subtree[pid]
+        # If no children, return empty list
+        if not children:
+            return []
+        # Initialize counts with direct children count and recursively count descendants for next levels
+        level_counts = [len(children)]
+        for child_pid, child_subtree in children.items():
+            child_counts = recursive_descendant_count({child_pid: child_subtree}, max_depth - 1)
+            for i, count in enumerate(child_counts, 1):
+                if i >= len(level_counts):
+                    level_counts.append(count)
+                else:
+                    level_counts[i] += count
+        return level_counts
+    
+    blocking_counts = {}
+    # Traverse each root PID in the blocking tree
+    for root_pid, subtree in blocking_tree.items():
+        level_counts = recursive_descendant_count({root_pid: subtree})
+        # Remove trailing zeros
+        while level_counts and level_counts[-1] == 0:
+            level_counts.pop()
+        if level_counts:
+            blocking_counts[root_pid] = level_counts
+    return blocking_counts
 
 class P4Monitor(object):
     """See module doc string for details"""
@@ -376,34 +460,21 @@ class P4Monitor(object):
         blines = []
         if lblockers:
             blines.append("Blocking commands by oldest, with count")
-        processedPids = {}
-        for b in metrics.blockingCommands.values():
-            for p in b.blockedPids:
-                if p in processedPids:
-                    continue
-                processedPids[p] = 1
-                if p in metrics.blockingCommands:
-                    b.indirectlyBlocked += len(metrics.blockingCommands[p].blockedPids)
-        # Check if blocked files have children who are blocked!
-        processedPids = {}
-        for b in metrics.blockingCommands.values():
-            if b.indirectlyBlocked == 0:
-                    continue
-            for p in b.blockedPids:
-                if p in processedPids:
-                    continue
-                processedPids[p] = 1
-                if p in metrics.blockingCommands:
-                    b.moreIndirectlyBlocked += metrics.blockingCommands[p].indirectlyBlocked
+        # Check if blocked files have children, grand-children etc who are blocked!
+        self.blocking_tree = build_blocking_tree(metrics.blockingCommands)
+        self.logger.debug(json.dumps(self.blocking_tree, indent=4))
+        blocking_counts = count_blocking(self.blocking_tree)
         lblockers.sort(key=lambda x: x.elapsed, reverse=True)  # Oldest first
-        bcount = bindcount = bmoreindcount = 0
+        btotal = 0
         for b in lblockers:
-            blines.append("blocking cmd: elapsed %s, pid %s, user %s, cmd %s, blocking %d, indirectly %d, more indirectly %d" % (
-                b.elapsed, b.pid, b.user, b.cmd, len(b.blockedPids), b.indirectlyBlocked, b.moreIndirectlyBlocked))
-            bcount += len(b.blockedPids)
-            bindcount += b.indirectlyBlocked
-            bmoreindcount += b.moreIndirectlyBlocked
-        blines.append("blocking totals: blocking %d, indirectly %d, more indirectly %d, total %d" % (bcount, bindcount, bmoreindcount, bcount + bindcount + bmoreindcount))
+            if not b.pid in blocking_counts:
+                continue
+            blocking_str = f"{'/'.join(map(str, blocking_counts[b.pid]))}"
+            bcount = sum(blocking_counts[b.pid])
+            blines.append("blocking cmd: elapsed %s, pid %s, user %s, cmd %s, blocking directly/indirectly: %s, total %d" % (
+                b.elapsed, b.pid, b.user, b.cmd, blocking_str, bcount))
+            btotal += bcount
+        blines.append("blocking totals: %d" % (btotal))
         return blines
 
     def parseTestFile(self):
