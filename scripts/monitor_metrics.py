@@ -54,13 +54,13 @@ LOGGER_NAME = 'monitor_metrics'
 class Blocker:
     """Blocking pid"""
 
-    def __init__(self, pid, user, cmd, elapsed) -> None:
+    def __init__(self, pid, user, cmd, elapsed, table) -> None:
         self.pid = pid
         self.user = user
         self.cmd = cmd
         self.elapsed = elapsed
+        self.table = table
         self.blockedPids = []
-        self.indirectlyBlocked = []  # Those pids indirectly blocked - index 0 = children, 1 = grand-children
 
 
 class MonitorMetrics:
@@ -317,8 +317,11 @@ class P4Monitor(object):
         if not parts:
             return ""
         p = parts[-1]
-        if p.startswith("db.") or p == "rdb.lbr":
+        if p.startswith("db.") or p == "rdb.lbr" or p.startswith("storage"):
             return p
+        for p in ["/clients/", "/clientEntity/", "/meta/"]:
+            if p in path:
+                return p.replace("/", "")
         return ""
 
     # lslocks output in JSON format:
@@ -376,7 +379,7 @@ class P4Monitor(object):
                 msg = "pid %s, user %s, cmd %s, table %s, blocked by pid %s, user %s, cmd %s, args %s" % (
                     pid, user, cmd, dbPath, bpid, buser, bcmd, bargs)
                 if bpid not in metrics.blockingCommands:
-                    metrics.blockingCommands[bpid] = Blocker(bpid, buser, bcmd, belapsed)
+                    metrics.blockingCommands[bpid] = Blocker(bpid, buser, bcmd, belapsed, dbPath)
                 metrics.blockingCommands[bpid].blockedPids.append(pid)
                 metrics.msgs.append(msg)
         return metrics

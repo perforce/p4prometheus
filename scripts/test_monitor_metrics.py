@@ -53,7 +53,7 @@ class TestMonitorMetrics(unittest.TestCase):
         self.assertEqual(0, len(m.msgs))
 
         m = obj.findLocks(lockdata, mondata)
-        self.assertEqual(1, m.dbReadLocks)
+        self.assertEqual(3, m.dbReadLocks)
         self.assertEqual(0, m.dbWriteLocks)
         self.assertEqual(1, m.clientEntityReadLocks)
         self.assertEqual(0, m.clientEntityWriteLocks)
@@ -182,7 +182,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
 609936 I svc_p4d_ha_chi 23:30:43 IDLE none"""
         obj = P4Monitor()
         m = obj.findLocks(lockdata, mondata)
-        self.assertEqual(0, m.dbReadLocks)
+        self.assertEqual(1, m.dbReadLocks)
         self.assertEqual(1, m.dbWriteLocks)
         self.assertEqual(0, m.clientEntityReadLocks)
         self.assertEqual(0, m.clientEntityWriteLocks)
@@ -193,7 +193,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         self.assertEqual("pid 910, user jteam, cmd transmit, table db.sendq, blocked by pid 92079, user jteam, cmd sync, args ...", m.msgs[0])
 
         lines = [x for x in obj.formatMetrics(m) if not x.startswith("#")]
-        exp = """p4_locks_db_read 0
+        exp = """p4_locks_db_read 1
                  p4_locks_db_write 1
                  p4_locks_cliententity_read 0
                  p4_locks_cliententity_write 0
@@ -231,7 +231,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
                          metrics.msgs[0])
         self.assertEqual(r"pid 920, user jteam, cmd sync, table db.sendq, blocked by pid 921, user jteam, cmd sync, args ...",
                          metrics.msgs[1])
-        self.assertEqual(r"pid 921, user jteam, cmd sync, table , blocked by pid 900, user jteam, cmd sync, args ...",
+        self.assertEqual(r"pid 921, user jteam, cmd sync, table meta, blocked by pid 900, user jteam, cmd sync, args ...",
                          metrics.msgs[2])
         blines = obj.findBlockers(metrics)
         print(json.dumps(obj.blocking_tree, indent=4))
