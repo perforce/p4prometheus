@@ -79,7 +79,7 @@ class MonitorMetrics:
         self.msgs = []
         self.blockingCommands = {}
 
-def build_blocking_tree(blockingCommands):
+def build_blocking_tree(logger, blockingCommands):
     """
     Build a tree structure representing blocking relationships between PIDs.
     Args:
@@ -88,11 +88,12 @@ def build_blocking_tree(blockingCommands):
     dict: A tree-like dictionary where each key is a root PID and value is its blocking tree
     """
 
-    def create_subtree(pid):
+    def create_subtree(pid, parents):
         """
         Recursively create a subtree for a given PID
         Args:
         pid (str): The PID to create a subtree for
+        parents(list): Parent pids to this point in the tree
         Returns:
         dict: A subtree representing the blocking relationships
         """
@@ -105,17 +106,34 @@ def build_blocking_tree(blockingCommands):
         
         subtree = {pid: {}}
         for blocked_pid in blocker.blockedPids:
-            blocked_subtree = create_subtree(blocked_pid)
+            try:
+                if blocked_pid in parents:
+                    logger.warning(f"Recursive add of {blocked_pid} in {str(parents)}")
+                    blocked_subtree = {pid: {}}
+                else:
+                    parents.append(blocked_pid)
+                    blocked_subtree = create_subtree(blocked_pid, parents)
+            except RecursionError:
+                logger.fatal(f"recursion error processing pid {pid} recursing {blocked_pid}")
+                # raise
             for key, value in blocked_subtree.items():
                 subtree[pid][key] = value
         return subtree
+
+    # Check for cyclic dependencies - and break them!
+    for pid, blocker in blockingCommands.items():
+        for bpid in blocker.blockedPids:
+            if bpid in blockingCommands and pid in blockingCommands[bpid].blockedPids:
+                blockingCommands[bpid].blockedPids.remove(pid)
+                blockingCommands[bpid].blockedPids.append("cylic_dependency_%s" % pid)
+                logger.warning(f"cyclic dependency pid {pid} recursingblocked by {bpid}")
 
     # Build the full blocking tree
     blocking_tree = {}
     for pid in blockingCommands:
         # Only include root-level PIDs (those not blocked by any other PID)
         if not any(pid in blocker.blockedPids for blocker in blockingCommands.values()):
-            blocking_tree.update(create_subtree(pid))
+            blocking_tree.update(create_subtree(pid, [pid]))
     return blocking_tree
 
 def count_blocking(blocking_tree):
@@ -371,7 +389,6 @@ class P4Monitor(object):
                 if j["mode"] == "WRITE":
                     metrics.dbWriteLocks += 1
             if j["blocker"]:
-                metrics.blockedCommands += 1
                 buser, bcmd, bargs, belapsed = "unknown", "unknown", "unknown", "unknown"
                 bpid = str(j["blocker"])
                 if bpid in pids:
@@ -380,8 +397,12 @@ class P4Monitor(object):
                     pid, user, cmd, dbPath, bpid, buser, bcmd, bargs)
                 if bpid not in metrics.blockingCommands:
                     metrics.blockingCommands[bpid] = Blocker(bpid, buser, bcmd, belapsed, dbPath)
-                metrics.blockingCommands[bpid].blockedPids.append(pid)
-                metrics.msgs.append(msg)
+                if pid not in metrics.blockingCommands[bpid].blockedPids:
+                    metrics.blockedCommands += 1
+                    metrics.blockingCommands[bpid].blockedPids.append(pid)
+                    metrics.msgs.append(msg)
+                else:
+                    self.logger.warning(f"duplicate record for pid {pid} blocked by {bpid}")
         return metrics
 
     def metricsHeader(self, name, help, type):
@@ -464,11 +485,10 @@ class P4Monitor(object):
         if lblockers:
             blines.append("Blocking commands by oldest, with count")
         # Check if blocked files have children, grand-children etc who are blocked!
-        self.blocking_tree = build_blocking_tree(metrics.blockingCommands)
+        self.blocking_tree = build_blocking_tree(self.logger, metrics.blockingCommands)
         self.logger.debug(json.dumps(self.blocking_tree, indent=4))
         blocking_counts = count_blocking(self.blocking_tree)
         lblockers.sort(key=lambda x: x.elapsed, reverse=True)  # Oldest first
-        btotal = 0
         for b in lblockers:
             if not b.pid in blocking_counts:
                 continue
@@ -476,8 +496,7 @@ class P4Monitor(object):
             bcount = sum(blocking_counts[b.pid])
             blines.append("blocking cmd: elapsed %s, pid %s, user %s, cmd %s, blocking directly/indirectly: %s, total %d" % (
                 b.elapsed, b.pid, b.user, b.cmd, blocking_str, bcount))
-            btotal += bcount
-        blines.append("blocking totals: %d" % (btotal))
+        blines.append("blocking totals: %d" % (metrics.blockedCommands))
         return blines
 
     def parseTestFile(self):

@@ -237,7 +237,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         print(json.dumps(obj.blocking_tree, indent=4))
         self.assertEqual(3, len(blines))
         self.assertEqual("Blocking commands by oldest, with count", blines[0])
-        self.assertRegex(blines[1], ".+ pid 900, .* blocking directly/indirectly: 1/1/1, total 3", blines[1])
+        self.assertRegex(blines[1], ".+ pid 900, .* blocking directly/indirectly: 1/1/1, total 3")
         self.assertEqual("blocking totals: 3", blines[2])
 
         lockdata = """{
@@ -260,6 +260,28 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         self.assertRegex(blines[2], ".+ pid 900, .* blocking directly/indirectly: 1, total 1")
         self.assertEqual("blocking totals: 2", blines[3])
 
+    def testRecursiveBlockers(self):
+        """Check analysis of blockers when A is blocked by B is blocked by A!"""
+        lockdata = """{
+   "locks": [
+      {"command":"p4d_1", "pid":910, "mode":"WRITE*", "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":920},
+      {"command":"p4d_1", "pid":900, "mode":"WRITE*", "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":920},
+      {"command":"p4d_1", "pid":920, "mode":"WRITE", "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":910}
+   ]
+}"""
+        mondata = """925 R jteam      00:00:09 transmit -b8
+920 R jteam      00:00:06 sync ...
+900 R jteam      00:00:04 sync ...
+910 R jteam      00:00:02 transmit -b8"""
+        obj = P4Monitor()
+        metrics = obj.findLocks(lockdata, mondata)
+        self.assertEqual(3, len(metrics.msgs))
+        blines = obj.findBlockers(metrics)
+        print(json.dumps(obj.blocking_tree, indent=4))
+        self.assertEqual(3, len(blines))
+        self.assertEqual("Blocking commands by oldest, with count", blines[0])
+        self.assertRegex(blines[1], ".+ pid 920, .* blocking directly/indirectly: 2/1, total 3")
+        self.assertEqual("blocking totals: 3", blines[2])
 
     def testFindBlockersNoPath(self):
         """Check parsing of lockdata"""
