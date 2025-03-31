@@ -162,7 +162,7 @@ def count_blocking(blocking_tree):
         subtree (dict): A subtree of the blocking relationships
         max_depth (int): Maximum depth of descendant counting
         Returns:
-        blocking_counts (dict): For each pid a list of descendant counts at each level
+        blockingCounts (dict): For each pid a list of descendant counts at each level
         """
         if not subtree or max_depth == 0:
             return []
@@ -183,7 +183,7 @@ def count_blocking(blocking_tree):
                     level_counts[i] += count
         return level_counts
 
-    blocking_counts = {}
+    blockingCounts = {}
     # Traverse each root PID in the blocking tree
     for root_pid, subtree in blocking_tree.items():
         level_counts = recursive_descendant_count({root_pid: subtree})
@@ -191,22 +191,26 @@ def count_blocking(blocking_tree):
         while level_counts and level_counts[-1] == 0:
             level_counts.pop()
         if level_counts:
-            blocking_counts[root_pid] = level_counts
-    return blocking_counts
+            blockingCounts[root_pid] = level_counts
+    return blockingCounts
 
-def tree_with_metadata(tree, blockingCommands, monitorCommands):
+def tree_with_metadata(tree, blockingCommands, monitorCommands, blockingCounts):
     """
     Add metadata to each PID in the tree.
     Args:
     tree (dict): The blocking tree
     blockingCommands: list of Blockers indexed by pid
     Returns:
-    dict: The tree with metadata added
+    dict: The tree with metadata added for information
     """
     result = {}
     for pid, subtree in tree.items():
         # Get metadata for this PID and create a new key
         new_key = pid
+        blocking = ""
+        if pid in blockingCounts:
+            bcount = sum(blockingCounts[pid])
+            blocking = f" (blocks direct/indirect {'/'.join(map(str, blockingCounts[pid]))}: total {bcount})"
         p = monitorCommands.get(pid, {})
         args = ""
         if p:
@@ -215,7 +219,7 @@ def tree_with_metadata(tree, blockingCommands, monitorCommands):
                 args = f"{args[:10]}..."
         b = blockingCommands.get(pid, {})
         if b:
-            new_key = f"{pid} {b.table}, {b.cmd} {args}"
+            new_key = f"{pid} {b.table}{blocking}, {b.cmd} {args}"
         else:
             p = monitorCommands.get(pid, {})
             if p:
@@ -224,7 +228,7 @@ def tree_with_metadata(tree, blockingCommands, monitorCommands):
         if not subtree:
             result[new_key] = {}
         else:
-            result[new_key] = tree_with_metadata(subtree, blockingCommands, monitorCommands)
+            result[new_key] = tree_with_metadata(subtree, blockingCommands, monitorCommands, blockingCounts)
     return result
 
 
@@ -538,15 +542,15 @@ class P4Monitor(object):
             blines.append("Blocking commands by oldest, with count")
         # Check if blocked files have children, grand-children etc who are blocked!
         self.blocking_tree = build_blocking_tree(self.logger, metrics.blockingCommands)
-        verbose_tree = tree_with_metadata(self.blocking_tree, metrics.blockingCommands, metrics.monitorCommands)
+        blockingCounts = count_blocking(self.blocking_tree)
+        verbose_tree = tree_with_metadata(self.blocking_tree, metrics.blockingCommands, metrics.monitorCommands, blockingCounts)
         self.logger.debug("Blocking tree:\npid, [table,] cmd, args\n" + json.dumps(verbose_tree, indent=4))
-        blocking_counts = count_blocking(self.blocking_tree)
         lblockers.sort(key=lambda x: x.elapsed, reverse=True)  # Oldest first
         for b in lblockers:
-            if not b.pid in blocking_counts:
+            if not b.pid in blockingCounts:
                 continue
-            blocking_str = f"{'/'.join(map(str, blocking_counts[b.pid]))}"
-            bcount = sum(blocking_counts[b.pid])
+            blocking_str = f"{'/'.join(map(str, blockingCounts[b.pid]))}"
+            bcount = sum(blockingCounts[b.pid])
             blines.append("blocking cmd: elapsed %s, pid %s, user %s, cmd %s, blocking directly/indirectly: %s, total %d" % (
                 b.elapsed, b.pid, b.user, b.cmd, blocking_str, bcount))
         blines.append("blocking totals: %d" % (metrics.blockedCommands))
