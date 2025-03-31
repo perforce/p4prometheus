@@ -108,11 +108,10 @@ def build_blocking_tree(logger, blockingCommands):
         for blocked_pid in blocker.blockedPids:
             try:
                 if blocked_pid in parents:
-                    logger.warning(f"Recursive add of {blocked_pid} in {str(parents)}")
+                    logger.debug(f"warning: Recursive add of {blocked_pid} in {str(parents)}")
                     blocked_subtree = {pid: {}}
                 else:
-                    parents.append(blocked_pid)
-                    blocked_subtree = create_subtree(blocked_pid, parents)
+                    blocked_subtree = create_subtree(blocked_pid, parents + [blocked_pid])
             except RecursionError:
                 logger.fatal(f"recursion error processing pid {pid} recursing {blocked_pid}")
                 # raise
@@ -402,7 +401,7 @@ class P4Monitor(object):
                     metrics.blockingCommands[bpid].blockedPids.append(pid)
                     metrics.msgs.append(msg)
                 else:
-                    self.logger.warning(f"duplicate record for pid {pid} blocked by {bpid}")
+                    self.logger.debug(f"warning: duplicate record for pid {pid} blocked by {bpid}")
         return metrics
 
     def metricsHeader(self, name, help, type):
