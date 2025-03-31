@@ -51,6 +51,17 @@ DEFAULT_VERBOSITY = 'DEBUG'
 LOGGER_NAME = 'monitor_metrics'
 
 
+class MonitorPid:
+    """Monitor table pid"""
+
+    def __init__(self, pid, user, cmd, args, elapsed) -> None:
+        self.pid = pid
+        self.user = user
+        self.cmd = cmd
+        self.args = args
+        self.elapsed = elapsed
+
+
 class Blocker:
     """Blocking pid"""
 
@@ -78,6 +89,7 @@ class MonitorMetrics:
         self.blockedCommands = 0
         self.msgs = []
         self.blockingCommands = {}
+        self.monitorCommands = {}
 
 def build_blocking_tree(logger, blockingCommands):
     """
@@ -103,7 +115,7 @@ def build_blocking_tree(logger, blockingCommands):
         blocker = blockingCommands[pid]
         if not blocker.blockedPids:
             return {pid: {}}
-        
+
         subtree = {pid: {}}
         for blocked_pid in blocker.blockedPids:
             try:
@@ -170,7 +182,7 @@ def count_blocking(blocking_tree):
                 else:
                     level_counts[i] += count
         return level_counts
-    
+
     blocking_counts = {}
     # Traverse each root PID in the blocking tree
     for root_pid, subtree in blocking_tree.items():
@@ -181,6 +193,40 @@ def count_blocking(blocking_tree):
         if level_counts:
             blocking_counts[root_pid] = level_counts
     return blocking_counts
+
+def tree_with_metadata(tree, blockingCommands, monitorCommands):
+    """
+    Add metadata to each PID in the tree.
+    Args:
+    tree (dict): The blocking tree
+    blockingCommands: list of Blockers indexed by pid
+    Returns:
+    dict: The tree with metadata added
+    """
+    result = {}
+    for pid, subtree in tree.items():
+        # Get metadata for this PID and create a new key
+        new_key = pid
+        p = monitorCommands.get(pid, {})
+        args = ""
+        if p:
+            args = p.args
+            if len(args) > 10:
+                args = f"{args[:10]}..."
+        b = blockingCommands.get(pid, {})
+        if b:
+            new_key = f"{pid} {b.table}, {b.cmd} {args}"
+        else:
+            p = monitorCommands.get(pid, {})
+            if p:
+                new_key = f"{pid} {p.cmd} {args}"
+        # If the subtree is empty, just add the new key with empty dict or recurse
+        if not subtree:
+            result[new_key] = {}
+        else:
+            result[new_key] = tree_with_metadata(subtree, blockingCommands, monitorCommands)
+    return result
+
 
 class P4Monitor(object):
     """See module doc string for details"""
@@ -296,7 +342,7 @@ class P4Monitor(object):
                 args = None
                 if len(m.groups()) == 6:
                     args = m.group(6)
-                pids[pid] = (user, cmd, args, elapsed)
+                pids[pid] = MonitorPid(pid, user, cmd, args, elapsed)
         return pids
 
     # Old versions of lslocks can't return json so we parse text
@@ -338,7 +384,7 @@ class P4Monitor(object):
             return p
         for p in ["/clients/", "/clientEntity/", "/meta/"]:
             if p in path:
-                return p.replace("/", "")
+                return p.replace("/", "") + "Lock"
         return ""
 
     # lslocks output in JSON format:
@@ -350,6 +396,7 @@ class P4Monitor(object):
         "Finds appropriate locks by parsing data"
         pids = self.parseMonitorData(mondata)
         metrics = MonitorMetrics()
+        metrics.monitorCommands = pids
         if lockdata in ["", "{}"]:
             self.logger.debug("Empty json for lockdata")
             return metrics
@@ -373,7 +420,9 @@ class P4Monitor(object):
             # mode = j["mode"]
             path = j["path"]
             if pid in pids:
-                user, cmd, _, _ = pids[pid]
+                mp = pids[pid]
+                user = mp.user
+                cmd = mp.cmd
             if path and "server.locks/meta" in path:
                 if j["mode"] == "READ":
                     metrics.metaReadLocks += 1
@@ -391,7 +440,11 @@ class P4Monitor(object):
                 buser, bcmd, bargs, belapsed = "unknown", "unknown", "unknown", "unknown"
                 bpid = str(j["blocker"])
                 if bpid in pids:
-                    buser, bcmd, bargs, belapsed = pids[bpid]
+                    mp = pids[bpid]
+                    buser = mp.user
+                    bcmd = mp.cmd
+                    bargs = mp.args
+                    belapsed = mp.elapsed
                 msg = "pid %s, user %s, cmd %s, table %s, blocked by pid %s, user %s, cmd %s, args %s" % (
                     pid, user, cmd, dbPath, bpid, buser, bcmd, bargs)
                 if bpid not in metrics.blockingCommands:
@@ -485,7 +538,8 @@ class P4Monitor(object):
             blines.append("Blocking commands by oldest, with count")
         # Check if blocked files have children, grand-children etc who are blocked!
         self.blocking_tree = build_blocking_tree(self.logger, metrics.blockingCommands)
-        self.logger.debug(json.dumps(self.blocking_tree, indent=4))
+        verbose_tree = tree_with_metadata(self.blocking_tree, metrics.blockingCommands, metrics.monitorCommands)
+        self.logger.debug("Blocking tree:\npid, [table,] cmd, args\n" + json.dumps(verbose_tree, indent=4))
         blocking_counts = count_blocking(self.blocking_tree)
         lblockers.sort(key=lambda x: x.elapsed, reverse=True)  # Oldest first
         for b in lblockers:
