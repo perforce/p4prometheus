@@ -5,7 +5,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
@@ -15,7 +14,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path"
 	"regexp"
@@ -54,8 +52,6 @@ func sourceEnvVars() map[string]string {
 func sourceSDPVars(sdpInstance string, logger *logrus.Logger) map[string]string {
 	// Source SDP vars and return a list
 	logger.Debugf("sourceSDPVars: %s", sdpInstance)
-	cmd := exec.Command("bash", "-c", fmt.Sprintf("source /p4/common/bin/p4_vars %s && env", sdpInstance))
-
 	// Get the current environment
 	oldEnv := make(map[string]string)
 	for _, e := range os.Environ() {
@@ -63,19 +59,20 @@ func sourceSDPVars(sdpInstance string, logger *logrus.Logger) map[string]string 
 		oldEnv[pair[0]] = pair[1]
 	}
 
-	// Run the command and capture output
-	results := make(map[string]string)
-	output, err := cmd.Output()
+	errbuf := new(bytes.Buffer)
+	p := script.NewPipe().WithStderr(errbuf)
+	cmd := fmt.Sprintf("bash -c \"source /p4/common/bin/p4_vars %s && env\"", sdpInstance)
+	logger.Debugf("cmd: %s", cmd)
+	output, err := p.Exec(cmd).Slice()
 	if err != nil {
-		fmt.Printf("Error running script: %v\n", err)
-		return results
+		logger.Errorf("Error: %v, %q", err, errbuf.String())
+		logger.Fatalf("Can't source SDP vars: %s", sdpInstance)
 	}
 
 	// Parse the new environment
 	newEnv := make(map[string]string)
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
-	for scanner.Scan() {
-		line := scanner.Text()
+	for _, line := range output {
+		line = strings.TrimSpace(line)
 		pair := strings.SplitN(line, "=", 2)
 		if len(pair) == 2 {
 			newEnv[pair[0]] = pair[1]
@@ -83,6 +80,7 @@ func sourceSDPVars(sdpInstance string, logger *logrus.Logger) map[string]string 
 	}
 
 	// Other interesting env vars
+	results := make(map[string]string, 0)
 	otherVars := []string{"KEEPCKPS", "KEEPJNLS", "KEEPLOGS", "CHECKPOINTS", "LOGS", "OSUSER"}
 	for k, v := range newEnv {
 		if strings.HasPrefix(k, "P4") || strings.Contains(k, "SDP") {
@@ -203,6 +201,10 @@ func (p4m *P4MonitorMetrics) initVars() {
 		p4m.sdpInstanceSuffix = fmt.Sprintf("-%s", p4m.sdpInstance)
 		p4m.logger.Debugf("sdpInstanceSuffix: %s", p4m.sdpInstanceSuffix)
 		p4m.p4errorsCSV = path.Join(p4m.logsDir, "errors.csv")
+		if stat, err := os.Stat(p4m.logsDir); err != nil || !stat.IsDir() {
+			p4m.logger.Fatalf("SDP LOGS dir '%s' does not exist - is the sdp_instance '%s' correct? (Specified as a parameter or in the config file)", p4m.logsDir, p4m.sdpInstance)
+		}
+
 	}
 	if p4bin == "" {
 		p4m.logger.Fatalf("Failed to find P4BIN in environment!")
@@ -1730,6 +1732,7 @@ func main() {
 	}
 
 	logger.Infof("%v", version.Print("p4metrics"))
+	logger.Infof("Config: %+v", *cfg)
 	logger.Infof("Processing: output to '%s' SDP instance '%s'",
 		cfg.MetricsRoot, cfg.SDPInstance)
 
@@ -1771,7 +1774,7 @@ func main() {
 
 	var env map[string]string
 	if cfg.SDPInstance != "" {
-		env = sourceSDPVars(*sdpInstance, logger)
+		env = sourceSDPVars(cfg.SDPInstance, logger)
 	} else {
 		env = sourceEnvVars()
 	}
