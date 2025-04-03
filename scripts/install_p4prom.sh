@@ -21,7 +21,7 @@ metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.9.2"
+VER_P4PROMETHEUS="0.9.3"
 
 # Default to amd but allow arm architecture
 arch="amd64"
