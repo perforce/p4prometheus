@@ -1846,6 +1846,26 @@ func (p4m *P4MonitorMetrics) monitorErrors() {
 	p4m.writeMetricsFile()
 }
 
+func (p4m *P4MonitorMetrics) runMonitorFunctions() {
+	if p4m.config.MonitorSwarm {
+		p4m.monitorSwarm()
+	}
+	p4m.monitorUptime()
+	p4m.monitorChange()
+	p4m.monitorCheckpoint()
+	p4m.monitorFilesys()
+	p4m.monitorHelixAuthSvc()
+	p4m.monitorLicense()
+	p4m.monitorProcesses()
+	p4m.monitorReplicas()
+	p4m.monitorSSL()
+	p4m.monitorPull()
+	p4m.monitorRealTime()
+	p4m.monitorVersions()
+	p4m.monitorVerify()
+	p4m.monitorErrors()
+}
+
 func main() {
 	var (
 		configfile = kingpin.Flag(
@@ -1953,29 +1973,14 @@ func main() {
 		p4m.setupErrorMonitoring() // Manages its own updates on a seperate thread because of log tailing
 	}()
 
+	p4m.runMonitorFunctions()
 	for {
 		select {
 		case sig := <-sigs:
 			p4m.logger.Infof("Terminating due to signal %v", sig)
 			return
 		case <-ticker.C:
-			if cfg.MonitorSwarm {
-				p4m.monitorSwarm()
-			}
-			p4m.monitorUptime()
-			p4m.monitorChange()
-			p4m.monitorCheckpoint()
-			p4m.monitorFilesys()
-			p4m.monitorHelixAuthSvc()
-			p4m.monitorLicense()
-			p4m.monitorProcesses()
-			p4m.monitorReplicas()
-			p4m.monitorSSL()
-			p4m.monitorPull()
-			p4m.monitorErrors()
-			p4m.monitorRealTime()
-			p4m.monitorVersions()
-			p4m.monitorVerify()
+			p4m.runMonitorFunctions()
 		}
 	}
 }
