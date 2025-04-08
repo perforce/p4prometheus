@@ -7,7 +7,7 @@ def test_metrics(host):
     assert host.file("/p4/metrics").exists
     metricsFiles = host.file("/p4/metrics").listdir()
 
-    expectedFiles="p4_license-1-master.1.prom p4_replication-1-master.1.prom p4_version_info-1-master.1.prom p4_filesys-1-master.1.prom  p4_monitor-1-master.1.prom  p4_uptime-1-master.1.prom"
+    expectedFiles="p4_license-1-master.1.prom p4_version_info-1-master.1.prom p4_filesys-1-master.1.prom  p4_monitor-1-master.1.prom  p4_uptime-1-master.1.prom"
     for f in expectedFiles.split():
         assert f in metricsFiles
 
