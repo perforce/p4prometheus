@@ -387,3 +387,57 @@ func TestP4PullParsing(t *testing.T) {
 	assert.Equal(t, int64(0), transfersTotal)
 	assert.Equal(t, int64(0), bytesTotal)
 }
+
+func TestVerifyParsing(t *testing.T) {
+	cfg := config.Config{}
+	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
+	tlogger.SetReportCaller(true)
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, &logger)
+
+	verifyLines := `
+Summary of Errors by Type:
+   Submitted File Errors:          4
+   Spec Depot Errors:              3
+   Unload Depot Errors:            2
+   Total Non-Shelve Errors:        9 (sum of error types listed above)
+
+   Shelved Changes with Errors:    1
+
+A total of 1688 'p4 verify' commands were executed.
+`
+
+	lines := strings.Split(verifyLines, "\n")
+	p4m.parseVerifyLog(lines)
+	assert.Equal(t, int64(4), p4m.verifyErrsSubmitted)
+	assert.Equal(t, int64(3), p4m.verifyErrsSpec)
+	assert.Equal(t, int64(2), p4m.verifyErrsUnload)
+	assert.Equal(t, int64(1), p4m.verifyErrsShelved)
+
+	verifyLines = `
+Status: OK: All scanned depots verified OK.
+	
+	A total of 1688 'p4 verify' commands were executed.
+	`
+
+	lines = strings.Split(verifyLines, "\n")
+	p4m.parseVerifyLog(lines)
+	assert.Equal(t, int64(0), p4m.verifyErrsSubmitted)
+	assert.Equal(t, int64(0), p4m.verifyErrsSpec)
+	assert.Equal(t, int64(0), p4m.verifyErrsUnload)
+	assert.Equal(t, int64(0), p4m.verifyErrsShelved)
+
+	verifyLines = `
+Status: OK: All scanned depots verified OK.
+
+Time: Completed verifications at Tue Apr  8 11:56:23 UTC 2025, taking 1 hours 2 minutes 3 seconds.
+`
+	lines = strings.Split(verifyLines, "\n")
+	p4m.parseVerifyLog(lines)
+	assert.Equal(t, int64(0), p4m.verifyErrsSubmitted)
+	assert.Equal(t, int64(0), p4m.verifyErrsSpec)
+	assert.Equal(t, int64(0), p4m.verifyErrsUnload)
+	assert.Equal(t, int64(0), p4m.verifyErrsShelved)
+	assert.Equal(t, 1*3600+2*60+3, p4m.verifyDuration)
+
+}

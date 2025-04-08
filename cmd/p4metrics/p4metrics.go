@@ -123,29 +123,35 @@ type ErrorMetric struct {
 
 // P4MonitorMetrics structure
 type P4MonitorMetrics struct {
-	config            *config.Config
-	env               *map[string]string
-	logger            *logrus.Logger
-	p4User            string
-	serverID          string
-	rootDir           string
-	logsDir           string
-	p4Cmd             string
-	sdpInstance       string
-	sdpInstanceLabel  string
-	sdpInstanceSuffix string
-	p4info            map[string]string
-	p4license         map[string]string
-	p4log             string
-	p4errorsCSV       string
-	version           string
-	indErrSeverity    int // Index of Severity in errors.csv
-	indErrSubsys      int // Index of subsys
-	errorMetrics      map[ErrorMetric]int
-	errLock           sync.Mutex
-	metricsFilePrefix string
-	metricNames       map[string]int // Used when printing to avoid duplicate headers
-	metrics           []metricStruct
+	config              *config.Config
+	env                 *map[string]string
+	logger              *logrus.Logger
+	p4User              string
+	serverID            string
+	rootDir             string
+	logsDir             string
+	p4Cmd               string
+	sdpInstance         string
+	sdpInstanceLabel    string
+	sdpInstanceSuffix   string
+	p4info              map[string]string
+	p4license           map[string]string
+	p4log               string
+	p4errorsCSV         string
+	version             string
+	indErrSeverity      int       // Index of Severity in errors.csv
+	indErrSubsys        int       // Index of subsys
+	verifyLogModTime    time.Time // Time when last looked at verify
+	verifyErrsSubmitted int64
+	verifyErrsSpec      int64
+	verifyErrsUnload    int64
+	verifyErrsShelved   int64
+	verifyDuration      int
+	errorMetrics        map[ErrorMetric]int
+	errLock             sync.Mutex
+	metricsFilePrefix   string
+	metricNames         map[string]int // Used when printing to avoid duplicate headers
+	metrics             []metricStruct
 }
 
 func newP4MonitorMetrics(config *config.Config, envVars *map[string]string, logger *logrus.Logger) (p4m *P4MonitorMetrics) {
@@ -1151,6 +1157,159 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 	p4m.writeMetricsFile()
 }
 
+func (p4m *P4MonitorMetrics) parseVerifyLog(lines []string) {
+	// Expected lines in log file (SDP 2023.1 or later!)
+	// Summary of Errors by Type:
+	//    Submitted File Errors:          9
+	//    Spec Depot Errors:              0
+	//    Unload Depot Errors:            0
+	//    Total Non-Shelve Errors:        9 (sum of error types listed above)
+	//    Shelved Changes with Errors:    0
+	totalNonShelveErrors := int64(0)
+	found := false
+
+	// Regular expression to extract numbers
+	reErrors := regexp.MustCompile(`Errors:\s+(\d+)`)
+	reCompletion := regexp.MustCompile(` taking (\d+) hours (\d+) minutes (\d+) seconds`)
+	// Time: Completed verifications at Tue Apr  8 11:56:23 UTC 2025, taking 0 hours 0 minutes 1 seconds.
+
+	// Look for the summary header
+	for i, line := range lines {
+		if strings.HasPrefix(line, "Status: OK: All scanned depots verified OK.") {
+			p4m.verifyErrsSubmitted = 0
+			p4m.verifyErrsSpec = 0
+			p4m.verifyErrsUnload = 0
+			p4m.verifyErrsShelved = 0
+			found = true
+		}
+		if strings.HasPrefix(line, "Summary of Errors by Type:") {
+			found = true
+			// Process the next few lines to extract values
+			for j := i + 1; j < len(lines) && j < i+10; j++ {
+				currentLine := lines[j]
+				matches := reErrors.FindStringSubmatch(currentLine)
+				if len(matches) < 2 {
+					continue
+				}
+				value, err := strconv.ParseInt(matches[1], 10, 64)
+				if err != nil {
+					continue
+				}
+				switch {
+				case strings.Contains(currentLine, "Submitted File Errors"):
+					p4m.verifyErrsSubmitted = value
+				case strings.Contains(currentLine, "Spec Depot Errors"):
+					p4m.verifyErrsSpec = value
+				case strings.Contains(currentLine, "Unload Depot Errors"):
+					p4m.verifyErrsUnload = value
+				case strings.Contains(currentLine, "Total Non-Shelve Errors"):
+					totalNonShelveErrors = value
+				case strings.Contains(currentLine, "Shelved Changes with Errors"):
+					p4m.verifyErrsShelved = value
+				}
+			}
+		}
+		if strings.HasPrefix(line, "Time: Completed verifications at") {
+			matches := reCompletion.FindStringSubmatch(line)
+			if len(matches) == 4 {
+				hours, _ := strconv.Atoi(matches[1])
+				minutes, _ := strconv.Atoi(matches[2])
+				seconds, _ := strconv.Atoi(matches[3])
+				p4m.verifyDuration = hours*3600 + minutes*60 + seconds
+			}
+		}
+	}
+	if found {
+		if totalNonShelveErrors != p4m.verifyErrsSubmitted+p4m.verifyErrsSpec+p4m.verifyErrsUnload {
+			p4m.logger.Debugf("Failed to verify the sum of these values: %d + %d +%d = %d",
+				p4m.verifyErrsSubmitted, p4m.verifyErrsSpec, p4m.verifyErrsUnload, totalNonShelveErrors)
+		}
+	}
+}
+
+func (p4m *P4MonitorMetrics) createVerifyMetrics() {
+	// Create the metrics using stored values - all same metric name with different labels
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_verify_errors",
+		help:   "Count of verify errors in SDP p4verify.log",
+		mtype:  "gauge",
+		value:  fmt.Sprintf("%d", p4m.verifyErrsSubmitted),
+		labels: []labelStruct{{name: "type", value: "submitted"}}})
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_verify_errors",
+		help:   "Count of verify errors in SDP p4verify.log",
+		mtype:  "gauge",
+		value:  fmt.Sprintf("%d", p4m.verifyErrsSpec),
+		labels: []labelStruct{{name: "type", value: "spec"}}})
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_verify_errors",
+		help:   "Count of verify errors in SDP p4verify.log",
+		mtype:  "gauge",
+		value:  fmt.Sprintf("%d", p4m.verifyErrsUnload),
+		labels: []labelStruct{{name: "type", value: "unload"}}})
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_verify_errors",
+		help:   "Count of verify errors in SDP p4verify.log",
+		mtype:  "gauge",
+		value:  fmt.Sprintf("%d", p4m.verifyErrsShelved),
+		labels: []labelStruct{{name: "type", value: "shelved"}}})
+	// Metric for when log was last written
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_verify_log_modtime",
+		help:  "Time of modification of last SDP p4verify log",
+		mtype: "gauge",
+		value: fmt.Sprintf("%d", p4m.verifyLogModTime.Unix())})
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_verify_duration",
+		help:  "Duration of last p4verify.sh script run",
+		mtype: "gauge",
+		value: fmt.Sprintf("%d", p4m.verifyDuration)})
+
+}
+
+func (p4m *P4MonitorMetrics) monitorVerify() {
+	// Metric for when verify last ran and how many errors there are.
+	p4m.startMonitor("monitorVerify", "p4_verify")
+	// Not as easy as it might first appear because:
+	// - might be in progress
+	// The strings searched for have been present in SDP logs since 2023.1 now...
+	if p4m.config.SDPInstance == "" {
+		p4m.logger.Debug("No SDP instance so exiting")
+		return
+	}
+	if runtime.GOOS != "linux" { // Don't bother on Windows - as yet at least!
+		p4m.logger.Debug("Not running on Windows so exiting")
+		return
+	}
+	sdpInstance := p4m.config.SDPInstance
+
+	// We check and use previously stored values if:
+	// * there are some!
+	// * the verify log file has not been updated since we last looked
+	verifyLog := fmt.Sprintf("/p4/%s/logs/p4verify.log", sdpInstance)
+	fstat, err := os.Stat(verifyLog)
+	if err != nil {
+		p4m.logger.Debugf("Failed to find p4verify.log: %q, %v", verifyLog, err)
+		return
+	}
+	if fstat.ModTime() == p4m.verifyLogModTime {
+		p4m.logger.Debugf("Exiting since p4verify.log file not modified since: %v", p4m.verifyLogModTime)
+		p4m.createVerifyMetrics() // Write same values as last time
+		p4m.writeMetricsFile()
+		return
+	}
+	p4m.logger.Debugf("p4verify.log last modified: %v", fstat.ModTime())
+
+	// Search latest verify log - if there is a verify in progress the log may not include summary yet (so we will exit and try again next poll)
+	reSummaryFound := regexp.MustCompile(`^Status: OK: All scanned depots verified OK.|^Summary of Errors by Type:| Errors:\s+\d+|^Time: Completed verifications at`)
+	lines, err := script.File(verifyLog).MatchRegexp(reSummaryFound).Slice()
+	if err != nil {
+		p4m.logger.Debugf("Exiting since p4verify.log summary not found: %v", err)
+		p4m.createVerifyMetrics() // Write same values as last time
+		p4m.writeMetricsFile()
+		return
+	}
+	p4m.logger.Debugf("p4verify.log lines: %q", lines)
+	p4m.parseVerifyLog(lines)
+	p4m.verifyLogModTime = fstat.ModTime()
+	p4m.createVerifyMetrics()
+	p4m.writeMetricsFile()
+}
+
 // ServerInfo represents for servers/replicas
 type ServerInfo struct {
 	name     string
@@ -1812,6 +1971,7 @@ func main() {
 			p4m.monitorErrors()
 			p4m.monitorRealTime()
 			p4m.monitorVersions()
+			p4m.monitorVerify()
 		}
 	}
 }
