@@ -92,6 +92,7 @@ func sourceSDPVars(sdpInstance string, logger *logrus.Logger) map[string]string 
 			}
 		}
 	}
+	logger.Debugf("envVars: %q", results)
 	return results
 }
 
@@ -170,12 +171,14 @@ func (p4m *P4MonitorMetrics) initVars() {
 	// Note that P4BIN is defined by SDP by sourcing above file, as are P4USER, P4PORT
 	p4bin := "p4"
 	p4m.p4User = getVar(*p4m.env, "P4USER")
+	p4m.logger.Debugf("p4User: %s", p4m.p4User)
 	p4port := getVar(*p4m.env, "P4PORT")
 	p4trust := getVar(*p4m.env, "P4TRUST")
 	p4tickets := getVar(*p4m.env, "P4TICKETS")
 	p4config := getVar(*p4m.env, "P4CONFIG")
 	p4configEnv := ""
 	if p4m.config.SDPInstance == "" {
+		p4m.logger.Debug("Non-SDP")
 		if p4m.config.P4Bin != "" {
 			p4bin = p4m.config.P4Bin
 		}
@@ -197,6 +200,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 		p4m.sdpInstanceSuffix = ""
 	} else {
 		p4m.sdpInstance = getVar(*p4m.env, "SDP_INSTANCE")
+		p4m.logger.Debugf("SDP: %s", p4m.sdpInstance)
 		p4bin = getVar(*p4m.env, "P4BIN")
 		p4m.p4log = getVar(*p4m.env, "P4LOG")
 		p4m.logger.Debugf("logFile: %s", p4m.p4log)
@@ -229,7 +233,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 	}
 	p4portStr := ""
 	if p4port != "" {
-		p4userStr = fmt.Sprintf("-p \"%s\"", p4port)
+		p4portStr = fmt.Sprintf("-p \"%s\"", p4port)
 	}
 	p4m.p4Cmd = fmt.Sprintf("%s %s %s %s", p4bin, p4configEnv, p4userStr, p4portStr)
 	p4m.logger.Debugf("p4Cmd: %s", p4m.p4Cmd)
