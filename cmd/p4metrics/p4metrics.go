@@ -546,35 +546,37 @@ func (p4m *P4MonitorMetrics) parseLicense() {
 		}
 	}
 
-	if userCount != "" {
+	reNumeric := regexp.MustCompile(`^[0-9.-]+$`) // Can see strings like "unlimited"
+
+	if userCount != "" && reNumeric.MatchString(userCount) {
 		p4m.metrics = append(p4m.metrics,
 			metricStruct{name: "p4_licensed_user_count",
 				help:  "P4D Licensed User count",
 				mtype: "gauge",
 				value: userCount})
 	}
-	if userLimit != "" {
+	if userLimit != "" && reNumeric.MatchString(userLimit) {
 		p4m.metrics = append(p4m.metrics,
 			metricStruct{name: "p4_licensed_user_limit",
 				help:  "P4D Licensed User Limit",
 				mtype: "gauge",
 				value: userLimit})
 	}
-	if licenseExpires != "" {
+	if licenseExpires != "" && reNumeric.MatchString(licenseExpires) {
 		p4m.metrics = append(p4m.metrics,
 			metricStruct{name: "p4_license_expires",
 				help:  "P4D License expiry (epoch secs)",
 				mtype: "gauge",
 				value: licenseExpires})
 	}
-	if licenseTimeRemaining != "" {
+	if licenseTimeRemaining != "" && reNumeric.MatchString(licenseTimeRemaining) {
 		p4m.metrics = append(p4m.metrics,
 			metricStruct{name: "p4_license_time_remaining",
 				help:  "P4D License time remaining (secs)",
 				mtype: "gauge",
 				value: licenseTimeRemaining})
 	}
-	if supportExpires != "" {
+	if supportExpires != "" && reNumeric.MatchString(supportExpires) {
 		p4m.metrics = append(p4m.metrics,
 			metricStruct{name: "p4_license_support_expires",
 				help:  "P4D License support expiry (epoch secs)",
