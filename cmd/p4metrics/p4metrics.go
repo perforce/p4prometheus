@@ -1787,11 +1787,15 @@ func (p4m *P4MonitorMetrics) monitorSwarm() {
 	if !swarminfo.Authorized {
 		m.value = "0"
 		p4m.metrics = append(p4m.metrics, m)
+		p4m.logger.Debug("unauthorized!")
+		p4m.writeMetricsFile()
 		return
 	} else {
 		p4m.metrics = append(p4m.metrics, m)
 	}
 	if err != nil {
+		p4m.logger.Debugf("error: %v", err)
+		p4m.writeMetricsFile()
 		return
 	}
 
