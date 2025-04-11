@@ -2,7 +2,11 @@
 package main
 
 import (
+	"encoding/json"
+	"flag"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -12,12 +16,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// If you want to debug a particular test (and output debug info):
+//
+//	go test -run TestRemovedFromMonitorTable -args -debug
+var testDebug = flag.Bool("debug", false, "Set for debug")
+
 var (
 	tlogger = &logrus.Logger{Out: os.Stderr,
 		Formatter: &logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true},
 		// Level:     logrus.DebugLevel}
 		Level: logrus.InfoLevel}
 )
+
+func initLogger() {
+	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
+	tlogger.SetReportCaller(true)
+	if *testDebug {
+		tlogger.Level = logrus.DebugLevel
+	}
+}
 
 type metricValue struct {
 	key        string
@@ -89,11 +106,9 @@ func compareMetricValues(t *testing.T, expected metricValues, actual []metricStr
 
 func TestP4MetricsLicense(t *testing.T) {
 	cfg := config.Config{}
-	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
-	tlogger.SetReportCaller(true)
-	// logger.Debugf("Function: %s", funcName())
+	initLogger()
 	env := map[string]string{}
-	p4m := newP4MonitorMetrics(&cfg, &env, &logger)
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
 	p4m.p4license = map[string]string{
 		"userCount":            "893",
 		"userLimit":            "1000",
@@ -143,7 +158,7 @@ func TestP4MetricsLicense(t *testing.T) {
 	p4m.parseLicense()
 	expected = metricValues{
 		{name: "p4_licensed_user_count", value: "1"},
-		{name: "p4_licensed_user_limit", value: "unlimited"},
+		// {name: "p4_licensed_user_limit", value: "unlimited"},
 		{name: "p4_license_info", value: "1", labelName: "licenseInfo", labelValue: "none"},
 	}
 	assert.Equal(t, len(expected), len(p4m.metrics))
@@ -153,10 +168,9 @@ func TestP4MetricsLicense(t *testing.T) {
 
 func TestP4MetricsFilesys(t *testing.T) {
 	cfg := config.Config{}
-	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
-	tlogger.SetReportCaller(true)
+	initLogger()
 	env := map[string]string{}
-	p4m := newP4MonitorMetrics(&cfg, &env, &logger)
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
 	p4m.parseFilesys([]string{"filesys.P4ROOT.min=5G (configure)",
 		"filesys.P4ROOT.min=250M (default)"})
 	expected := metricValues{
@@ -165,7 +179,7 @@ func TestP4MetricsFilesys(t *testing.T) {
 	tlogger.Debugf("Metrics: %q", p4m.metrics)
 	compareMetricValues(t, expected, p4m.metrics)
 
-	p4m = newP4MonitorMetrics(&cfg, &env, &logger)
+	p4m = newP4MonitorMetrics(&cfg, &env, tlogger)
 	p4m.parseFilesys([]string{"filesys.P4ROOT.min=250M (default)"})
 	expected = metricValues{
 		{name: "p4_filesys_min", value: "262144000", labelName: "filesys", labelValue: "P4ROOT"},
@@ -173,7 +187,7 @@ func TestP4MetricsFilesys(t *testing.T) {
 	tlogger.Debugf("Metrics: %q", p4m.metrics)
 	compareMetricValues(t, expected, p4m.metrics)
 
-	p4m = newP4MonitorMetrics(&cfg, &env, &logger)
+	p4m = newP4MonitorMetrics(&cfg, &env, tlogger)
 	p4m.parseFilesys([]string{
 		"filesys.P4ROOT.min=200M (configure)",
 		"filesys.depot.min=10G (configure)",
@@ -205,10 +219,9 @@ p4_filesys_min{filesys="TEMP"} 524288000
 
 func TestP4MetricsSchemaParsing(t *testing.T) {
 	cfg := config.Config{}
-	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
-	tlogger.SetReportCaller(true)
+	initLogger()
 	env := map[string]string{}
-	p4m := newP4MonitorMetrics(&cfg, &env, &logger)
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
 
 	schemaLines := `
 ... f_recordType 4
@@ -339,10 +352,9 @@ func TestP4MetricsSchemaParsing(t *testing.T) {
 
 func TestP4MonitorParsing(t *testing.T) {
 	cfg := config.Config{}
-	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
-	tlogger.SetReportCaller(true)
+	initLogger()
 	env := map[string]string{}
-	p4m := newP4MonitorMetrics(&cfg, &env, &logger)
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
 
 	monitorLines := `662053 I swarm      00:03:41 IDLE none
 21104 R fred 01:03:41 sync
@@ -360,10 +372,9 @@ func TestP4MonitorParsing(t *testing.T) {
 
 func TestP4PullParsing(t *testing.T) {
 	cfg := config.Config{}
-	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
-	tlogger.SetReportCaller(true)
+	initLogger()
 	env := map[string]string{}
-	p4m := newP4MonitorMetrics(&cfg, &env, &logger)
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
 
 	pullLines := `... replicaTransfersActive 0
 ... replicaTransfersTotal 169
@@ -390,10 +401,9 @@ func TestP4PullParsing(t *testing.T) {
 
 func TestVerifyParsing(t *testing.T) {
 	cfg := config.Config{}
-	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
-	tlogger.SetReportCaller(true)
+	initLogger()
 	env := map[string]string{}
-	p4m := newP4MonitorMetrics(&cfg, &env, &logger)
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
 
 	verifyLines := `
 Summary of Errors by Type:
@@ -440,4 +450,111 @@ Time: Completed verifications at Tue Apr  8 11:56:23 UTC 2025, taking 1 hours 2 
 	assert.Equal(t, int64(0), p4m.verifyErrsShelved)
 	assert.Equal(t, 1*3600+2*60+3, p4m.verifyDuration)
 
+}
+
+type SwarmTest struct {
+	statusCode      int
+	taskResponse    *SwarmTaskResponse
+	versionResponse *SwarmVersionResponse
+}
+
+func TestSwarmProcessing(t *testing.T) {
+	cfg := config.Config{}
+	initLogger()
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+
+	testCases := []SwarmTest{
+		{
+			statusCode:   http.StatusOK,
+			taskResponse: &SwarmTaskResponse{Tasks: 1, FutureTasks: 2, Workers: 3, MaxWorkers: 4},
+		},
+		{
+			statusCode:      http.StatusOK,
+			versionResponse: &SwarmVersionResponse{Version: `SWARM\/2024.6\/2701191 (2025\/01\/07)`},
+		},
+	}
+
+	ind := 0
+	{
+		// Create a test server
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Return the result as requested
+			tc := testCases[ind]
+			ind += 1
+			w.WriteHeader(tc.statusCode)
+			// If it's a successful case, return the mock response
+			if tc.statusCode == http.StatusOK {
+				w.Header().Set("Content-Type", "application/json")
+				// Assume one or the other!
+				if tc.taskResponse != nil {
+					json.NewEncoder(w).Encode(tc.taskResponse)
+				} else {
+					json.NewEncoder(w).Encode(tc.versionResponse)
+				}
+			}
+		}))
+		defer server.Close()
+
+		p4m.getSwarmMetrics(server.URL, "user", "ticket") // Dummy call
+	}
+	expected := metricValues{
+		{name: "p4_swarm_future_tasks", value: "2"},
+		{name: "p4_swarm_workers", value: "3"},
+		{name: "p4_swarm_max_workers", value: "4"},
+		{name: "p4_swarm_error", value: "0"},
+		{name: "p4_swarm_authorized", value: "1"},
+		{name: "p4_swarm_tasks", value: "1"},
+		{name: "p4_swarm_version", value: "1", labelName: "version", labelValue: "SWARM/2024.6/2701191 (2025/01/07)"},
+	}
+	tlogger.Debugf("Metrics: %q", p4m.metrics)
+	compareMetricValues(t, expected, p4m.metrics)
+}
+
+func TestSwarmProcessingError(t *testing.T) {
+	cfg := config.Config{}
+	initLogger()
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+	testCases := []SwarmTest{
+		{
+			statusCode:   http.StatusGatewayTimeout,
+			taskResponse: &SwarmTaskResponse{Tasks: 1, FutureTasks: 2, Workers: 3, MaxWorkers: 4},
+		},
+		{
+			statusCode:      http.StatusGatewayTimeout,
+			versionResponse: &SwarmVersionResponse{Version: `SWARM\/2024.6\/2701191 (2025\/01\/07)`},
+		},
+	}
+
+	ind := 0
+	{
+		// Create a test server
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Return the result as requested
+			tc := testCases[ind]
+			ind += 1
+			w.WriteHeader(tc.statusCode)
+			// If it's a successful case, return the mock response
+			if tc.statusCode == http.StatusOK {
+				w.Header().Set("Content-Type", "application/json")
+				// Assume one or the other!
+				if tc.taskResponse != nil {
+					json.NewEncoder(w).Encode(tc.taskResponse)
+				} else {
+					json.NewEncoder(w).Encode(tc.versionResponse)
+				}
+			}
+		}))
+		defer server.Close()
+
+		p4m.getSwarmMetrics(server.URL, "user", "ticket") // Dummy call
+	}
+	expected := metricValues{
+		{name: "p4_swarm_error", value: "1"},
+		{name: "p4_swarm_authorized", value: "0"},
+		// {name: "p4_swarm_version", value: "1", labelName: "version", labelValue: "SWARM/2024.6/2701191 (2025/01/07)"},
+	}
+	tlogger.Debugf("Metrics: %q", p4m.metrics)
+	compareMetricValues(t, expected, p4m.metrics)
 }

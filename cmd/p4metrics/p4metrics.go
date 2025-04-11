@@ -1729,6 +1729,73 @@ func (p4m *P4MonitorMetrics) getSwarmQueueInfo(url, userid, password string) (*S
 	return &response, nil
 }
 
+func (p4m *P4MonitorMetrics) getSwarmMetrics(urlSwarm string, user string, ticket string) {
+	swarmerror := "0"
+	urlStatus := fmt.Sprintf("%s/queue/status", urlSwarm)
+	p4m.logger.Debugf("urlStatus: %v", urlStatus)
+	swarminfo, err := p4m.getSwarmQueueInfo(urlStatus, user, ticket)
+	if err != nil {
+		swarmerror = "1"
+		p4m.logger.Errorf("error: %v", err)
+	}
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_swarm_error",
+			help:  "Swarm error (0=no or 1=yes)",
+			mtype: "gauge",
+			value: swarmerror})
+	m := metricStruct{name: "p4_swarm_authorized",
+		help:  "Swarm API call authorized (1=yes or 0=no)",
+		mtype: "gauge",
+		value: "0"}
+	if swarminfo != nil && swarminfo.Authorized {
+		m.value = "1"
+		p4m.metrics = append(p4m.metrics, m)
+		p4m.logger.Debug("authorized!")
+	} else {
+		p4m.metrics = append(p4m.metrics, m)
+		p4m.logger.Debug("authorized!")
+	}
+	if err != nil {
+		p4m.logger.Debugf("error: %v", err)
+	}
+
+	urlVersion := fmt.Sprintf("%s/api/version", urlSwarm)
+	p4m.logger.Debugf("urlVersion: '%s'", urlVersion)
+	versionString, err := p4m.getSwarmVersion(urlVersion)
+	if err != nil {
+		p4m.logger.Errorf("Error getting Swarm status %s: %v", urlVersion, err)
+	} else {
+		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_swarm_version",
+			help:   "P4 Swarm version string",
+			mtype:  "gauge",
+			value:  "1",
+			labels: []labelStruct{{name: "version", value: versionString}}})
+	}
+	if swarminfo == nil {
+		return
+	}
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_swarm_tasks",
+			help:  "Swarm current task queue size",
+			mtype: "gauge",
+			value: fmt.Sprintf("%d", swarminfo.Tasks)})
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_swarm_future_tasks",
+			help:  "Swarm future task queue size",
+			mtype: "gauge",
+			value: fmt.Sprintf("%d", swarminfo.FutureTasks)})
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_swarm_workers",
+			help:  "Swarm current number of workers",
+			mtype: "gauge",
+			value: fmt.Sprintf("%d", swarminfo.Workers)})
+	p4m.metrics = append(p4m.metrics,
+		metricStruct{name: "p4_swarm_max_workers",
+			help:  "Swarm current max number of workers",
+			mtype: "gauge",
+			value: fmt.Sprintf("%d", swarminfo.MaxWorkers)})
+}
+
 func (p4m *P4MonitorMetrics) monitorSwarm() {
 	// Find Swarm URL and get information from it
 	p4m.startMonitor("monitorSwarm", "p4_swarm")
@@ -1766,73 +1833,11 @@ func (p4m *P4MonitorMetrics) monitorSwarm() {
 		return
 	}
 	urlSwarm = strings.TrimSpace(urlSwarm)
-	urlStatus := fmt.Sprintf("%s/queue/status", urlSwarm)
-	p4m.logger.Debugf("url: '%s'", urlStatus)
-
-	swarmerror := "0"
-	swarminfo, err := p4m.getSwarmQueueInfo(urlStatus, p4m.p4User, ticket)
-	if err != nil {
-		swarmerror = "1"
-		p4m.logger.Errorf("error: %v", err)
-	}
-	p4m.metrics = append(p4m.metrics,
-		metricStruct{name: "p4_swarm_error",
-			help:  "Swarm error (0=no or 1=yes)",
-			mtype: "gauge",
-			value: swarmerror})
-	m := metricStruct{name: "p4_swarm_authorized",
-		help:  "Swarm API call authorized (1=yes or 0=no)",
-		mtype: "gauge",
-		value: "1"}
-	if !swarminfo.Authorized {
-		m.value = "0"
-		p4m.metrics = append(p4m.metrics, m)
-		p4m.logger.Debug("unauthorized!")
+	p4m.logger.Debugf("Swarm url: '%s'", urlSwarm)
+	p4m.getSwarmMetrics(urlSwarm, p4m.p4User, ticket)
+	if len(p4m.metrics) > 0 {
 		p4m.writeMetricsFile()
-		return
-	} else {
-		p4m.metrics = append(p4m.metrics, m)
 	}
-	if err != nil {
-		p4m.logger.Debugf("error: %v", err)
-		p4m.writeMetricsFile()
-		return
-	}
-
-	urlVersion := fmt.Sprintf("%s/api/version", urlSwarm)
-	p4m.logger.Debugf("urlVersion: '%s'", urlVersion)
-	versionString, err := p4m.getSwarmVersion(urlVersion)
-	if err != nil {
-		p4m.logger.Errorf("Error getting Swarm status %s: %v", urlVersion, err)
-	} else {
-		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_swarm_version",
-			help:   "P4 Swarm version string",
-			mtype:  "gauge",
-			value:  "1",
-			labels: []labelStruct{{name: "version", value: versionString}}})
-	}
-
-	p4m.metrics = append(p4m.metrics,
-		metricStruct{name: "p4_swarm_tasks",
-			help:  "Swarm current task queue size",
-			mtype: "gauge",
-			value: fmt.Sprintf("%d", swarminfo.Tasks)})
-	p4m.metrics = append(p4m.metrics,
-		metricStruct{name: "p4_swarm_future_tasks",
-			help:  "Swarm future task queue size",
-			mtype: "gauge",
-			value: fmt.Sprintf("%d", swarminfo.FutureTasks)})
-	p4m.metrics = append(p4m.metrics,
-		metricStruct{name: "p4_swarm_workers",
-			help:  "Swarm current number of workers",
-			mtype: "gauge",
-			value: fmt.Sprintf("%d", swarminfo.Workers)})
-	p4m.metrics = append(p4m.metrics,
-		metricStruct{name: "p4_swarm_max_workers",
-			help:  "Swarm current max number of workers",
-			mtype: "gauge",
-			value: fmt.Sprintf("%d", swarminfo.MaxWorkers)})
-	p4m.writeMetricsFile()
 }
 
 func (p4m *P4MonitorMetrics) monitorErrors() {
