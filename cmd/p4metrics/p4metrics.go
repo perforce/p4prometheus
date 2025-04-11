@@ -1753,7 +1753,7 @@ func (p4m *P4MonitorMetrics) getSwarmMetrics(urlSwarm string, user string, ticke
 		p4m.logger.Debug("authorized!")
 	} else {
 		p4m.metrics = append(p4m.metrics, m)
-		p4m.logger.Debug("authorized!")
+		p4m.logger.Debug("unauthorized!")
 	}
 	if err != nil {
 		p4m.logger.Debugf("error: %v", err)
@@ -1771,7 +1771,7 @@ func (p4m *P4MonitorMetrics) getSwarmMetrics(urlSwarm string, user string, ticke
 			value:  "1",
 			labels: []labelStruct{{name: "version", value: versionString}}})
 	}
-	if swarminfo == nil {
+	if swarminfo == nil || !swarminfo.Authorized {
 		return
 	}
 	p4m.metrics = append(p4m.metrics,

@@ -553,7 +553,54 @@ func TestSwarmProcessingError(t *testing.T) {
 	expected := metricValues{
 		{name: "p4_swarm_error", value: "1"},
 		{name: "p4_swarm_authorized", value: "0"},
-		// {name: "p4_swarm_version", value: "1", labelName: "version", labelValue: "SWARM/2024.6/2701191 (2025/01/07)"},
+	}
+	tlogger.Debugf("Metrics: %q", p4m.metrics)
+	compareMetricValues(t, expected, p4m.metrics)
+}
+
+func TestSwarmProcessingUnauth(t *testing.T) {
+	cfg := config.Config{}
+	initLogger()
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+	testCases := []SwarmTest{
+		{
+			statusCode:   http.StatusUnauthorized,
+			taskResponse: &SwarmTaskResponse{},
+		},
+		{
+			statusCode:      http.StatusOK,
+			versionResponse: &SwarmVersionResponse{Version: `SWARM\/2024.6\/2701191 (2025\/01\/07)`},
+		},
+	}
+
+	ind := 0
+	{
+		// Create a test server
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Return the result as requested
+			tc := testCases[ind]
+			ind += 1
+			w.WriteHeader(tc.statusCode)
+			// If it's a successful case, return the mock response
+			if tc.statusCode == http.StatusOK {
+				w.Header().Set("Content-Type", "application/json")
+				// Assume one or the other!
+				if tc.taskResponse != nil {
+					json.NewEncoder(w).Encode(tc.taskResponse)
+				} else {
+					json.NewEncoder(w).Encode(tc.versionResponse)
+				}
+			}
+		}))
+		defer server.Close()
+
+		p4m.getSwarmMetrics(server.URL, "user", "ticket") // Dummy call
+	}
+	expected := metricValues{
+		{name: "p4_swarm_error", value: "0"},
+		{name: "p4_swarm_authorized", value: "0"},
+		{name: "p4_swarm_version", value: "1", labelName: "version", labelValue: "SWARM/2024.6/2701191 (2025/01/07)"},
 	}
 	tlogger.Debugf("Metrics: %q", p4m.metrics)
 	compareMetricValues(t, expected, p4m.metrics)
