@@ -553,6 +553,10 @@ func TestSwarmProcessingError(t *testing.T) {
 	expected := metricValues{
 		{name: "p4_swarm_error", value: "1"},
 		{name: "p4_swarm_authorized", value: "0"},
+		{name: "p4_swarm_future_tasks", value: "0"},
+		{name: "p4_swarm_workers", value: "0"},
+		{name: "p4_swarm_max_workers", value: "0"},
+		{name: "p4_swarm_tasks", value: "0"},
 	}
 	tlogger.Debugf("Metrics: %q", p4m.metrics)
 	compareMetricValues(t, expected, p4m.metrics)
@@ -600,6 +604,10 @@ func TestSwarmProcessingUnauth(t *testing.T) {
 	expected := metricValues{
 		{name: "p4_swarm_error", value: "0"},
 		{name: "p4_swarm_authorized", value: "0"},
+		{name: "p4_swarm_future_tasks", value: "0"},
+		{name: "p4_swarm_workers", value: "0"},
+		{name: "p4_swarm_max_workers", value: "0"},
+		{name: "p4_swarm_tasks", value: "0"},
 		{name: "p4_swarm_version", value: "1", labelName: "version", labelValue: "SWARM/2024.6/2701191 (2025/01/07)"},
 	}
 	tlogger.Debugf("Metrics: %q", p4m.metrics)

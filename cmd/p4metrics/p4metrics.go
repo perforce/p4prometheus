@@ -1780,8 +1780,8 @@ func (p4m *P4MonitorMetrics) getSwarmMetrics(urlSwarm string, user string, ticke
 			value:  "1",
 			labels: []labelStruct{{name: "version", value: versionString}}})
 	}
-	if swarminfo == nil || !swarminfo.Authorized {
-		return
+	if swarminfo == nil {
+		swarminfo = &SwarmTaskResponse{} // Blanks
 	}
 	p4m.metrics = append(p4m.metrics,
 		metricStruct{name: "p4_swarm_tasks",
