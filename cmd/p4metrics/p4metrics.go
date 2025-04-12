@@ -125,6 +125,7 @@ type ErrorMetric struct {
 // P4MonitorMetrics structure
 type P4MonitorMetrics struct {
 	config              *config.Config
+	dryrun              bool
 	env                 *map[string]string
 	logger              *logrus.Logger
 	p4User              string
@@ -413,6 +414,9 @@ func (p4m *P4MonitorMetrics) metricsFilename(filePrefix string) string {
 
 func (p4m *P4MonitorMetrics) deleteMetricsFile(filePrefix string) {
 	outputFile := p4m.metricsFilename(filePrefix)
+	if p4m.dryrun {
+		return
+	}
 	p4m.metricsFilePrefix = filePrefix
 	if err := os.Remove(outputFile); err != nil && !errors.Is(err, os.ErrNotExist) {
 		p4m.logger.Debugf("Failed to remove: %s, %v", outputFile, err)
@@ -429,6 +433,9 @@ func (p4m *P4MonitorMetrics) writeMetricsFile() {
 		return
 	}
 	p4m.logger.Debugf("Metrics: %q", p4m.metrics)
+	if p4m.dryrun {
+		return
+	}
 	tmpFile := outputFile + ".tmp"
 	f, err = os.Create(tmpFile)
 	if err != nil {
@@ -1138,6 +1145,7 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 		p4m.logger.Errorf("error getting file info: %v", err)
 		return
 	}
+	p4m.logger.Debugf("Checkpoint file modtime %v", fileInfo.ModTime())
 	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_checkpoint_log_time",
 		help:  "Time of last checkpoint log",
 		mtype: "gauge",
@@ -1145,6 +1153,7 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 	reRemoveNonDate := regexp.MustCompile(` \/p4.*`)
 	startTimeStr := reRemoveNonDate.ReplaceAllString(startEndLines[0], "")
 	endTimeStr := reRemoveNonDate.ReplaceAllString(startEndLines[1], "")
+	p4m.logger.Debugf("Start/end time %q/%q", startTimeStr, endTimeStr)
 	startTime, err := time.Parse(checkpointTimeFormat, startTimeStr)
 	if err != nil {
 		p4m.logger.Errorf("error parsing date/time: %v, %s", err, startTimeStr)
@@ -1882,7 +1891,7 @@ func main() {
 		configfile = kingpin.Flag(
 			"config",
 			"Config file for p4prometheus.",
-		).Default("p4metrics.yaml").String()
+		).Short('c').Default("p4metrics.yaml").String()
 		sdpInstance = kingpin.Flag(
 			"sdp.instance",
 			"SDP Instance, typically 1 or alphanumeric.",
@@ -1903,6 +1912,10 @@ func main() {
 			"debug",
 			"Enable debugging.",
 		).Bool()
+		dryrun = kingpin.Flag(
+			"dry.run",
+			"Don't write metrics - but show the results - useful for debugging with --debug.",
+		).Short('n').Bool()
 	)
 
 	kingpin.Version(version.Print("p4metrics"))
@@ -1974,6 +1987,9 @@ func main() {
 	}
 	p4m := newP4MonitorMetrics(cfg, &env, logger)
 	p4m.version = version.Version
+	if *dryrun {
+		p4m.dryrun = true
+	}
 	p4m.initVars()
 
 	ticker := time.NewTicker(p4m.config.UpdateInterval)
