@@ -314,7 +314,7 @@ update_p4metrics () {
     msg "Creating service file for ${service_name}"
     cat << EOF > "${service_file}"
 [Unit]
-Description=P4prometheus
+Description=P4metrics - part of P4prometheus
 Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
 Wants=network-online.target
 After=network-online.target
