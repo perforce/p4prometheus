@@ -150,6 +150,7 @@ else
 fi
 
 p4prom_config_file="$p4prom_config_dir/p4prometheus.yaml"
+p4metrics_config_file="$p4prom_config_dir/p4metrics.yaml"
 
 download_and_untar () {
     fname=$1
@@ -168,7 +169,7 @@ update_node_exporter () {
         msg "Created user $userid"
     fi
 
-    curr_ver=$(node_exporter --version | grep ' version ' | awk '{print $3}')
+    curr_ver=$(node_exporter --version 2>&1 | grep ' version ' | awk '{print $3}')
     if [[ "$curr_ver" == "$VER_NODE_EXPORTER" ]]; then
         msg "Current version $curr_ver of node_exporter is up-to-date"
         return
@@ -228,10 +229,10 @@ EOF
 }
 
 update_p4prometheus () {
-    service_name="p4promethes"
+    service_name="p4prometheus"
     progname="p4prometheus"
     service_file="/etc/systemd/system/${service_name}.service"
-    curr_ver=$($progname --version | grep "$progname, version " | awk '{print $3}')
+    curr_ver=$($progname --version 2>&1 | grep "$progname, version " | awk '{print $3}')
     if [[ "$curr_ver" == "v$VER_P4PROMETHEUS" ]]; then
         msg "Current version $curr_ver of $progname is up-to-date"
         return
@@ -284,7 +285,7 @@ update_p4metrics () {
     service_name="p4metrics"
     progname="p4metrics"
     service_file="/etc/systemd/system/${service_name}.service"
-    curr_ver=$($progname --version | grep "$progname, version " | awk '{print $3}')
+    curr_ver=$($progname --version 2>&1 | grep "$progname, version " | awk '{print $3}')
     if [[ "$curr_ver" == "v$VER_P4PROMETHEUS" ]]; then
         msg "Current version $curr_ver of $progname is up-to-date"
         return
@@ -292,6 +293,7 @@ update_p4metrics () {
 
     systemctl stop $service_name
 
+    fname="${progname}.linux-${arch}.gz"
     url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
     msg "downloading and extracting $url"
     wget -q "$url"
