@@ -19,7 +19,7 @@ metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.9.4"
+VER_P4PROMETHEUS="0.9.5"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -99,8 +99,13 @@ if [[ $(id -u) -ne 0 ]]; then
    exit 1
 fi
 
-wget=$(which wget)
-[[ $? -eq 0 ]] || bail "Failed to find wget in path"
+# Check if the local_bin_dir exists
+if [[ ! -d "$local_bin_dir" ]]; then
+    echo "Error: Directory $local_bin_dir does not exist. Please create it before running this script."
+    exit 1
+fi
+
+command -v wget 2> /dev/null || bail "Failed to find wget in path"
 
 if command -v getenforce > /dev/null; then
     selinux=$(getenforce)
@@ -223,36 +228,35 @@ EOF
 }
 
 update_p4prometheus () {
-
-    curr_ver=$(p4prometheus --version | grep 'p4prometheus, version ' | awk '{print $3}')
+    service_name="p4promethes"
+    progname="p4prometheus"
+    service_file="/etc/systemd/system/${service_name}.service"
+    curr_ver=$($progname --version | grep "$progname, version " | awk '{print $3}')
     if [[ "$curr_ver" == "v$VER_P4PROMETHEUS" ]]; then
-        msg "Current version $curr_ver of p4prometheus is up-to-date"
+        msg "Current version $curr_ver of $progname is up-to-date"
         return
     fi
 
-    systemctl stop p4prometheus
+    systemctl stop $service_name
 
     PVER="$VER_P4PROMETHEUS"
-    fname="p4prometheus.linux-${arch}.gz"
+    fname="${progname}.linux-${arch}.gz"
     url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
     msg "downloading and extracting $url"
-    [[ -e p4prometheus.linux-${arch} ]] && rm -f p4prometheus.linux-${arch}
+    [[ -e ${progname}.linux-${arch} ]] && rm -f ${progname}.linux-${arch}
     wget -q "$url"
 
     gunzip "$fname"
-    
-    chmod +x p4prometheus.linux-${arch}
-
-    mv p4prometheus.linux-${arch} ${local_bin_dir}/p4prometheus
-
+    chmod +x ${progname}.linux-${arch}
+    mv ${progname}.linux-${arch} ${local_bin_dir}/${progname}
     if [[ $SELinuxEnabled -eq 1 ]]; then
-        bin_file=${local_bin_dir}/p4prometheus
+        bin_file=${local_bin_dir}/${progname}
         semanage fcontext -a -t bin_t $bin_file
         restorecon -vF $bin_file
     fi
 
-    msg "Creating service file for p4prometheus"
-    cat << EOF > /etc/systemd/system/p4prometheus.service
+    msg "Creating service file for $service_name"
+    cat << EOF > $service_file
 [Unit]
 Description=P4prometheus
 Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
@@ -263,21 +267,98 @@ After=network-online.target
 User=$OSUSER
 Group=$OSGROUP
 Type=simple
-ExecStart=${local_bin_dir}/p4prometheus --config=$p4prom_config_file
+ExecStart=${local_bin_dir}/${progname} --config=$p4prom_config_file
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    systemctl enable p4prometheus
-    systemctl start p4prometheus
-    systemctl status p4prometheus --no-pager
+    systemctl enable ${service_name}
+    systemctl start ${service_name}
+    systemctl status ${service_name} --no-pager
 
+}
+
+update_p4metrics () {
+    service_name="p4metrics"
+    progname="p4metrics"
+    service_file="/etc/systemd/system/${service_name}.service"
+    curr_ver=$($progname --version | grep "$progname, version " | awk '{print $3}')
+    if [[ "$curr_ver" == "v$VER_P4PROMETHEUS" ]]; then
+        msg "Current version $curr_ver of $progname is up-to-date"
+        return
+    fi
+
+    systemctl stop $service_name
+
+    url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
+    msg "downloading and extracting $url"
+    wget -q "$url"
+
+    gunzip "$fname"
+    chmod +x "${progname}.linux-${arch}"
+    mv "${progname}.linux-${arch}" "${local_bin_dir}/${progname}"
+
+    if [[ $SELinuxEnabled -eq 1 ]]; then
+        bin_file="${local_bin_dir}/${progname}"
+        semanage fcontext -a -t bin_t "$bin_file"
+        restorecon -vF "$bin_file"
+    fi
+
+    mkdir -p "$p4prom_config_dir" "$p4prom_bin_dir"
+    chown "$OSUSER:$OSGROUP" "$p4prom_config_dir" "$p4prom_bin_dir"
+
+    service_name="${progname}"
+    service_file="/etc/systemd/system/${service_name}.service"
+    msg "Creating service file for ${service_name}"
+    cat << EOF > "${service_file}"
+[Unit]
+Description=P4prometheus
+Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=$OSUSER
+Group=$OSGROUP
+Type=simple
+ExecStart=${local_bin_dir}/${progname} --config=${p4metrics_config_file}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    chmod 644 "${service_file}"
+    systemctl daemon-reload
+    systemctl enable "${service_name}"
+    systemctl start "${service_name}"
+    systemctl status "${service_name}" --no-pager
+
+
+    # Update the crontab of the specified user - to comment out entries relating to previous installs of monitoring
+    # These are replaced by the systemd timers or p4metrics service.
+    TEMP_FILE=$(mktemp)
+    crontab -u "$OSUSER" -l > "$TEMP_FILE" 2>/dev/null || echo "" > "$TEMP_FILE"
+    COMMENT="# This script has been replaced by systemd services/timers (p4metrics)"
+    CHANGES_MADE=false
+    for f in monitor_metrics.sh monitor_wrapper.sh; do
+        if grep -v "^#" "$TEMP_FILE" | grep -q "${f}"; then
+            cp "$TEMP_FILE" "${TEMP_FILE}.bak"
+            sed -i "/^[^#].*\/${f}/ s|^|# ${COMMENT}\n# |" "$TEMP_FILE"
+            CHANGES_MADE=true
+        fi
+    done
+    if [ "$CHANGES_MADE" = true ]; then # Load up new crontab
+        crontab -u "$OSUSER" "$TEMP_FILE"
+    fi
 }
 
 update_node_exporter
 update_p4prometheus
+update_p4metrics
+# update_monitor_locks
+systemctl list-timers | grep -E "^NEXT|monitor"
 
 echo "
 

@@ -21,7 +21,7 @@ metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.9.4"
+VER_P4PROMETHEUS="0.9.5"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -463,6 +463,22 @@ EOF
     systemctl start "${service_name}"
     systemctl status "${service_name}" --no-pager
 
+    # Update the crontab of the specified user - to comment out entries relating to previous installs of monitoring
+    # These are replaced by the systemd timers or p4metrics service.
+    TEMP_FILE=$(mktemp)
+    crontab -u "$OSUSER" -l > "$TEMP_FILE" 2>/dev/null || echo "" > "$TEMP_FILE"
+    COMMENT="# This script has been replaced by systemd services/timers (p4metrics)"
+    CHANGES_MADE=false
+    for f in monitor_metrics.sh monitor_wrapper.sh; do
+        if grep -v "^#" "$TEMP_FILE" | grep -q "${f}"; then
+            cp "$TEMP_FILE" "${TEMP_FILE}.bak"
+            sed -i "/^[^#].*\/${f}/ s|^|# ${COMMENT}\n# |" "$TEMP_FILE"
+            CHANGES_MADE=true
+        fi
+    done
+    if [ "$CHANGES_MADE" = true ]; then # Load up new crontab
+        crontab -u "$OSUSER" "$TEMP_FILE"
+    fi
 }
 
 install_monitor_locks () {
@@ -612,7 +628,7 @@ install_node_exporter
 install_p4prometheus
 install_p4metrics
 install_monitor_locks
-systemctl list-timers
+systemctl list-timers | grep -E "^NEXT|monitor"
 
 echo "
 
