@@ -34,7 +34,7 @@ On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc,
     - [Importing Prometheus data into Victoria Metrics](#importing-prometheus-data-into-victoria-metrics)
   - [Install node exporter](#install-node-exporter)
   - [Install p4prometheus - details](#install-p4prometheus---details)
-  - [Install monitor metrics cron jobs](#install-monitor-metrics-cron-jobs)
+  - [Install p4metrics and monitor\_locks systemd timer service](#install-p4metrics-and-monitor_locks-systemd-timer-service)
     - [Checking for blocked commands](#checking-for-blocked-commands)
   - [Start and enable service](#start-and-enable-service)
 - [Alerting](#alerting)
@@ -43,7 +43,7 @@ On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc,
   - [Prometheus config to reference alertmanager rules](#prometheus-config-to-reference-alertmanager-rules)
 - [Troubleshooting](#troubleshooting)
   - [p4prometheus](#p4prometheus)
-  - [monitor metrics](#monitor-metrics)
+  - [p4metrics](#p4metrics)
   - [node exporter](#node-exporter)
   - [prometheus](#prometheus)
   - [Grafana](#grafana)
@@ -51,7 +51,7 @@ On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc,
 - [Windows Installation](#windows-installation)
   - [Windows Exporter](#windows-exporter)
   - [P4prometheus on Windows](#p4prometheus-on-windows)
-  - [Running monitor\_metrics.sh](#running-monitor_metricssh)
+  - [Running p4metrics](#running-p4metrics)
   - [Installing Programs as Services](#installing-programs-as-services)
 
 # Metrics Available
@@ -261,7 +261,7 @@ It is API compatible and thus a drop in for querying. It is configured as a Prom
 
 Run the following as root:
 
-    export PVER="1.74.0"
+    export PVER="1.87.5"    # Adjust to suitable recent value!
     wget https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v$PVER/victoria-metrics-v$PVER.tar.gz
     wget https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v$PVER/vmutils-v$PVER.tar.gz
 
@@ -275,7 +275,7 @@ Run the following as root:
     mv vmbackup-prod /usr/local/bin/
     mv vmrestore-prod /usr/local/bin/
 
-Create service file:
+Create service file (**adjust retentionPeriod as desired**):
 
 ```ini
 cat << EOF > /etc/systemd/system/victoria-metrics.service
@@ -429,13 +429,10 @@ Get latest release download link: https://github.com/perforce/p4prometheus/relea
 
 Run the following as `root` (using link copied from above page):
 
-    export PVER=0.8.8
+    export PVER=0.9.6  # Adjust this to latest release!
     wget https://github.com/perforce/p4prometheus/releases/download/v$PVER/p4prometheus.linux-amd64.gz
-
     gunzip p4prometheus.linux-amd64.gz
-    
-    chmod +x p4prometheus.linux-amd64
-
+    chmod +rx p4prometheus.linux-amd64
     mv p4prometheus.linux-amd64 /usr/local/bin/p4prometheus
 
 As user `perforce` run as below.
@@ -546,20 +543,14 @@ Check that metrics are being written:
 
     grep lines /hxlogs/metrics/p4_cmds.prom
 
+## Install p4metrics and monitor_locks systemd timer service
 
-## Install monitor metrics cron jobs
+Use [Automated Script Installation](#automated-script-installation)!!
 
-Download the following files (or use [Automated Script Installation](#automated-script-installation)):
+Check out: [install_p4metrics function in installer script for details](https://github.com/perforce/p4prometheus/blob/master/scripts/install_p4prom.sh#L361)
 
-* [monitor_metrics.sh](scripts/monitor_metrics.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_metrics.sh)
-* [monitor_wrapper.sh](scripts/monitor_wrapper.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_wrapper.sh)
-* [monitor_metrics.py](scripts/monitor_metrics.py) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/monitor_metrics.py)
-
-There is a convenience script to keep things up-to-date in future:
-
-* [check_for_updates.sh](scripts/check_for_updates.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/check_for_updates.sh). It relies on the `jq` utility to parse GitHub and update the above scripts if new releases have been made.
-
-Configure them for your metrics directory (e.g. `/hxlogs/metrics`)
+Note that `p4metrics` has now replaced `monitor_metrics.sh` - the latter is retained as an example, but should
+not be installed!
 
 Please note that `monitor_metrics.py` (which is called by `monitor_wrapper.sh`) runs `lslocks` and 
 cross references locks found with `p4 monitor show` output. This is incredibly useful for
@@ -568,16 +559,8 @@ if you are not collecting the data at the time!
 
 Warning: make sure that `lslocks` is installed on your Linux distribution!
 
-Install in crontab (for user `perforce` or `$OSUSER`) to run every minute:
-
-    INSTANCE=1
-    */1 * * * * /p4/common/site/bin/monitor_metrics.sh $INSTANCE > /dev/null 2>&1 ||:
-    */1 * * * * /p4/common/site/bin/monitor_wrapper.sh $INSTANCE > /dev/null 2>&1 ||:
-
-For non-SDP installation:
-
-    */1 * * * * /path/to/monitor_metrics.sh -p $P4PORT -u $P4USER -nosdp > /dev/null 2>&1 ||:
-    */1 * * * * /path/to/monitor_wrapper.sh -p $P4PORT -u $P4USER -nosdp  > /dev/null 2>&1 ||:
+The `monitor_metrics.py` (which is called by `monitor_wrapper.sh`) were previously installed in `crontab`. 
+They are now installed as a systemd timer service.
 
 If not using SDP then please ensure that an appropriate LONG TERM TICKET is setup in the environment
 that this script is running in.
@@ -627,7 +610,7 @@ Or open URL in a browser.
 
 # Alerting
 
-Done via alertmanager. Optional component 
+Done via `alertmanager`. Optional component.
 
 Setup is very similar to the above.
 
@@ -690,7 +673,7 @@ See sample config file here:
 
 Note that Makefile format requires a `<tab>` char (not spaces) at the start of 'action' lines.
 
-```
+```Makefile
 # Makefile for alertmanager
 validate:
         amtool check-config alertmanager.yml
@@ -702,7 +685,7 @@ restart: validate
 
 Then you can validate your config:
 
-```
+```bash
 # make validate
 amtool check-config alertmanager.yml
 Checking 'alertmanager.yml'  SUCCESS
@@ -774,6 +757,7 @@ Make sure all *firewalls* are appropriately configured and the various component
 Port defaults are:
 * Grafana: 3000
 * Prometheus: 9090
+* Victoria Metrics: 8428
 * Node_exporter: 9100
 * Alertmanager: 9093
 
@@ -791,19 +775,22 @@ You can just grep for the most basic metric a couple of times (make sure it is i
     # TYPE p4_prom_log_lines_read counter
     p4_prom_log_lines_read{serverid="master.1",sdpinst="1"} 7143
 
-## monitor metrics
+## p4metrics
 
-Make sure monitor_metrics.sh is working:
+Make sure `p4metrics` is working:
 
 ```bash
-bash -xv /p4/common/site/bin/monitor_metrics.sh 1
+sudo systemctl status p4metrics
+sudo journalctl -u p4metrics --no-pager | less
 ```
 
-Or if not using SDP, copy the [monitor_metrics.sh script](scripts/monitor_metrics.sh) to an appropriate place such as `/usr/local/bin` and install it in your crontab.
+You can test it via:
+
+    p4metrics --config p4metrics.yaml --debug --dry.run
 
 Check that appropriate files are listed in your metrics dir (and are being updated every minute), e.g.
 
-    ls -l /hxlogs/metrics
+    ls -ltr /hxlogs/metrics/
 
 ## node exporter
 
@@ -875,21 +862,13 @@ and see what the output is.
 
 The executable takes the `--config` parameter and the yaml file is same format as for Linux version. You can specify paths with forward slashes if desired, e.g. `c:/p4/metrics`
 
-## Running monitor_metrics.sh
+## Running p4metrics
 
-Download [Git Bash](https://gitforwindows.org/) and install.
+Edit `p4metrics.yaml` and adjust path settings, e.g. `/p4/metrics` -> `/c/p4/metrics`
 
-Edit `monitor_metrics.sh` and adjust path settings, e.g. `/p4/metrics` -> `/c/p4/metrics`
+Test the tool with your installation (analyse it's settings). First make sure your admin user is logged in.
 
-Test the script with your installation (analyse it's settings). First make sure your admin user is logged in.
-
-   bash -xv ./monitor_metrics.sh -p $P4PORT -u $P4USER -nosdp 
-
-When it is working and writing metric files to your defined metrics directory, then create a .BAT wrapper, e.g. `run_monitor_metrics.bat` with something like the following contents (adjusted for your local settings):
-
-    cmd /c ""C:\Program Files (x86)\Git\bin\bash.exe" --login -i -- C:\p4\monitor\monitor_metrics.sh -p localhost:1666 -u perforce -nosdp"
-
-Then you can create a Task Scheduler entry which runs `run_monitor_metrics.bat` every minute, for example.
+    p4metrics.exe --config p4metrics.yaml --debug --dry.run
 
 It is important that the user account used has a long login ticket specified.
 

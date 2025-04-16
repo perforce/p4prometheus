@@ -24,7 +24,7 @@ Uses [go-libp4dlog](https://github.com/rcowham/go-libp4dlog) for actual log file
 - [Detailed Installation Instructions](#detailed-installation-instructions)
 - [Metrics Available](#metrics-available)
   - [P4Prometheus Metrics](#p4prometheus-metrics)
-  - [Monitor\_metrics.sh Metrics](#monitor_metricssh-metrics)
+  - [p4metrics Metrics](#p4metrics-metrics)
   - [Locks Metrics](#locks-metrics)
 
 ## Support Status
@@ -130,40 +130,66 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_total_write_held_seconds | table | The total write locks held in seconds (by table) |
 | p4_total_trigger_lapse_seconds | trigger | The total lapse time for triggers in seconds (by trigger) |
 
-## Monitor_metrics.sh Metrics
+## p4metrics Metrics
+
+These were previously written by `monitor_metrics.sh` but that has been superceded by `p4metrics`.
+
+For backwards compatibility with history of previously collected metrics the existing metric 
+names/types/labels have been kept the same.
 
 Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra metric labels are shown in the table.
 
 | Metric Name | Labels | Description |
 | ----------- | ------ | ----------- |
-| p4_server_uptime |  | P4D Server uptime (seconds) |
+| p4_auth_ssl_cert_expires |  | Epoch seconds when Helix Auth Service SSL cert expires |
+| p4_auth_version | version | The version of the Helix Auth Service (unknown means <= 2022.1) |
 | p4_change_counter |  | P4D change counter - monitor normal activity for submits etc |
-| p4_monitor_by_cmd | cmd | P4 running processes - counted by cmd |
-| p4_monitor_by_user | user | P4 running processes - counted by user |
-| p4_process_count |  | P4 running processes - counted via 'ps' |
 | p4_completed_cmds |  | Completed p4 commands - simple grep of log file (turned off for large logs) |
-| p4_sdp_checkpoint_log_time |  | Time of last checkpoint log - helps check if automated jobs are running |
-| p4_sdp_checkpoint_duration |  | Time taken for last checkpoint/restore action - check for sudden increases |
-| p4_replica_curr_jnl | servername | Current journal for server (from "servers -J" |
-| p4_replica_curr_pos | servername | Current journal for server - key measure of replication lag (from "servers -J" |
-| p4_error_count | subsystem, error_id, level | Server errors by id - for sudden spurts of errors |
-| p4_pull_errors |  | P4 pull transfers failed count - to monitor replication status |
-| p4_pull_queue |  | P4 pull files in queue count - for replication |
-| p4_pull_replica_journals_behind |  | How many journals replica is behind |
-| p4_pull_replication_error |  | Set to 1 if replication error detected or 0 if working |
-| p4_pull_replica_lag |  | How many bytes replica is behind in current journal (-1 = error) |
-| p4_licensed_user_count |  | P4D Licensed User count |
-| p4_licensed_user_limit |  | P4D Licensed User Limit |
+| p4_error_count | subsystem, error_id, level | (Deprecated - monitor_metrics.sh) Server errors by id - for sudden spurts of errors |
+| p4_errors_count | subsys, severity | Server errors by subsystem and severiy (e.g. error/fatal) - for sudden spurts of errors |
+| p4_filesys_min | filesys | Value of P4D configurable filesys.*.min |
 | p4_license_expires |  | P4D License expiry (epoch secs) |
-| p4_license_time_remaining |  | P4D License time remaining (secs) |
-| p4_license_support_expires |  | P4D License support expiry (epoch secs) |
 | p4_license_info | info | P4D License info (if present) |
 | p4_license_IP | IP | P4D License IP address (if present) |
-| p4_filesys_min | filesys | Value of P4D configurable filesys.*.min |
+| p4_license_support_expires |  | P4D License support expiry (epoch secs) |
+| p4_license_time_remaining |  | P4D License time remaining (secs) |
+| p4_licensed_user_count |  | P4D Licensed User count |
+| p4_licensed_user_limit |  | P4D Licensed User Limit |
+| p4_monitor_by_cmd | cmd | P4 running processes - counted by cmd |
+| p4_monitor_by_state | state | P4 running processes - counted by state (see 'p4 monitor show' status field) |
+| p4_monitor_by_user | user | P4 running processes - counted by user |
+| p4_monitor_max_cmd_time | user | Max time in seconds for a non-service user command in the monitor table |
 | p4_p4d_build_info | version | P4D Version/build info |
 | p4_p4d_server_type | services | P4D server type/services |
-| p4_ssl_cert_expires | | P4D SSL certificate expiry epoch seconds |
+| p4_process_count |  | (Deprecated monitor_metrics.sh) P4 running processes - counted via 'ps' |
+| p4_processes_count |  | P4 running processes - counted via 'ps' |
+| p4_pull_error_count |  | P4 pull transfers in failed state - to monitor replication status |
+| p4_pull_errors |  | P4 pull transfers failed count - to monitor replication status |
+| p4_pull_queue |  | (Deprecated monitor_metrics.sh) P4 pull files in queue count - for replication |
+| p4_pull_queue_bytes |  | P4 `pull -ls` how many bytes in archive pull queue |
+| p4_pull_queue_count |  | P4 `pull -ls` how many files in archive pull queue (not in failed state) |
+| p4_pull_queue_total |  | P4 `pull -ls` how many files in archive pull queue (total) |
+| p4_pull_replica_bytes_behind |  | How many total bytes replica is behind (`pull -ljv`) |
+| p4_pull_replica_journals_behind |  | How many journals replica is behind |
+| p4_pull_replica_lag |  | How many bytes replica is behind in current journal (-1 = error) |
+| p4_pull_replication_error |  | Set to 1 if replication error detected or 0 if working |
+| p4_replica_curr_jnl | servername | Current journal for server (from "servers -J" |
+| p4_replica_curr_pos | servername | Current journal for server - key measure of replication lag (from "servers -J" |
+| p4_sdp_checkpoint_duration |  | Time taken for last checkpoint/restore action - check for sudden increases |
+| p4_sdp_checkpoint_log_time |  | Time of last checkpoint log - helps check if automated jobs are running |
+| p4_sdp_verify_duration |  | How long in seconds last SDP p4verify.sh run took |
+| p4_sdp_verify_errors | type | Verify errors by type (submitted/sehlved/spec/upload) |
+| p4_sdp_verify_log_modtime |  | Epoch time when SDP log file p4verify.log was last modified |
 | p4_sdp_version | version | SDP Version |
+| p4_server_uptime |  | P4D Server uptime (seconds) |
+| p4_ssl_cert_expires | | P4D SSL certificate expiry epoch seconds |
+| p4_swarm_authorized |  | Set to 1 if SDP superuser authorized to login to Swarm via API (e.g. 401) |
+| p4_swarm_error |  | Set to 1 if swarm returns an http error (timeout or 500) (good for alerting) |
+| p4_swarm_future_tasks |  | Count of future swarm tasks from `/queue/status` URL |
+| p4_swarm_max_workers |  | Count of current swarm tasks from `/queue/status` URL |
+| p4_swarm_tasks |  | Count of current swarm tasks from `/queue/status` URL |
+| p4_swarm_version |  | Swarm version string |
+| p4_swarm_workers |  | Count of current swarm workers from `/queue/status` URL |
 
 ## Locks Metrics
 
