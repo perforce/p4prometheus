@@ -246,7 +246,7 @@ p4_pause_rate_cpu{serverid="myserverid"} 0
 p4_pause_rate_mem{serverid="myserverid"} 0
 p4_pause_state_cpu{serverid="myserverid"} 0
 p4_pause_state_mem{serverid="myserverid"} 0
-p4_prom_build_info{serverid="myserverid",goversion="go1.21.5",revision="testrevision",version="test"} 1
+p4_prom_build_info{serverid="myserverid",goversion="go1.24.2",revision="testrevision",version="test"} 1
 p4_prom_memory{serverid="myserverid"} 8283400
 p4_prom_svr_events_processed{serverid="myserverid"} 0`, -1)
 	compareOutput(t, baseExpected, output)
@@ -328,7 +328,7 @@ p4_pause_rate_cpu;serverid=myserverid 0 1441207389
 p4_pause_rate_mem;serverid=myserverid 0 1441207389
 p4_pause_state_cpu;serverid=myserverid 0 1441207389
 p4_pause_state_mem;serverid=myserverid 0 1441207389
-p4_prom_build_info;serverid=myserverid;goversion=go1.21.5;revision=testrevision;version=test 1 1441207389
+p4_prom_build_info;serverid=myserverid;goversion=go1.24.2;revision=testrevision;version=test 1 1441207389
 p4_prom_memory;serverid=myserverid 9405704 1441207389
 p4_prom_svr_events_processed;serverid=myserverid 0 1441207389`, -1)
 	compareOutput(t, baseExpectedHistorical, output)
