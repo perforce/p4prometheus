@@ -264,7 +264,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 		s, err := script.File(idFile).Slice()
 		if err == nil && len(s) > 0 {
 			p4m.serverID = s[0]
-			p4m.logger.Debugf("found server.id")
+			p4m.logger.Debug("found server.id")
 		} else {
 			p4m.serverID = p4m.p4info["ServerID"]
 		}
@@ -1830,18 +1830,25 @@ func (p4m *P4MonitorMetrics) monitorSwarm() {
 	ticket = strings.TrimSpace(ticket)
 	p4m.logger.Debugf("ticket: '%s'", ticket)
 
-	// Get Swarm URL from property
-	p4cmd, errbuf, p = p4m.newP4CmdPipe("property -l")
-	urlSwarm, err := p.Exec(p4cmd).Match("P4.Swarm.URL").Column(3).String()
-	if err != nil {
-		p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
-		return
-	}
-	if urlSwarm == "" {
-		p4m.logger.Warningf("No Swarm property")
-		return
+	// Get Swarm URL from config file or property
+	// Note that if set in config file we assume this might be different for a reason from the property
+	urlSwarm := p4m.config.SwarmURL
+	if urlSwarm != "" {
+		p4m.logger.Debugf("Using Swarm URL from config file: '%s'", urlSwarm)
+	} else {
+		p4cmd, errbuf, p = p4m.newP4CmdPipe("property -l")
+		urlSwarm, err = p.Exec(p4cmd).Match("P4.Swarm.URL =").Column(3).String()
+		if err != nil {
+			p4m.logger.Errorf("Error running %s: %v, err:%q", p4cmd, err, errbuf.String())
+			return
+		}
+		if urlSwarm == "" {
+			p4m.logger.Warningf("No Swarm property")
+			return
+		}
 	}
 	urlSwarm = strings.TrimSpace(urlSwarm)
+	urlSwarm = strings.TrimSuffix(urlSwarm, "/")
 	p4m.logger.Debugf("Swarm url: '%s'", urlSwarm)
 	p4m.getSwarmMetrics(urlSwarm, p4m.p4User, ticket)
 	if len(p4m.metrics) > 0 {

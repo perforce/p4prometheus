@@ -19,6 +19,8 @@ type Config struct {
 	UpdateInterval     time.Duration `yaml:"update_interval"`
 	LongUpdateInterval time.Duration `yaml:"long_update_interval"`
 	MonitorSwarm       bool          `yaml:"monitor_swarm"`
+	SwarmURL           string        `yaml:"swarm_url"`    // Swarm URL - if the value returned by p4 property -l does not work (VPN etc)
+	SwarmSecure        bool          `yaml:"swarm_secure"` // Wehther to validate the Swarm HTTPS certificate
 	CmdsByUser         bool          `yaml:"cmds_by_user"`
 }
 
@@ -27,7 +29,8 @@ func Unmarshal(config []byte) (*Config, error) {
 	// Default values specified here
 	cfg := &Config{
 		UpdateInterval: 60 * time.Second,
-		MonitorSwarm:   false}
+		MonitorSwarm:   false,
+		SwarmSecure:    true}
 	err := yaml.Unmarshal(config, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("invalid configuration: %v. make sure to use 'single quotes' around strings with special characters (like match patterns or label templates), and make sure to use '-' only for lists (metrics) but not for maps (labels)", err.Error())

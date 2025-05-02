@@ -57,7 +57,7 @@ install_p4prom.sh -h
     -push           Means install pushgateway/report_data_instance cronjobs and config file.
                     Not relevant for most installations.
 
-IMPORTANT: Specify either the SDP instance (e.g. 1), or -nosdp and other parameters
+IMPORTANT: Specify either the installed SDP instance (e.g. 1), or -nosdp and other parameters
 
 WARNING: If using -nosdp, then please ensure P4PORT and P4USER are provided or are appropriately set and that you can connect
     to your server (e.g. you have done a 'p4 trust' if required, and logged in already)
@@ -65,6 +65,7 @@ WARNING: If using -nosdp, then please ensure P4PORT and P4USER are provided or a
 Examples:
 
 ./install_p4prom.sh 1
+./install_p4prom.sh hw
 ./install_p4prom.sh -nosdp -m /p4metrics -u perforce -p 1666 -u p4admin -c /p4/p4prometheus
 
 "
@@ -432,6 +433,18 @@ cmds_by_user:   true
 # monitor_swarm: true/false - Whether to monitor status and version of swarm
 # Normally this should be set to true - won't run if there is no Swarm property
 monitor_swarm:   true
+
+# ----------------------
+# swarm_url: URL of the Swarm instance to monitor
+# Normally this is blank, and p4metrics reads the p4 property value
+# Sometimes (e.g. due to VPN setup) that value is not correct - so set this instead
+# swarm_url: https://swarm.example.com
+swarm_url:
+
+# ----------------------
+# swarm_secure: true/false - Whether to validate SSL for swarm
+# Defaults to true, but if you have a self-signed certificate or similar set to false
+swarm_secure: true
 
 EOF
 
