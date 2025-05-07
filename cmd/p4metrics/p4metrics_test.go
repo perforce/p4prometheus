@@ -164,6 +164,34 @@ func TestP4MetricsLicense(t *testing.T) {
 	assert.Equal(t, len(expected), len(p4m.metrics))
 	tlogger.Debugf("Metrics: %q", p4m.metrics)
 	compareMetricValues(t, expected, p4m.metrics)
+
+	p4m.metrics = make([]metricStruct, 0)
+	p4m.p4license = map[string]string{
+		"isLicensed":     "yes",
+		"userCount":      "84",
+		"userLimit":      "472",
+		"clientCount":    "-",
+		"clientLimit":    "unlimited",
+		"fileCount":      "-",
+		"fileLimit":      "unlimited",
+		"repoCount":      "-",
+		"repoLimit":      "unlimited",
+		"supportExpires": "1764892800", // --- THIS IS December 5, 2025 (GMT)
+	}
+	p4m.p4info["Server license"] = "none"
+	p4m.p4info["Server date"] = "2025/04/28 03:29:58 -0800 PST"
+	p4m.parseLicense()
+	expected = metricValues{
+		{name: "p4_licensed_user_count", value: "84"},
+		{name: "p4_licensed_user_limit", value: "472"},
+		{name: "p4_license_time_remaining", value: "19053002"},
+		{name: "p4_license_support_expires", value: "1764892800"},
+		{name: "p4_license_info", value: "1", labelName: "licenseInfo", labelValue: "none"},
+	}
+	assert.Equal(t, len(expected), len(p4m.metrics))
+	tlogger.Debugf("Metrics: %q", p4m.metrics)
+	compareMetricValues(t, expected, p4m.metrics)
+
 }
 
 func TestP4MetricsFilesys(t *testing.T) {
