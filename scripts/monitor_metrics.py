@@ -275,6 +275,7 @@ class P4Monitor(object):
         parser.add_argument('-i', '--sdp-instance', help="SDP instance")
         parser.add_argument('-t', '--test-file', help="Test file (section of log file from monitor_metrics.py)")
         parser.add_argument('-m', '--metrics-root', default=metrics_root, help="Metrics directory to use. Default: " + metrics_root)
+        parser.add_argument('-o', '--metrics-file', default=metrics_file, help="Metrics file to use. Default: " + metrics_file)
         parser.add_argument('-v', '--verbosity',
                             nargs='?',
                             const="INFO",
@@ -502,7 +503,7 @@ class P4Monitor(object):
         return lines
 
     def writeMetrics(self, lines):
-        fname = os.path.join(self.options.metrics_root, metrics_file)
+        fname = os.path.join(self.options.metrics_root, self.options.metrics_file)
         self.logger.debug("Writing to metrics file: %s", fname)
         self.logger.debug("Metrics: %s\n", "\n".join(lines))
         tmpfname = fname + ".tmp"

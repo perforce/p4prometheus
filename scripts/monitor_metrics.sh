@@ -139,6 +139,9 @@ if [[ $UseSDP -eq 1 ]]; then
         exit 1
     fi
 
+    # Since metrics root is shared, adjust tmp_info_data when using SDP:
+    tmp_info_data="$metrics_root/tmp_info-${SDP_INSTANCE}.dat"
+
     # Load SDP controlled shell environment.
     # shellcheck disable=SC1091
     source /p4/common/bin/p4_vars "$SDP_INSTANCE" ||\
@@ -221,7 +224,11 @@ monitor_license () {
     # Note that sometimes you only get supportExpires - we calculate licenseTimeRemaining in that case
     fname="$metrics_root/p4_license${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-    tmp_license_data="$metrics_root/tmp_license"
+    if [[ $UseSDP -eq 1 ]]; then
+        tmp_license_data="$metrics_root/tmp_license-${SDP_INSTANCE}"
+    else
+        tmp_license_data="$metrics_root/tmp_license"
+    fi
     # Don't update if there is no license for this server, e.g. a replica
     no_license=$(grep -c "Server license: none" "$tmp_info_data")
     # Update every 60 mins
@@ -296,7 +303,11 @@ monitor_filesys () {
     #   filesys.P4ROOT.min=250M (default)
     fname="$metrics_root/p4_filesys${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-    tmp_filesys_data="$metrics_root/tmp_filesys"
+    if [[ $UseSDP -eq 1 ]]; then
+        tmp_filesys_data="$metrics_root/tmp_filesys-${SDP_INSTANCE}"
+    else
+        tmp_filesys_data="$metrics_root/tmp_filesys"
+    fi
     # Update every 60 mins
     [[ ! -f "$tmp_filesys_data" || $(find "$tmp_filesys_data" -mmin +60) ]] || return
     configurables="filesys.depot.min filesys.P4ROOT.min filesys.P4JOURNAL.min filesys.P4LOG.min filesys.TEMP.min"
@@ -451,7 +462,11 @@ monitor_processes () {
     # Monitor metrics summarised by cmd or user
     fname="$metrics_root/p4_monitor${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-    monfile="/tmp/mon.out"
+    if [[ $UseSDP -eq 1 ]]; then
+        monfile="/tmp/mon-${SDP_INSTANCE}.out"
+    else
+        monfile="/tmp/mon.out"
+    fi
 
     $p4 monitor show -l > "$monfile" 2> /dev/null
     rm -f "$tmpfname"
@@ -628,7 +643,11 @@ monitor_pull () {
 
     fname="$metrics_root/p4_pull${sdpinst_suffix}-${SERVER_ID}.prom"
     tmpfname="$fname.$$"
-    tmp_pull_queue="$metrics_root/pullq.out"
+    if [[ $UseSDP -eq 1 ]]; then
+        tmp_pull_queue="$metrics_root/pullq-${SDP_INSTANCE}.out"
+    else
+        tmp_pull_queue="$metrics_root/pullq.out"
+    fi
     $p4 pull -l > "$tmp_pull_queue" 2> /dev/null 
     rm -f "$tmpfname"
 
@@ -689,7 +708,11 @@ monitor_pull () {
 # ... currentJournalNumberLEOF 0
 # ... currentJournalSequenceLEOF -1
 
-    tmp_pull_stats="$metrics_root/pull-lj.out"
+    if [[ $UseSDP -eq 1 ]]; then
+        tmp_pull_stats="$metrics_root/pull-lj-${SDP_INSTANCE}.out"
+    else
+        tmp_pull_stats="$metrics_root/pull-lj.out"
+    fi
     $p4 -Ztag pull -lj > "$tmp_pull_stats" 2> /dev/null 
 
     replica_jnl_file=$(grep "replicaJournalCounter " "$tmp_pull_stats" | awk '{print $3}' )
