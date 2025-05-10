@@ -1,0 +1,9 @@
+.DS_Store
+.vscode/
+/__pycache__/
+*.pyc
+*.gz
+*.log
+p4prometheus
+test/
+bin/
