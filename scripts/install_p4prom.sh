@@ -21,7 +21,7 @@ metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.9.6"
+VER_P4PROMETHEUS="0.9.7"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -458,7 +458,7 @@ EOF
 Description=P4metrics - part of P4prometheus
 Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
 Wants=network-online.target
-After=network-online.target
+After=network-online.target p4d_${SDP_INSTANCE}.service
 
 [Service]
 User=$OSUSER

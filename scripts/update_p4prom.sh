@@ -319,7 +319,7 @@ update_p4metrics () {
 Description=P4metrics - part of P4prometheus
 Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
 Wants=network-online.target
-After=network-online.target
+After=network-online.target p4d_${SDP_INSTANCE}.service
 
 [Service]
 User=$OSUSER

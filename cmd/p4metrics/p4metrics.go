@@ -1709,7 +1709,26 @@ func (p4m *P4MonitorMetrics) getSwarmQueueInfo(url, userid, password string) (*S
 	}
 	p4m.logger.Debugf("SetBasicAuth: '%s/%s'", userid, password)
 	req.SetBasicAuth(userid, password)
-	client := &http.Client{}
+
+	var client *http.Client
+	if !p4m.config.SwarmSecure {
+		transport := &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+
+		client = &http.Client{
+			Transport: transport,
+			// Set a reasonable timeout
+			Timeout: 30 * time.Second,
+		}
+	} else {
+		client = &http.Client{ // Set a reasonable timeout
+			Timeout: 30 * time.Second,
+		}
+	}
+
 	p4m.logger.Debugf("req: %v", req)
 	resp, err := client.Do(req)
 	if err != nil {
