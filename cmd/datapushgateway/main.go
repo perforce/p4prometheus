@@ -14,9 +14,9 @@ import (
 	"path/filepath"
 
 	"github.com/perforce/p4prometheus/version"
+	"github.com/rcowham/kingpin"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v2"
 )
 
