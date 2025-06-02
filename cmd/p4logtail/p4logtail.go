@@ -5,10 +5,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -44,22 +46,139 @@ func newP4LogTail(config *config.Config, logger *logrus.Logger) (p4l *P4LogTail)
 	}
 }
 
-func appendFile(outputName string, line string) error {
-	var fd *os.File
-	var err error
-	if outputName == "-" {
-		fd = os.Stdout
-	} else {
-		fd, err = os.OpenFile(outputName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return err
-		}
-		defer fd.Close()
+// BufferedFileWriter provides efficient buffered writing with periodic flushing
+type BufferedFileWriter struct {
+	filename      string
+	flushInterval time.Duration
+	file          *os.File
+	writer        *bufio.Writer
+	mutex         sync.RWMutex
+	stopChan      chan struct{}
+	stopped       bool
+	wg            sync.WaitGroup
+}
+
+// NewBufferedFileWriter creates a new buffered file writer
+func NewBufferedFileWriter(filename string, flushIntervalSeconds int) (*BufferedFileWriter, error) {
+	bfw := &BufferedFileWriter{
+		filename:      filename,
+		flushInterval: time.Duration(flushIntervalSeconds) * time.Second,
+		stopChan:      make(chan struct{}),
 	}
-	if _, err := fmt.Fprintln(fd, line); err != nil {
+	if err := bfw.openFile(); err != nil {
+		return nil, err
+	}
+
+	// Start the periodic flush goroutine
+	bfw.wg.Add(1)
+	go bfw.periodicFlush()
+	return bfw, nil
+}
+
+// openFile opens or creates the file and initializes the buffered writer
+func (bfw *BufferedFileWriter) openFile() error {
+	file, err := os.OpenFile(bfw.filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %w", bfw.filename, err)
+	}
+	bfw.file = file
+	bfw.writer = bufio.NewWriter(file)
+	return nil
+}
+
+// WriteLine appends a line to the file with a newline character
+func (bfw *BufferedFileWriter) WriteLine(line string) error {
+	bfw.mutex.Lock()
+	defer bfw.mutex.Unlock()
+	if bfw.stopped {
+		return fmt.Errorf("writer is closed")
+	}
+	_, err := bfw.writer.WriteString(line + "\n")
+	return err
+}
+
+// Flush manually flushes the buffer and syncs to disk
+func (bfw *BufferedFileWriter) Flush() error {
+	bfw.mutex.Lock()
+	defer bfw.mutex.Unlock()
+
+	if bfw.stopped {
+		return fmt.Errorf("writer is closed")
+	}
+	if err := bfw.writer.Flush(); err != nil {
 		return err
 	}
-	return nil
+	return bfw.file.Sync()
+}
+
+// flushAndClose flushes the buffer, closes the file, and reopens it
+func (bfw *BufferedFileWriter) flushAndClose() error {
+	if bfw.stopped {
+		return fmt.Errorf("writer is closed")
+	}
+
+	// Flush and close current file
+	if err := bfw.writer.Flush(); err != nil {
+		return err
+	}
+	if err := bfw.file.Sync(); err != nil {
+		return err
+	}
+	if err := bfw.file.Close(); err != nil {
+		return err
+	}
+
+	// Reopen the file (which may now be a new file if logrotate renamed the old one)
+	return bfw.openFile()
+}
+
+// periodicFlush runs in a goroutine and flushes/closes/reopens the file periodically
+func (bfw *BufferedFileWriter) periodicFlush() {
+	defer bfw.wg.Done()
+
+	ticker := time.NewTicker(bfw.flushInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			bfw.mutex.Lock()
+			if !bfw.stopped {
+				if err := bfw.flushAndClose(); err != nil {
+					// In a production system, you might want to log this error
+					fmt.Printf("Error during periodic flush: %v\n", err)
+				}
+			}
+			bfw.mutex.Unlock()
+
+		case <-bfw.stopChan:
+			return
+		}
+	}
+}
+
+// Close stops the periodic flushing and closes the file
+func (bfw *BufferedFileWriter) Close() error {
+	bfw.mutex.Lock()
+	defer bfw.mutex.Unlock()
+
+	if bfw.stopped {
+		return nil
+	}
+	bfw.stopped = true
+	close(bfw.stopChan)
+
+	// Wait for the periodic flush goroutine to stop
+	bfw.wg.Wait()
+
+	// Final flush and close
+	if err := bfw.writer.Flush(); err != nil {
+		return err
+	}
+	if err := bfw.file.Sync(); err != nil {
+		return err
+	}
+	return bfw.file.Close()
 }
 
 // Returns a tailer object for specified file
@@ -143,10 +262,16 @@ func (p4l *P4LogTail) runLogTailer(logger *logrus.Logger) {
 	}()
 
 	logger.Infof("Creating JSON output: %s", p4l.config.JSONLog)
+	writer, err := NewBufferedFileWriter(p4l.config.JSONLog, 1)
+	if err != nil {
+		logger.Fatal(err)
+	}
+	defer writer.Close()
+
 	for cmd := range cmdChan {
 		switch cmd := cmd.(type) {
 		case p4dlog.Command:
-			err := appendFile(p4l.config.JSONLog, cmd.String())
+			err := writer.WriteLine(cmd.String())
 			if err != nil {
 				logger.Errorf("error writing to JSON output file %q: %v", p4l.config.JSONLog, err)
 				os.Exit(-4)
