@@ -21,7 +21,7 @@ metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.9.7"
+VER_P4PROMETHEUS="0.9.8"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -498,12 +498,13 @@ install_monitor_locks () {
 
     if [[ $UseSDP -eq 1 ]]; then
         service_args="$SDP_INSTANCE"
+        bin_dir="/p4/common/site/bin"
     else
         service_args="-p $P4PORT -u $P4USER -nosdp -m $metrics_root"
+        bin_dir="$local_bin_dir"
     fi
 
     # We install in /p4/common/site/bin but need to reference the ultimate path without links for SELinux/systemd
-    bin_dir="/p4/common/site/bin"
     abs_bin_dir=$(readlink -f "$bin_dir")
     cd "$bin_dir" || bail "Failed to cd to $bin_dir"
     for scriptname in monitor_metrics.py monitor_wrapper.sh; do
