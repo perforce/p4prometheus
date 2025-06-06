@@ -4,10 +4,8 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/rcowham/go-libtail/tailer"
@@ -246,16 +244,10 @@ func (p4m *P4MonitorMetrics) runLogTailer(logger *logrus.Logger, logcfg *logConf
 	tailer, err := p4m.getTailer(logcfg)
 	if err != nil {
 		logger.Errorf("error starting to tail log lines: %v", err)
-		os.Exit(-2)
+		return
 	}
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		sig := <-sigs
-		logger.Infof("Terminating - signal %v", sig)
-		tailer.Close()
-	}()
+	p4m.logger.Debug("runLogTailer on errors")
+	p4m.errTailer = &tailer
 
 	for {
 		select {
@@ -265,29 +257,39 @@ func (p4m *P4MonitorMetrics) runLogTailer(logger *logrus.Logger, logcfg *logConf
 				p4m.parseErrorLine(line.Line)
 			} else {
 				p4m.logger.Debug("Tail error")
+				p4m.errTailer = nil
 				return
 			}
 		case err := <-tailer.Errors():
 			if err != nil {
 				if os.IsNotExist(err.Cause()) {
 					p4m.logger.Errorf("error reading errors.csv lines: %v: use 'fail_on_missing_logfile: false' in the input configuration if you want p4metrics to start even though the logfile is missing", err)
-					os.Exit(-3)
+					p4m.errTailer = nil
+					return
 				}
 				p4m.logger.Errorf("error reading errors.csv lines: %v", err)
+				p4m.errTailer = nil
 				return
 			}
 			p4m.logger.Debug("Finishing logTailer")
+			p4m.errTailer = nil
 			return
 		}
 	}
 }
 
 func (p4m *P4MonitorMetrics) setupErrorMonitoring() {
+	p4m.logger.Debugf("setupErrorMonitoring starting")
 	// Parse the errors.csv file
 	if p4m.p4errorsCSV == "" {
-		p4m.logger.Debugf("monitorErrors exiting as no errors.csv")
+		p4m.logger.Debugf("setupErrorMonitoring exiting as no errors.csv")
 		return
 	}
+	if p4m.errTailer != nil {
+		p4m.logger.Debugf("setupErrorMonitoring exiting as already running")
+		return
+	}
+
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("logschema -a")
 	schema, err := p.Exec(p4cmd).Slice()
 	if err != nil {
