@@ -825,9 +825,9 @@ For improved security:
 
 # Windows Installation
 
-The above instructions are all for Linux. However, all the components have Windows binaries, with the exception of
-monitor_metrics.sh. A version in Powershell/Go is on the TODO list - but the current version has
-been tested with git-bash and basically works.
+The above instructions are all for Linux. However, all the components have Windows binaries, with the exception of the 
+crontab for `lslocks` monitoring ()`monitor_wrapper.sh` and `monitor_metrics.py`). Note that `p4metrics` now has a Windows
+executable version (it wraps the `p4.exe`)
 
 Details:
 
@@ -835,6 +835,7 @@ Details:
 * Prometheus has a Windows executable: [Prometheus Executable](https://github.com/prometheus/prometheus/releases)
 * Instead of Node Exporter use: [Windows Exporter](https://github.com/prometheus-community/windows_exporter/releases)
 * P4Prometheus has a Windows executable: [P4prometheus Executable](https://github.com/perforce/p4prometheus/releases)
+* P4Metrics has a Windows executable: [P4metrics Executable](https://github.com/perforce/p4prometheus/releases)
 
 For testing it is recommended just to run the various executables from command line first and test with Prometheus and Grafana. This allows you to test with firewalls/ports/access rights etc.
 When it is all working, you can wrap up and install each binary as a Service as noted below.
@@ -864,7 +865,7 @@ The executable takes the `--config` parameter and the yaml file is same format a
 
 ## Running p4metrics
 
-Edit `p4metrics.yaml` and adjust path settings, e.g. `/p4/metrics` -> `/c/p4/metrics`
+Edit `p4metrics.yaml` and adjust path settings, e.g. `c:/p4/metrics`
 
 Test the tool with your installation (analyse it's settings). First make sure your admin user is logged in.
 
