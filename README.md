@@ -26,6 +26,7 @@ Uses [go-libp4dlog](https://github.com/rcowham/go-libp4dlog) for actual log file
   - [P4Prometheus Metrics](#p4prometheus-metrics)
   - [p4metrics Metrics](#p4metrics-metrics)
   - [Locks Metrics](#locks-metrics)
+- [Other tools](#other-tools)
 
 ## Support Status
 
@@ -208,3 +209,10 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_locks_meta_read |  | meta db read locks |
 | p4_locks_meta_write |  | meta db write locks |
 | p4_locks_cmds_blocked |  | cmds blocked by locks |
+
+# Other tools
+
+There are a couple of utility tools (for parsing logs with JSON output):
+
+* [p4logtail](cmd/p4logtail/README.md)
+* [p4plogtail](cmd/p4plogtail/README.md)
