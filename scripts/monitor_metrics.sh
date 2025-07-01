@@ -1,7 +1,10 @@
 #!/bin/bash
 # Generate Perforce Helix Core Server monitoring metrics for use with Prometheus (collected via node_explorer)
-# Put this job into perforce user (whatever user perforce processes are run as) crontab:
 #
+# THIS SCRIPT IS NOW DEPRECATED - use p4metrics from this project instead!!!!
+#
+# This script is best run using systemd timers, but can also be run from cron.
+# Put this job into perforce user (whatever user perforce processes are run as) crontab:
 # If using SDP:
 #   */1 * * * * /p4/common/site/bin/monitor_metrics.sh $INSTANCE > /dev/null 2>&1 ||:
 # Otherwise:

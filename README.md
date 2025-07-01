@@ -46,13 +46,14 @@ This is part of a solution consisting of the following components:
 Custom components in this project:
 
 * [p4prometheus](releases/latest) - a released binary executable
-* [monitor_metrics.sh](demo/monitor_metrics.sh) - an [SDP](https://swarm.workshop.perforce.com/projects/perforce-software-sdp) compatible bash script to generate simple supplementary metrics - see also [installation instructions](INSTALL.md)
+* [p4metrics](cmd/p4metrics/README.md) - an [SDP](https://swarm.workshop.perforce.com/projects/perforce-software-sdp) compatible tools to generate simple supplementary metrics - see also [installation instructions](INSTALL.md)
 * other useful scripts and tools
 
 Check out the Prometheus architecture below. The custom components referred to above interface with
 "Prometheus targets"  (or "Jobs/exporters") in the lower left of the diagram.
 
-![Prometheus architecture](https://prometheus.io/assets/architecture.png)
+[Prometheus overview](https://prometheus.io/docs/introduction/overview/)
+![Prometheus architecture](https://prometheus.io/assets/docs/architecture.svg)
 
 # Grafana Dashboards
 
