@@ -37,11 +37,17 @@ function usage
  
    echo "USAGE for monitor_wrapper.sh:
  
-monitor_wrapper.sh [<instance> | -nosdp] [-p <port>] | [-u <user>] | [-m <metrics_dir>]
- 
+monitor_wrapper.sh [<instance> | -nosdp] [-p <port>] | [-u <user>] | [-m <metrics_dir>] [-L <log_file>]
+
    or
- 
+
 monitor_wrapper.sh -h
+
+E.g.
+
+monitor_wrapper.sh 1
+monitor_wrapper.sh -nosdp -p server:1666 -u p4admin -m /var/metrics -L /var/metrics/monitor_metrics.log
+
 "
 }
 
@@ -49,6 +55,7 @@ monitor_wrapper.sh -h
  
 declare -i shiftArgs=0
 declare -i UseSDP=1
+declare logfile=""
 
 set +u
 while [[ $# -gt 0 ]]; do
@@ -58,6 +65,7 @@ while [[ $# -gt 0 ]]; do
         (-p) Port=$2; shiftArgs=1;;
         (-u) User=$2; shiftArgs=1;;
         (-m) metrics_root=$2; shiftArgs=1;;
+        (-L) logfile=$2; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
@@ -84,6 +92,7 @@ if [[ $UseSDP -eq 1 ]]; then
         echo "You must supply the Perforce SDP instance as a parameter to this script or use flag: -nosdp."
         exit 1
     fi
+    [[ -d "/p4/$SDP_INSTANCE" ]] || bail "Specified SDP instance '/p4/$SDP_INSTANCE' does not exist!"
     source /p4/common/bin/p4_vars "$SDP_INSTANCE"
 else
     p4port=${Port:-$P4PORT}
@@ -91,11 +100,12 @@ else
     export P4PORT=${p4port}
     export P4USER=${p4user}
     export P4BIN=${P4BIN:-p4}
+    [[ -z "$logfile" ]] && logfile="$metrics_root/monitor_metrics.log"
 fi
 
 # Adjust to your script location if required
 if [[ $UseSDP -eq 1 ]]; then
     "$SCRIPT_DIR"/monitor_metrics.py  -i "$SDP_INSTANCE" -m "$metrics_root"
 else
-    "$SCRIPT_DIR"/monitor_metrics.py -m "$metrics_root" -p "$p4port" -u "$p4user"
+    "$SCRIPT_DIR"/monitor_metrics.py -m "$metrics_root" -p "$p4port" -u "$p4user" -L "$logfile"
 fi
