@@ -865,7 +865,7 @@ The executable takes the `--config` parameter and the yaml file is same format a
 
 ## Running p4metrics
 
-Edit `p4metrics.yaml` and adjust path settings, e.g. `c:/p4/metrics`
+Starting with the version [draft version of p4metrics](cmd/p4metrics/p4metrics.yaml) create locally and adjust path settings, e.g. `c:/p4/metrics`
 
 Test the tool with your installation (analyse it's settings). First make sure your admin user is logged in.
 
