@@ -25,6 +25,16 @@ groups:
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for 10 mins."
       runbook_id: _p4prometheus_service_not_running
 
+  - alert: OOM Kill Detected
+    expr: increase(node_vmstat_oom_kill[10m]) > 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "OOM kill detected on {{ $labels.instance }}"
+      description: "One or more processes were killed due to out-of-memory in the last 5 minutes."
+      runbook_id: _oom_kill_detected
+
   - alert: P4D urgent license expiry
     # Note serverids may be uppercase - we don't want to match edge servers or HA servers - this is urgent alert
     expr: (p4_license_time_remaining{serverid!~".*ffr.*",serverid!~".*edge.*|.*EDGE.*|.*[-_]ha.*"} / (24 * 60 * 60)) < 5
