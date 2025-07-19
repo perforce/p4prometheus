@@ -127,6 +127,7 @@ type ErrorMetric struct {
 type P4MonitorMetrics struct {
 	config              *config.Config
 	initialised         bool
+	loginError          bool
 	dryrun              bool
 	env                 *map[string]string
 	logger              *logrus.Logger
@@ -972,6 +973,31 @@ func (p4m *P4MonitorMetrics) handleP4Error(fmtStr string, p4cmd string, err erro
 	if strings.Contains(errbuf.String(), "Connect to server failed; check $P4PORT") {
 		p4m.initialised = false
 	}
+	if strings.Contains(errbuf.String(), "Perforce password (P4PASSWD) invalid or unset") {
+		p4m.loginError = true
+	}
+}
+
+func (p4m *P4MonitorMetrics) monitorMonitoring() {
+	// Make sure we keep an eye on the monitoring and login status
+	p4m.startMonitor("monitorMonitoring", "p4_status")
+	initVal := "1"
+	if !p4m.initialised {
+		initVal = "0"
+	}
+	loginVal := "0"
+	if !p4m.loginError {
+		loginVal = "1"
+	}
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitoring_up",
+		help:  "P4 monitoring initialised and working",
+		mtype: "gauge",
+		value: initVal})
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_login_error",
+		help:  "P4 monitoring login error",
+		mtype: "gauge",
+		value: loginVal})
+	p4m.writeMetricsFile()
 }
 
 func (p4m *P4MonitorMetrics) monitorChange() {
@@ -1921,6 +1947,7 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 	if !p4m.initialised {
 		p4m.initVars()
 		if !p4m.initialised {
+			p4m.monitorMonitoring()
 			p4m.logger.Warnf("Failed to initialise P4MonitorMetrics")
 			return
 		}
@@ -1948,6 +1975,7 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 	p4m.monitorVersions()
 	p4m.monitorVerify()
 	p4m.monitorErrors()
+	p4m.monitorMonitoring()
 }
 
 func main() {
