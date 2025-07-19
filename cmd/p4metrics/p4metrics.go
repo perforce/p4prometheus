@@ -203,7 +203,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 		if p4config != "" {
 			p4m.logger.Debugf("setting P4CONFIG=%s", p4config)
 			os.Setenv("P4CONFIG", p4config)
-			p4configEnv = fmt.Sprintf("-E %s", p4config)
+			p4configEnv = fmt.Sprintf("-E P4CONFIG=%s", p4config)
 		}
 		p4m.sdpInstanceLabel = ""
 		p4m.sdpInstanceSuffix = ""
