@@ -578,7 +578,7 @@ EOF
 # Download latest versions
 mkdir -p $p4prom_bin_dir
 cd $p4prom_bin_dir
-for scriptname in report_instance_data.sh check_for_updates.sh; do
+for scriptname in push_metrics.sh report_instance_data.sh check_for_updates.sh; do
     [[ -f "\$scriptname" ]] && rm "\$scriptname"
     echo "downloading \$scriptname"
     wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/\$scriptname"
