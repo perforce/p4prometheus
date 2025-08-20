@@ -251,6 +251,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("info -s")
 	i, err := p.Exec(p4cmd).Slice()
 	if err != nil {
+		p4m.checkServerID()
 		p4m.logger.Errorf("Error can't connect to P4PORT: %q, %v, %q", p4port, err, errbuf.String())
 		return
 	}
@@ -268,17 +269,9 @@ func (p4m *P4MonitorMetrics) initVars() {
 	// post-failover (to avoid split brain). For purposes of this check, we care
 	// only about the ServerID value contained on the first line, so we use
 	// 'head -1' on the server.id file.
+	p4m.serverID = p4m.p4info["ServerID"]
 	p4m.rootDir = p4m.p4info["Server root"]
-	idFile := path.Join(p4m.rootDir, "server.id")
-	if _, err := os.Stat(idFile); err == nil {
-		s, err := script.File(idFile).Slice()
-		if err == nil && len(s) > 0 {
-			p4m.serverID = s[0]
-			p4m.logger.Debug("found server.id")
-		} else {
-			p4m.serverID = p4m.p4info["ServerID"]
-		}
-	}
+	p4m.checkServerID()
 	if p4m.serverID == "" {
 		p4m.serverID = "UnsetServerID"
 	}
@@ -309,6 +302,26 @@ func (p4m *P4MonitorMetrics) initVars() {
 		p4m.logger.Debugf("errorsFile abspath: %s", p4m.p4errorsCSV)
 	}
 	p4m.initialised = true
+}
+
+func (p4m *P4MonitorMetrics) checkServerID() {
+	if p4m.serverID == "" {
+		if p4m.rootDir == "" {
+			p4m.rootDir = getVar(*p4m.env, "P4ROOT")
+		}
+		idFile := path.Join(p4m.rootDir, "server.id")
+		p4m.logger.Debugf("serverID file: %q", idFile)
+		if _, err := os.Stat(idFile); err == nil {
+			s, err := script.File(idFile).Slice()
+			if err == nil && len(s) > 0 {
+				p4m.serverID = s[0]
+				p4m.logger.Debug("found server.id")
+			} else {
+			}
+		} else {
+			p4m.logger.Debugf("server.id file does not exist: %s, %v", idFile, err)
+		}
+	}
 }
 
 // $ p4 info -s
@@ -1945,6 +1958,7 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 	// So reconnect to p4d if necessary
 	p4m.logger.Debug("Running monitor functions")
 	if !p4m.initialised {
+		p4m.logger.Debug("Running initVars")
 		p4m.initVars()
 		if !p4m.initialised {
 			p4m.monitorMonitoring()
