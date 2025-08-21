@@ -104,6 +104,17 @@ func getVar(vars map[string]string, k string) string {
 	return ""
 }
 
+// VolumeInfo represents disk usage information for a volume
+type VolumeInfo struct {
+	Name        string
+	Type        string
+	MountPoint  string
+	Free        int64
+	Used        int64
+	Total       int64
+	PercentFull int
+}
+
 // defines metrics label
 type labelStruct struct {
 	name  string
@@ -669,11 +680,11 @@ func (p4m *P4MonitorMetrics) monitorLicense() {
 	p4m.writeMetricsFile()
 }
 
-func (p4m *P4MonitorMetrics) ConvertToBytes(size string) string {
+func (p4m *P4MonitorMetrics) ConvertToBytes(size string) int64 {
 	// Handle empty input
 	if len(size) == 0 {
 		p4m.logger.Error("empty input string")
-		return "0"
+		return 0
 	}
 	// Find the numeric part and unit
 	var numStr string
@@ -689,7 +700,7 @@ func (p4m *P4MonitorMetrics) ConvertToBytes(size string) string {
 	num, err := strconv.ParseFloat(numStr, 64)
 	if err != nil {
 		p4m.logger.Errorf("invalid number format: %v", err)
-		return "0"
+		return 0
 	}
 	// Convert based on unit
 	var multiplier uint64
@@ -708,9 +719,68 @@ func (p4m *P4MonitorMetrics) ConvertToBytes(size string) string {
 		multiplier = 1024 * 1024 * 1024 * 1024 * 1024
 	default:
 		p4m.logger.Errorf("unsupported unit: %s", unit)
-		return "0"
+		return 0
 	}
-	return fmt.Sprintf("%d", uint64(num*float64(multiplier)))
+	return int64(num * float64(multiplier))
+}
+
+// Examples:
+// P4ROOT (type ext4 mounted on /hxmetadata) : 100.3G free, 273.2G used, 393.5G total (73% full)
+// P4JOURNAL (type ext4 mounted on /hxlogs) : 48.6G free, 26G used, 78.6G total (34% full)
+// P4LOG (type ext4 mounted on /hxlogs) : 48.6G free, 26G used, 78.6G total (34% full)
+// TEMP (type ext4 mounted on /hxlogs) : 48.6G free, 26G used, 78.6G total (34% full)
+// journalPrefix (type xfs mounted on /hxdepots) : 795.5G free, 7T used, 7.8T total (90% full)
+// serverlog.file.1 (type ext4 mounted on /hxlogs) : 48.6G free, 26G used, 78.6G total (34% full)
+
+// parseVolumeInfo parses a single line of volume information
+func (p4m *P4MonitorMetrics) parseVolumeInfo(line string) (*VolumeInfo, error) {
+	// Regular expression to parse the line format
+	// Example: P4ROOT (type ext4 mounted on /hxmetadata) : 100.3G free, 273.2G used, 393.5G total (73% full)
+	re := regexp.MustCompile(`^(\S+)\s*\(type\s+(\w+)\s+mounted\s+on\s+(.+?)\)\s*:\s*(.+?)\s+free,\s*(.+?)\s+used,\s*(.+?)\s+total\s*\((\d+)%\s+full\)`)
+	matches := re.FindStringSubmatch(strings.TrimSpace(line))
+	if len(matches) != 8 {
+		return nil, fmt.Errorf("parseVolumeInfo: invalid line format: %s", line)
+	}
+
+	name := strings.TrimSpace(matches[1])
+	fsType := matches[2]
+	mountPoint := matches[3]
+
+	free := p4m.ConvertToBytes(matches[4])
+	used := p4m.ConvertToBytes(matches[5])
+	total := p4m.ConvertToBytes(matches[6])
+
+	percentFull, err := strconv.Atoi(matches[7])
+	if err != nil {
+		return nil, fmt.Errorf("error parsing percentage: %v", err)
+	}
+
+	return &VolumeInfo{
+		Name:        name,
+		Type:        fsType,
+		MountPoint:  mountPoint,
+		Free:        free,
+		Used:        used,
+		Total:       total,
+		PercentFull: percentFull,
+	}, nil
+}
+
+// parseVolumeData parses the entire volume data string and returns a map of volumes
+func (p4m *P4MonitorMetrics) parseDiskspace(lines []string) (map[string]*VolumeInfo, error) {
+	volumes := make(map[string]*VolumeInfo)
+
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		volume, err := p4m.parseVolumeInfo(line)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing line '%s': %v", line, err)
+		}
+		volumes[volume.Name] = volume
+	}
+	return volumes, nil
 }
 
 func (p4m *P4MonitorMetrics) parseFilesys(values []string) {
@@ -738,7 +808,7 @@ func (p4m *P4MonitorMetrics) parseFilesys(values []string) {
 			m := metricStruct{name: "p4_filesys_min",
 				help:  "Minimum space for filesystem",
 				mtype: "gauge"}
-			m.value = p4m.ConvertToBytes(value)
+			m.value = fmt.Sprintf("%d", p4m.ConvertToBytes(value))
 			m.labels = []labelStruct{{name: "filesys", value: filesysName}}
 			p4m.metrics = append(p4m.metrics, m)
 		}

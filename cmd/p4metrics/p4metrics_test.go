@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -478,6 +480,46 @@ Time: Completed verifications at Tue Apr  8 11:56:23 UTC 2025, taking 1 hours 2 
 	assert.Equal(t, int64(0), p4m.verifyErrsShelved)
 	assert.Equal(t, 1*3600+2*60+3, p4m.verifyDuration)
 
+}
+
+func TestDiskspaceParsing(t *testing.T) {
+	cfg := config.Config{}
+	initLogger()
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+
+	dsLines := `P4ROOT (type ext4 mounted on /hxmetadata) : 100.3G free, 273.2G used, 35G total (73% full)
+P4JOURNAL (type ext4 mounted on /hxlogs) : 48.6G free, 26G used, 78.6G total (34% full)
+P4LOG (type ext4 mounted on /hxlogs) : 48.6G free, 26G used, 78.6G total (34% full)
+TEMP (type ext4 mounted on /hxlogs) : 48.6G free, 26G used, 78.6G total (34% full)
+journalPrefix (type xfs mounted on /hxdepots) : 795.5G free, 7T used, 7.8T total (90% full)
+serverlog.file.1 (type ext4 mounted on /hxlogs) : 2.3M free, 56K used, 1G total (34% full)
+`
+
+	lines := strings.Split(dsLines, "\n")
+	vols, err := p4m.parseDiskspace(lines)
+	assert.NoError(t, err)
+
+	var keys []string
+	for k := range vols {
+		keys = append(keys, k)
+	}
+	expected := []string{"P4ROOT", "P4JOURNAL", "P4LOG", "TEMP", "journalPrefix", "serverlog.file.1"}
+	sort.Strings(keys)
+	sort.Strings(expected)
+	if !reflect.DeepEqual(keys, expected) {
+		t.Errorf("Expected keys %v, but got %v", expected, keys)
+	}
+
+	assert.Equal(t, int64(107696304947), vols["P4ROOT"].Free)
+	assert.Equal(t, int64(293346266316), vols["P4ROOT"].Used)
+	assert.Equal(t, int64(37580963840), vols["P4ROOT"].Total)
+	assert.Equal(t, int(73), vols["P4ROOT"].PercentFull)
+
+	assert.Equal(t, int64(2411724), vols["serverlog.file.1"].Free)
+	assert.Equal(t, int64(57344), vols["serverlog.file.1"].Used)
+	assert.Equal(t, int64(1073741824), vols["serverlog.file.1"].Total)
+	assert.Equal(t, int(34), vols["serverlog.file.1"].PercentFull)
 }
 
 type SwarmTest struct {
