@@ -710,48 +710,13 @@ func (p4m *P4MonitorMetrics) monitorLicense() {
 	p4m.writeMetricsFile()
 }
 
-func (p4m *P4MonitorMetrics) ConvertToBytes(size string) int64 {
-	// Handle empty input
-	if len(size) == 0 {
-		p4m.logger.Error("empty input string")
-		return 0
-	}
-	// Find the numeric part and unit
-	var numStr string
-	var unit string
-	for i, char := range size {
-		if !strings.ContainsRune("0123456789.", char) {
-			numStr = size[:i]
-			unit = strings.ToUpper(size[i:])
-			break
-		}
-	}
-	// Parse the numeric part
-	num, err := strconv.ParseFloat(numStr, 64)
+func (p4m *P4MonitorMetrics) convertToBytes(size string) int64 {
+	result, err := config.ConvertToBytes(size)
 	if err != nil {
-		p4m.logger.Errorf("invalid number format: %v", err)
+		p4m.logger.Errorf("convertToBytes: %v", err)
 		return 0
 	}
-	// Convert based on unit
-	var multiplier uint64
-	switch unit {
-	case "B":
-		multiplier = 1
-	case "K":
-		multiplier = 1024
-	case "M":
-		multiplier = 1024 * 1024
-	case "G":
-		multiplier = 1024 * 1024 * 1024
-	case "T":
-		multiplier = 1024 * 1024 * 1024 * 1024
-	case "P":
-		multiplier = 1024 * 1024 * 1024 * 1024 * 1024
-	default:
-		p4m.logger.Errorf("unsupported unit: %s", unit)
-		return 0
-	}
-	return int64(num * float64(multiplier))
+	return result
 }
 
 // Examples:
@@ -776,9 +741,9 @@ func (p4m *P4MonitorMetrics) parseVolumeInfo(line string) (*VolumeInfo, error) {
 	fsType := matches[2]
 	mountPoint := matches[3]
 
-	free := p4m.ConvertToBytes(matches[4])
-	used := p4m.ConvertToBytes(matches[5])
-	total := p4m.ConvertToBytes(matches[6])
+	free := p4m.convertToBytes(matches[4])
+	used := p4m.convertToBytes(matches[5])
+	total := p4m.convertToBytes(matches[6])
 
 	percentFull, err := strconv.Atoi(matches[7])
 	if err != nil {
@@ -896,7 +861,7 @@ func (p4m *P4MonitorMetrics) parseFilesys(values []string) {
 			m := metricStruct{name: "p4_filesys_min",
 				help:  "Minimum space for filesystem",
 				mtype: "gauge"}
-			m.value = fmt.Sprintf("%d", p4m.ConvertToBytes(value))
+			m.value = fmt.Sprintf("%d", p4m.convertToBytes(value))
 			m.labels = []labelStruct{{name: "filesys", value: filesysName}}
 			p4m.metrics = append(p4m.metrics, m)
 		}
