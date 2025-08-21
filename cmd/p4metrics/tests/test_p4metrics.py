@@ -10,7 +10,7 @@ def test_metrics(host):
     assert host.file("/p4/metrics").exists
     metricsFiles = host.file("/p4/metrics").listdir()
 
-    expectedFiles="p4_license p4_version_info p4_filesys p4_monitor p4_uptime p4_status"
+    expectedFiles="p4_license p4_version_info p4_filesys p4_monitor p4_uptime p4_status p4_journal_logs"
     for f in expectedFiles.split():
         assert f"{f}{suffix}" in metricsFiles
 
@@ -72,6 +72,10 @@ def test_service_down_up(host):
     sf = host.file(f"/p4/metrics/p4_status{suffix}")
     assert sf.contains("^p4_monitoring_up.* 1")
 
-    # Uptime should be 0
+    # Uptime should be non zero
     sf = host.file(f"/p4/metrics/p4_uptime{suffix}")
     assert sf.contains("^p4_server_uptime.* [1-9]$")
+
+    sf = host.file(f"/p4/metrics/p4_journal_logs{suffix}")
+    assert sf.contains("^p4_journal_size.* [1-9][0-9]*$")
+    assert sf.contains("^p4_log_size.* [1-9][0-9]*$")

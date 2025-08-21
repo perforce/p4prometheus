@@ -143,6 +143,7 @@ type P4MonitorMetrics struct {
 	env                 *map[string]string
 	logger              *logrus.Logger
 	p4User              string
+	isSuper             bool // Is this user a super user?
 	serverID            string
 	rootDir             string
 	logsDir             string
@@ -153,6 +154,8 @@ type P4MonitorMetrics struct {
 	p4info              map[string]string
 	p4license           map[string]string
 	p4log               string
+	p4journal           string
+	journalPrefix       string
 	p4errorsCSV         string
 	version             string
 	indErrSeverity      int       // Index of Severity in errors.csv
@@ -288,7 +291,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 	}
 	p4m.logger.Debugf("serverID: %q", p4m.serverID)
 	p4cmd, errbuf, p = p4m.newP4CmdPipe("configure show")
-	cfg, err := p.Exec(p4cmd).Match("serverlog.").Slice()
+	cfg, err := p.Exec(p4cmd).Slice()
 	if err != nil {
 		p4m.handleP4Error("Error running %s: %v, %q", "configure show", err, errbuf)
 		return
@@ -301,8 +304,22 @@ func (p4m *P4MonitorMetrics) initVars() {
 		if len(parts) < 2 {
 			continue
 		}
-		if strings.Contains(parts[1], "errors.csv") {
-			p4m.p4errorsCSV = strings.TrimSpace(strings.Split(parts[1], " ")[0])
+		k := parts[0]
+		v := parts[1]
+		if strings.HasPrefix(k, "serverlog.") && strings.Contains(v, "errors.csv") {
+			p4m.p4errorsCSV = strings.TrimSpace(strings.Split(v, " ")[0])
+			break
+		}
+		if k == "P4LOG" {
+			p4m.p4log = strings.TrimSpace(strings.Split(v, " ")[0])
+			break
+		}
+		if k == "P4JOURNAL" {
+			p4m.p4journal = strings.TrimSpace(strings.Split(v, " ")[0])
+			break
+		}
+		if k == "journalPrefix" {
+			p4m.journalPrefix = strings.TrimSpace(strings.Split(v, " ")[0])
 			break
 		}
 	}
@@ -312,6 +329,19 @@ func (p4m *P4MonitorMetrics) initVars() {
 		p4m.p4errorsCSV = path.Join(p4m.rootDir, p4m.p4errorsCSV)
 		p4m.logger.Debugf("errorsFile abspath: %s", p4m.p4errorsCSV)
 	}
+
+	// Check if a super user
+	p4cmd, errbuf, p = p4m.newP4CmdPipe("protects -m")
+	protects, err := p.Exec(p4cmd).String()
+	if err != nil {
+		p4m.handleP4Error("Error running %s: %v, %q", "protects -m", err, errbuf)
+		return
+	}
+	p4m.logger.Debugf("user %s protects level %s", p4m.p4User, protects)
+	if protects == "super" {
+		p4m.isSuper = true
+	}
+
 	p4m.initialised = true
 }
 
@@ -781,6 +811,43 @@ func (p4m *P4MonitorMetrics) parseDiskspace(lines []string) (map[string]*VolumeI
 		volumes[volume.Name] = volume
 	}
 	return volumes, nil
+}
+
+func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
+	p4m.startMonitor("monitorJournalAndLogs", "p4_journal_logs")
+
+	p4cmd, errbuf, p := p4m.newP4CmdPipe("diskspace")
+	vals, err := p.Exec(p4cmd).Slice()
+	if err != nil {
+		p4m.handleP4Error("Error running %s: %v, err:%q", p4cmd, err, errbuf)
+	}
+	p4m.logger.Debugf("Diskspace values: %q", vals)
+	// vols, err := p4m.parseDiskspace(vals)
+
+	jstat, err := os.Stat(p4m.p4journal)
+	if err != nil {
+		p4m.logger.Debugf("Failed to stat %s: %v", p4m.p4journal, err)
+	} else {
+		m := metricStruct{name: "p4_journal_size",
+			help:  "Size of P4JOURNAL in bytes",
+			mtype: "gauge",
+			value: fmt.Sprintf("%d", jstat.Size()),
+		}
+		p4m.metrics = append(p4m.metrics, m)
+	}
+	lstat, err := os.Stat(p4m.p4log)
+	if err != nil {
+		p4m.logger.Debugf("Failed to stat %s: %v", p4m.p4log, err)
+	} else {
+		m := metricStruct{name: "p4_log_size",
+			help:  "Size of P4LOG in bytes",
+			mtype: "gauge",
+			value: fmt.Sprintf("%d", lstat.Size()),
+		}
+		p4m.metrics = append(p4m.metrics, m)
+	}
+
+	p4m.writeMetricsFile()
 }
 
 func (p4m *P4MonitorMetrics) parseFilesys(values []string) {
@@ -2052,6 +2119,7 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 	p4m.monitorUptime()
 	p4m.monitorChange()
 	p4m.monitorCheckpoint()
+	p4m.monitorJournalAndLogs()
 	p4m.monitorFilesys()
 	p4m.monitorHelixAuthSvc()
 	p4m.monitorLicense()
