@@ -2103,17 +2103,22 @@ func main() {
 
 	ticker := time.NewTicker(p4m.config.UpdateInterval)
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
 	p4m.runMonitorFunctions()
 	for {
 		select {
 		case sig := <-sigs:
-			p4m.logger.Infof("Terminating due to signal %v", sig)
-			if p4m.errTailer != nil {
-				(*p4m.errTailer).Close() // Stop the error tailer if running
+			if sig == syscall.SIGHUP {
+				p4m.logger.Debug("Received signal SIGHUP, calling runMonitorFunctions")
+				p4m.runMonitorFunctions()
+			} else {
+				p4m.logger.Infof("Terminating due to signal %v", sig)
+				if p4m.errTailer != nil {
+					(*p4m.errTailer).Close() // Stop the error tailer if running
+				}
+				return
 			}
-			return
 		case <-ticker.C:
 			p4m.runMonitorFunctions()
 		}

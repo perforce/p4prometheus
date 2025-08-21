@@ -1,6 +1,8 @@
 # P4Metrics tests - using https://github.com/pytest-dev/pytest-testinfra
 
 from time import sleep
+import os
+import signal
 
 suffix = "-1-master.1.prom"
 
@@ -22,11 +24,16 @@ def test_metrics(host):
     sf = host.file(f"/p4/metrics/p4_uptime{suffix}")
     assert sf.contains("^p4_server_uptime.* [1-9]$")
 
+def reload_metrics(host):
+    p = host.process.get(user="perforce", comm="p4metrics")
+    os.kill(p.pid, signal.SIGHUP)
+
 def test_service_down(host):
     cmd = host.run("sudo systemctl stop p4d_1")
     assert '=error' not in cmd.stdout
     
-    sleep(6)
+    reload_metrics(host)
+    sleep(1)
     metricsFiles = host.file("/p4/metrics").listdir()
 
     notExpectedFiles = "p4_license p4_filesys p4_monitor"
