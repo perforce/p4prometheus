@@ -1,6 +1,5 @@
-# FROM ubi8-init AS p4metricstestbase
 FROM rockylinux/rockylinux:9-ubi-init AS p4metricstestbase
-MAINTAINER Robert Cowham "rcowham@perforce.com"
+LABEL maintainer="Robert Cowham <rcowham@perforce.com>"
 
 RUN yum update -y; \
     echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections; \
@@ -42,10 +41,10 @@ FROM p4metricstestbase AS p4metricstest-sdp
 
 ADD cmd/p4metrics/docker/setup_sdp.sh /root/
 RUN /root/setup_sdp.sh
-ADD cmd/p4metrics/docker/run_setup_p4metrics_tests.sh /root/
-ADD cmd/p4metrics/docker/run_p4metrics_tests.sh /root/
-ADD cmd/p4metrics/tests/test_sdp.py /root/
-ADD cmd/p4metrics/tests/test_p4metrics.py /root/
+# ADD cmd/p4metrics/docker/run_setup_p4metrics_tests.sh /root/
+# ADD cmd/p4metrics/docker/run_p4metrics_tests.sh /root/
+# ADD cmd/p4metrics/tests/test_sdp.py /root/
+# ADD cmd/p4metrics/tests/test_p4metrics.py /root/
 ADD scripts/install_p4prom.sh /root/
 
 CMD ["/sbin/init"]

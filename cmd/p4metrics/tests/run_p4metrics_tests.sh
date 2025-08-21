@@ -9,5 +9,5 @@ parent_dir="$(cd "$script_dir/.."; pwd -P)"
 
 cname=p4metricstest
 
-podman cp $parent_dir/bin/p4metrics.linux-arm64.gz $cname:/tmp/
-podman exec -it $cname /root/run_p4metrics_tests.sh
+# podman cp $parent_dir/bin/p4metrics.linux-arm64.gz $cname:/tmp/
+podman exec -it $cname /p4metrics/docker/docker_p4metrics_tests.sh

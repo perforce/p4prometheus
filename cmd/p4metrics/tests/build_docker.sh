@@ -24,5 +24,11 @@ for image in sdp; do
     docker_dir="$root_dir"
     dockerfile="${docker_dir}/cmd/p4metrics/docker/Dockerfile"
     # Build the base Docker for the OS, and then the SDP variant on top
+    set -x
     podman build --rm=true -t="perforce/p4metricstest-${image}" --target p4metricstest-${image} -f "${dockerfile}" "${docker_dir}"
+    cname=p4metricstest
+    podman run --cap-add=SYS_RESOURCE,AUDIT_WRITE -d --rm -v $root_dir/cmd/p4metrics:/p4metrics --name $cname perforce/p4metricstest-${image}
+    podman exec -it $cname bash -xv /p4metrics/docker/docker_setup_p4metrics_tests.sh
+    podman commit $cname base_$cname
+    podman kill $cname
 done
