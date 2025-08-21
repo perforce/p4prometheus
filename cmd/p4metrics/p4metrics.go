@@ -2111,6 +2111,7 @@ func main() {
 		case sig := <-sigs:
 			if sig == syscall.SIGHUP {
 				p4m.logger.Debug("Received signal SIGHUP, calling runMonitorFunctions")
+				ticker = time.NewTicker(p4m.config.UpdateInterval)
 				p4m.runMonitorFunctions()
 			} else {
 				p4m.logger.Infof("Terminating due to signal %v", sig)
