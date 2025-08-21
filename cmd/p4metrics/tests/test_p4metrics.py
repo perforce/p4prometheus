@@ -2,20 +2,25 @@
 
 from time import sleep
 
+suffix = "-1-master.1.prom"
 
 def test_metrics(host):
     assert host.file("/p4/metrics").exists
     metricsFiles = host.file("/p4/metrics").listdir()
 
-    expectedFiles="p4_license-1-master.1.prom p4_version_info-1-master.1.prom p4_filesys-1-master.1.prom  p4_monitor-1-master.1.prom  p4_uptime-1-master.1.prom"
+    expectedFiles="p4_license p4_version_info p4_filesys p4_monitor p4_uptime p4_status"
     for f in expectedFiles.split():
-        assert f in metricsFiles
+        assert f"{f}{suffix}" in metricsFiles
 
     config = host.file("/p4/common/config/p4metrics.yaml")
-    assert config.contains("update_interval: 5s")
+    assert config.contains("^update_interval: 5s")
 
-    sf = host.file("/p4/metrics/p4_status-1-master.1.prom")
-    assert sf.contains("p4_monitoring_up.* 1")
+    sf = host.file(f"/p4/metrics/p4_status{suffix}")
+    assert sf.contains("^p4_monitoring_up.* 1")
+
+    # Uptime should be > 0
+    sf = host.file(f"/p4/metrics/p4_uptime{suffix}")
+    assert sf.contains("^p4_server_uptime.* [1-9]$")
 
 def test_service_down(host):
     cmd = host.run("sudo systemctl stop p4d_1")
@@ -24,17 +29,18 @@ def test_service_down(host):
     sleep(6)
     metricsFiles = host.file("/p4/metrics").listdir()
 
-    sf = host.file("/p4/metrics/p4_status-1-master.1.prom")
-    assert sf.contains("p4_monitoring_up.* 0")
+    notExpectedFiles = "p4_license p4_filesys p4_monitor"
+    for f in notExpectedFiles.split():
+        assert f"{f}{suffix}" not in metricsFiles
 
-    expectedFiles="p4_license-1-master.1.prom p4_version_info-1-master.1.prom p4_filesys-1-master.1.prom  p4_monitor-1-master.1.prom  p4_uptime-1-master.1.prom"
+    expectedFiles="p4_version_info p4_uptime p4_status"
     for f in expectedFiles.split():
-        assert f in metricsFiles
+        assert f"{f}{suffix}" in metricsFiles
 
-    # cmd = host.run("curl localhost:9100/metrics")
-    # assert 'node_time_seconds' in cmd.stdout
-    # assert 'p4_server_uptime' in cmd.stdout
+    # Status should be down
+    sf = host.file(f"/p4/metrics/p4_status{suffix}")
+    assert sf.contains("^p4_monitoring_up.* 0")
 
-    # sleep(1)
-    # cmd = host.run("grep =error /tmp/node.out | grep -v 'udev device' ")
-    # assert '=error' not in cmd.stdout
+    # Uptime should be 0
+    sf = host.file(f"/p4/metrics/p4_uptime{suffix}")
+    assert sf.contains("^p4_server_uptime.* 0$")

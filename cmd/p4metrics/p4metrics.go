@@ -511,8 +511,12 @@ func (p4m *P4MonitorMetrics) monitorUptime() {
 		p4m.logger.Debugf("monitorUptime: parsing: %s", v)
 		seconds = p4m.parseUptime(v)
 	} else {
-		p4m.logger.Debugf("monitorUptime: failed to find 'Server uptime' in p4 info")
-		return
+		p4m.logger.Debugf("monitorUptime: no value for key: %s", k)
+		seconds = 0
+	}
+	if !p4m.initialised {
+		p4m.logger.Debugf("monitorUptime: not initialised, skipping")
+		seconds = 0
 	}
 	p4m.metrics = append(p4m.metrics,
 		metricStruct{name: "p4_server_uptime",
