@@ -79,3 +79,4 @@ def test_service_down_up(host):
     sf = host.file(f"/p4/metrics/p4_journal_logs{suffix}")
     assert sf.contains("^p4_journal_size.* [1-9][0-9]*$")
     assert sf.contains("^p4_log_size.* [1-9][0-9]*$")
+    assert sf.contains("^p4_logs_filecount.* [1-9][0-9]*$")

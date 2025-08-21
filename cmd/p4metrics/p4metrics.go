@@ -847,6 +847,27 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 		p4m.metrics = append(p4m.metrics, m)
 	}
 
+	if p4m.sdpInstance != "" {
+		entries, err := os.ReadDir(p4m.logsDir)
+		if err != nil {
+			p4m.logger.Warnf("Error reading directory: %s %v", p4m.logsDir, err)
+			return
+		} else {
+			fileCount := 0
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					fileCount++
+				}
+			}
+			m := metricStruct{name: "p4_logs_filecount",
+				help:  "Count of files in SDP logs directory",
+				mtype: "gauge",
+				value: fmt.Sprintf("%d", fileCount),
+			}
+			p4m.metrics = append(p4m.metrics, m)
+		}
+	}
+
 	p4m.writeMetricsFile()
 }
 
