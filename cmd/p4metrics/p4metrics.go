@@ -106,13 +106,13 @@ func getVar(vars map[string]string, k string) string {
 
 // VolumeInfo represents disk usage information for a volume
 type VolumeInfo struct {
-	Name        string
-	Type        string
-	MountPoint  string
-	Free        int64
-	Used        int64
-	Total       int64
-	PercentFull int
+	Name        string // Volume name, e.g. P4JOURNAL
+	Type        string // Type of filesystem, e.g. ext4
+	MountPoint  string // Mount point, e.g. /hxlogs
+	Free        int64  // Free space in bytes
+	Used        int64  // Used space in bytes
+	Total       int64  // Total space in bytes
+	PercentFull int    // Percent full, e.g. 45
 }
 
 // defines metrics label
@@ -337,6 +337,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 		p4m.handleP4Error("Error running %s: %v, %q", "protects -m", err, errbuf)
 		return
 	}
+	protects = strings.TrimSpace(protects)
 	p4m.logger.Debugf("user %s protects level %s", p4m.p4User, protects)
 	if protects == "super" {
 		p4m.isSuper = true
@@ -787,7 +788,13 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 		p4m.handleP4Error("Error running %s: %v, err:%q", p4cmd, err, errbuf)
 	}
 	p4m.logger.Debugf("Diskspace values: %q", vals)
-	// vols, err := p4m.parseDiskspace(vals)
+	volumes, err := p4m.parseDiskspace(vals)
+	if err != nil {
+		p4m.logger.Errorf("Error parsing diskspace: %v", err)
+	}
+	if volumes != nil {
+		p4m.logger.Debugf("Parsed Diskspace values: %v", volumes)
+	}
 
 	jstat, err := os.Stat(p4m.p4journal)
 	if err != nil {
@@ -830,6 +837,38 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 				value: fmt.Sprintf("%d", fileCount),
 			}
 			p4m.metrics = append(p4m.metrics, m)
+		}
+	}
+
+	// Let's check for the size of the journal and whether we should rotate it
+	jvol, ok1 := volumes["P4JOURNAL"]
+	pvol, ok2 := volumes["journalPrefix"]
+	rotate := false
+	if ok1 && ok2 {
+		p4m.logger.Debugf("journal volume - size %d, free space %d", jstat.Size(), jvol.Free)
+		if float64(jstat.Size())*1.1 < float64(pvol.Free) {
+			if p4m.config.MaxJournalSizeInt > 0 && jstat.Size() > p4m.config.MaxJournalSizeInt {
+				p4m.logger.Debugf("journal volume will rotate - size %d, max %d", jstat.Size(), p4m.config.MaxJournalSizeInt)
+				rotate = true
+			}
+		} else {
+			p4m.logger.Warningf("Not enough free space to rotate journal - size %d, free space %d", jstat.Size(), pvol.Free)
+		}
+		p4m.logger.Debugf("journal volume - size %d, free space %d", jstat.Size(), jvol.Free)
+	}
+	if rotate {
+		if p4m.isSuper {
+			p4m.logger.Infof("Rotating journal - size %d, free space %d", jstat.Size(), pvol.Free)
+			p4cmd, errbuf, p := p4m.newP4CmdPipe("admin journal")
+			err := p.Exec(p4cmd).Error()
+			if err != nil {
+				p4m.handleP4Error("Error running %s: %v, err:%q", p4cmd, err, errbuf)
+			} else {
+				p4m.logger.Info("Journal rotated")
+			}
+		} else {
+			p4m.logger.Warning("Not super user - cannot rotate journal")
+			rotate = false
 		}
 	}
 

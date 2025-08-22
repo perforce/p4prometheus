@@ -3,6 +3,7 @@
 from time import sleep
 import os
 import signal
+import re
 
 suffix = "-1-master.1.prom"
 
@@ -27,6 +28,37 @@ def test_metrics(host):
 def reload_metrics(host):
     p = host.process.get(user="perforce", comm="p4metrics")
     os.kill(p.pid, signal.SIGHUP)
+
+def test_journal_rotate(host):
+    # set config value appropriately, then append to journal to exceed size
+    # then check that it has rotated
+    config = host.file("/p4/common/config/p4metrics.yaml")
+    assert not config.contains("^max_journal_size:")
+    with open("/p4/common/config/p4metrics.yaml", "a") as f:
+        f.write("max_journal_size: 100k\n")
+
+    cmd = host.run("sudo systemctl restart p4metrics")
+    assert cmd.rc == 0
+
+    sleep(3)
+    jnl = host.file("/p4/1/logs/journal")
+    jsize = jnl.size
+    line = "A" * 2000 + "\n"
+    with open("/p4/1/logs/journal", "a") as f:
+        f.write(line * 60)
+
+    assert jnl.size > jsize + 100000
+
+    reload_metrics(host)
+    sleep(2)
+
+    reload_metrics(host)
+    sleep(2)
+
+    sf = host.file(f"/p4/metrics/p4_journal_logs{suffix}")
+    contents = sf.content_string
+    assert re.search(r"^p4_journal_size.* ([0-9]{2,})$", contents, re.MULTILINE)
+    assert not re.search(r"^p4_journal_size.* ([0-9]{5,})$", contents, re.MULTILINE)
 
 def test_service_down_up(host):
     cmd = host.run("sudo systemctl stop p4d_1")

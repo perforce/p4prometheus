@@ -12,22 +12,26 @@ import (
 
 // Config for p4metrics
 type Config struct {
-	MetricsRoot        string        `yaml:"metrics_root"`
-	SDPInstance        string        `yaml:"sdp_instance"` // If this is set then it defines the other variables such as P4Port
-	P4Port             string        `yaml:"p4port"`       // P4PORT value (if not set in env or as parameter)
-	P4User             string        `yaml:"p4user"`       // ditto
-	P4Config           string        `yaml:"p4config"`     // P4CONFIG file - useful if non-SDP
-	P4Bin              string        `yaml:"p4bin"`        // Only useful if non SDP - path to "p4" binary if not in $PATH
-	UpdateInterval     time.Duration `yaml:"update_interval"`
-	LongUpdateInterval time.Duration `yaml:"long_update_interval"`
-	MonitorSwarm       bool          `yaml:"monitor_swarm"`
-	SwarmURL           string        `yaml:"swarm_url"`    // Swarm URL - if the value returned by p4 property -l does not work (VPN etc)
-	SwarmSecure        bool          `yaml:"swarm_secure"` // Wehther to validate the Swarm HTTPS certificate
-	CmdsByUser         bool          `yaml:"cmds_by_user"`
-	MaxJournalSize     string        `yaml:"max_journal_size"`    // Maximum size of journal file to monitor, e.g. 100M, 0 means no limit
-	MaxJournalPercent  string        `yaml:"max_journal_percent"` // Maximum size of journal as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
-	MaxLogSize         string        `yaml:"max_log_size"`        // Maximum size of journal file to monitor, e.g. 100M, 0 means no limit
-	MaxLogPercent      string        `yaml:"max_log_percent"`     // Maximum size of log as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
+	MetricsRoot          string        `yaml:"metrics_root"`
+	SDPInstance          string        `yaml:"sdp_instance"` // If this is set then it defines the other variables such as P4Port
+	P4Port               string        `yaml:"p4port"`       // P4PORT value (if not set in env or as parameter)
+	P4User               string        `yaml:"p4user"`       // ditto
+	P4Config             string        `yaml:"p4config"`     // P4CONFIG file - useful if non-SDP
+	P4Bin                string        `yaml:"p4bin"`        // Only useful if non SDP - path to "p4" binary if not in $PATH
+	UpdateInterval       time.Duration `yaml:"update_interval"`
+	LongUpdateInterval   time.Duration `yaml:"long_update_interval"`
+	MonitorSwarm         bool          `yaml:"monitor_swarm"`
+	SwarmURL             string        `yaml:"swarm_url"`    // Swarm URL - if the value returned by p4 property -l does not work (VPN etc)
+	SwarmSecure          bool          `yaml:"swarm_secure"` // Wehther to validate the Swarm HTTPS certificate
+	CmdsByUser           bool          `yaml:"cmds_by_user"`
+	MaxJournalSize       string        `yaml:"max_journal_size"`    // Maximum size of journal file to monitor, e.g. 100M, 0 means no limit
+	MaxJournalPercent    string        `yaml:"max_journal_percent"` // Maximum size of journal as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
+	MaxLogSize           string        `yaml:"max_log_size"`        // Maximum size of journal file to monitor, e.g. 100M, 0 means no limit
+	MaxLogPercent        string        `yaml:"max_log_percent"`     // Maximum size of log as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
+	MaxJournalSizeInt    int64
+	MaxJournalPercentInt int
+	MaxLogSizeInt        int64
+	MaxLogPercentInt     int
 }
 
 func ConvertToBytes(size string) (int64, error) {
@@ -111,31 +115,36 @@ func (c *Config) validate() error {
 	if c.MetricsRoot == "" {
 		return fmt.Errorf("invalid metrics_root: please specify directory to which p4metrics *.prom files should be written, e.g. /hxlogs/metrics")
 	}
+	var err error
 	if c.MaxJournalSize != "" && c.MaxJournalSize != "0" {
-		if _, err := ConvertToBytes(c.MaxJournalSize); err != nil {
+		if c.MaxJournalSizeInt, err = ConvertToBytes(c.MaxJournalSize); err != nil {
 			return fmt.Errorf("invalid max_journal_size: %q please specify valid size, e.g. 10.5M (options: K/M/G/T/P), 0 means no limit: %v", c.MaxJournalSize, err)
 		}
 	}
 	if c.MaxLogSize != "" && c.MaxLogSize != "0" {
-		if _, err := ConvertToBytes(c.MaxLogSize); err != nil {
+		if c.MaxLogSizeInt, err = ConvertToBytes(c.MaxLogSize); err != nil {
 			return fmt.Errorf("invalid max_log_size: %q please specify valid size, e.g. 10.5M (options: K/M/G/T/P), 0 means no limit: %v", c.MaxLogSize, err)
 		}
 	}
 	if c.MaxJournalPercent != "" && c.MaxJournalPercent != "0" {
-		if _, err := ConvertToBytes(c.MaxJournalPercent); err != nil {
+		var val int64
+		if val, err = ConvertToBytes(c.MaxJournalPercent); err != nil {
 			return fmt.Errorf("invalid max_journal_percent: %q please specify valid percent as integer 0-99, 0 means no limit: %v", c.MaxJournalPercent, err)
 		}
-		if val, _ := ConvertToBytes(c.MaxJournalPercent); val < 0 || val > 99 {
+		if val < 0 || val > 99 {
 			return fmt.Errorf("invalid max_journal_percent: %q please specify valid percent in range 0-99", c.MaxJournalPercent)
 		}
+		c.MaxJournalPercentInt = int(val)
 	}
 	if c.MaxLogPercent != "" && c.MaxLogPercent != "0" {
-		if _, err := ConvertToBytes(c.MaxLogPercent); err != nil {
+		var val int64
+		if val, err = ConvertToBytes(c.MaxLogPercent); err != nil {
 			return fmt.Errorf("invalid max_log_percent: %q please specify valid percent as integer 0-99, 0 means no limit: %v", c.MaxLogPercent, err)
 		}
-		if val, _ := ConvertToBytes(c.MaxLogPercent); val < 0 || val > 99 {
+		if val < 0 || val > 99 {
 			return fmt.Errorf("invalid max_log_percent: %q please specify valid percent in range 0-99", c.MaxLogPercent)
 		}
+		c.MaxLogPercentInt = int(val)
 	}
 	return nil
 }
