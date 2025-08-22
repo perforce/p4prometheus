@@ -6,6 +6,13 @@ import signal
 import re
 
 suffix = "-1-master.1.prom"
+base_config = """metrics_root: /hxlogs/metrics
+sdp_instance:   1
+p4bin:      p4
+update_interval: 5s
+cmds_by_user:   true
+monitor_swarm:   true
+"""
 
 def test_metrics(host):
     assert host.file("/p4/metrics").exists
@@ -29,11 +36,13 @@ def reload_metrics(host):
     p = host.process.get(user="perforce", comm="p4metrics")
     os.kill(p.pid, signal.SIGHUP)
 
-def test_journal_rotate(host):
+def test_journal_size_rotate(host):
     # set config value appropriately, then append to journal to exceed size
     # then check that it has rotated
-    with open("/p4/common/config/p4metrics.yaml", "a") as f:
-        f.write("max_journal_size: 100k\n")
+    with open("/p4/common/config/p4metrics.yaml", "w") as f:
+        f.write(f"""{base_config}
+max_journal_size: 100k
+""")
 
     reload_metrics(host)
     sleep(2)
