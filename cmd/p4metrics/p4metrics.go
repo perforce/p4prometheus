@@ -2119,6 +2119,55 @@ func (p4m *P4MonitorMetrics) monitorErrors() {
 	p4m.writeMetricsFile()
 }
 
+func loadConfigFile(logger *logrus.Logger, configFileName string, sdpInstance string, p4port string, p4user string, p4config string) (*config.Config, error) {
+	logger.Debugf("Loading config file: %q", configFileName)
+	cfg, err := config.LoadConfigFile(configFileName)
+	if err != nil {
+		logger.Errorf("error loading config file: %v", err)
+		return nil, err
+	}
+	if len(sdpInstance) > 0 {
+		cfg.SDPInstance = sdpInstance
+	}
+
+	logger.Infof("%v", version.Print("p4metrics"))
+	logger.Infof("Config: %+v", *cfg)
+	logger.Infof("Processing: output to '%s' SDP instance '%s'",
+		cfg.MetricsRoot, cfg.SDPInstance)
+
+	if p4port != "" {
+		if cfg.SDPInstance != "" {
+			logger.Warnf("SDP instance %q specified so ignoring --p4port: %q", cfg.SDPInstance, p4port)
+		} else {
+			if cfg.P4Port != "" {
+				logger.Warnf("--p4port %q overwriting config value %q", p4port, cfg.P4Port)
+			}
+			cfg.P4Port = p4port
+		}
+	}
+	if p4user != "" {
+		if cfg.SDPInstance != "" {
+			logger.Warnf("SDP instance %q specified so ignoring --p4user: %q", cfg.SDPInstance, p4user)
+		} else {
+			if cfg.P4User != "" {
+				logger.Warnf("--p4user %q overwriting config value %q", p4user, cfg.P4User)
+			}
+			cfg.P4User = p4user
+		}
+	}
+	if p4config != "" {
+		if cfg.SDPInstance != "" {
+			logger.Warnf("SDP instance %q specified so ignoring --p4config: %q", cfg.SDPInstance, p4config)
+		} else {
+			if cfg.P4Config != "" {
+				logger.Warnf("--p4config %q overwriting config value %q", p4config, cfg.P4Config)
+			}
+			cfg.P4Config = p4config
+		}
+	}
+	return cfg, err
+}
+
 func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 	// This is called in a loop by the ticker - allow for p4d service to go down and up
 	// So reconnect to p4d if necessary
@@ -2129,13 +2178,14 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 		if !p4m.initialised {
 			p4m.monitorMonitoring()
 			p4m.logger.Warnf("Failed to initialise P4MonitorMetrics")
-			return
 		}
 
 		// Manages its own updates on a seperate thread because of log tailing
-		go func() {
-			p4m.setupErrorMonitoring()
-		}()
+		if p4m.initialised {
+			go func() {
+				p4m.setupErrorMonitoring()
+			}()
+		}
 	}
 
 	if p4m.config.MonitorSwarm {
@@ -2161,7 +2211,7 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 
 func main() {
 	var (
-		configfile = kingpin.Flag(
+		configFilename = kingpin.Flag(
 			"config",
 			"Config file for p4prometheus.",
 		).Short('c').Default("p4metrics.yaml").String()
@@ -2201,50 +2251,9 @@ func main() {
 		logger.Level = logrus.DebugLevel
 	}
 
-	logger.Debugf("Loading config file: %q", *configfile)
-	cfg, err := config.LoadConfigFile(*configfile)
+	cfg, err := loadConfigFile(logger, *configFilename, *sdpInstance, *p4port, *p4user, *p4config)
 	if err != nil {
-		logger.Errorf("error loading config file: %v", err)
-		os.Exit(-1)
-	}
-	if len(*sdpInstance) > 0 {
-		cfg.SDPInstance = *sdpInstance
-	}
-
-	logger.Infof("%v", version.Print("p4metrics"))
-	logger.Infof("Config: %+v", *cfg)
-	logger.Infof("Processing: output to '%s' SDP instance '%s'",
-		cfg.MetricsRoot, cfg.SDPInstance)
-
-	if *p4port != "" {
-		if cfg.SDPInstance != "" {
-			logger.Warnf("SDP instance %q specified so ignoring --p4port: %q", cfg.SDPInstance, *p4port)
-		} else {
-			if cfg.P4Port != "" {
-				logger.Warnf("--p4port %q overwriting config value %q", *p4port, cfg.P4Port)
-			}
-			cfg.P4Port = *p4port
-		}
-	}
-	if *p4user != "" {
-		if cfg.SDPInstance != "" {
-			logger.Warnf("SDP instance %q specified so ignoring --p4user: %q", cfg.SDPInstance, *p4user)
-		} else {
-			if cfg.P4User != "" {
-				logger.Warnf("--p4user %q overwriting config value %q", *p4user, cfg.P4User)
-			}
-			cfg.P4User = *p4user
-		}
-	}
-	if *p4config != "" {
-		if cfg.SDPInstance != "" {
-			logger.Warnf("SDP instance %q specified so ignoring --p4config: %q", cfg.SDPInstance, *p4config)
-		} else {
-			if cfg.P4Config != "" {
-				logger.Warnf("--p4config %q overwriting config value %q", *p4config, cfg.P4Config)
-			}
-			cfg.P4Config = *p4config
-		}
+		logger.Fatalf("Failed to load config file: %v", err)
 	}
 
 	err = os.MkdirAll(cfg.MetricsRoot, 0755) // Check dir exists
@@ -2273,7 +2282,20 @@ func main() {
 		select {
 		case sig := <-sigs:
 			if sig == syscall.SIGHUP {
-				p4m.logger.Debug("Received signal SIGHUP, calling runMonitorFunctions")
+				p4m.logger.Debug("Received signal SIGHUP, reloading config and calling runMonitorFunctions")
+				cfg, err := loadConfigFile(logger, *configFilename, *sdpInstance, *p4port, *p4user, *p4config)
+				if err != nil {
+					logger.Errorf("Failed to load config file: %v", err)
+					break
+				}
+				if cfg.SDPInstance != "" {
+					env = sourceSDPVars(cfg.SDPInstance, logger)
+				} else {
+					env = sourceEnvVars()
+				}
+				p4m.config = cfg
+				p4m.env = &env
+				p4m.initialised = false // Force re-init
 				ticker = time.NewTicker(p4m.config.UpdateInterval)
 				p4m.runMonitorFunctions()
 			} else {

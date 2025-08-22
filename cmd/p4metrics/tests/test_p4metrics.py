@@ -32,20 +32,17 @@ def reload_metrics(host):
 def test_journal_rotate(host):
     # set config value appropriately, then append to journal to exceed size
     # then check that it has rotated
-    config = host.file("/p4/common/config/p4metrics.yaml")
-    assert not config.contains("^max_journal_size:")
     with open("/p4/common/config/p4metrics.yaml", "a") as f:
         f.write("max_journal_size: 100k\n")
 
-    cmd = host.run("sudo systemctl restart p4metrics")
-    assert cmd.rc == 0
+    reload_metrics(host)
+    sleep(2)
 
-    sleep(3)
     jnl = host.file("/p4/1/logs/journal")
     jsize = jnl.size
     line = "A" * 2000 + "\n"
     with open("/p4/1/logs/journal", "a") as f:
-        f.write(line * 60)
+        f.write(line * 60)  # 120k addition to file should trigger rotation
 
     assert jnl.size > jsize + 100000
 
@@ -63,9 +60,9 @@ def test_journal_rotate(host):
 def test_service_down_up(host):
     cmd = host.run("sudo systemctl stop p4d_1")
     assert cmd.rc == 0
-    
+
     reload_metrics(host)
-    sleep(1)
+    sleep(2)
     metricsFiles = host.file("/p4/metrics").listdir()
 
     notExpectedFiles = "p4_license p4_filesys p4_monitor"
@@ -88,7 +85,7 @@ def test_service_down_up(host):
     host.run("echo 'restarting service p4d_1' | systemd-cat")
     cmd = host.run("sudo systemctl start p4d_1")
     assert cmd.rc == 0
-    
+
     # Wait for the service to come up
     sleep(3)
     reload_metrics(host)
