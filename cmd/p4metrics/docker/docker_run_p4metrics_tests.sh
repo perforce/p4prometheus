@@ -41,6 +41,7 @@ Examples:
  
 declare -i shiftArgs=0
 declare -i UseSDP=1
+declare testargs=""
 
 set +u
 while [[ $# -gt 0 ]]; do
@@ -48,6 +49,7 @@ while [[ $# -gt 0 ]]; do
         (-h) usage -h  && exit 1;;
         # (-man) usage -man;;
         (-nosdp) UseSDP=0;;
+        (-test) testargs="$2"; shiftArgs=1;;
         (-l) P4LOG="$2"; shiftArgs=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) usage -h  && exit 1;;
@@ -83,6 +85,11 @@ source /p4/common/bin/p4_vars 1
 p4 info
 p4 depots
 
+if [[ $testargs != "" ]]; then
+    testargs="-k $testargs"
+fi
+
+
 if [[ $UseSDP -eq 1 ]]; then
     cd /p4/common/config
     sed -i -e 's/update_interval: .*/update_interval: 5s/' p4metrics.yaml
@@ -90,7 +97,7 @@ if [[ $UseSDP -eq 1 ]]; then
     sleep 7
     ls -ltr /p4/metrics/*.prom
     cd /p4metrics/tests
-    pytest -vvv test_p4metrics.py
+    pytest -vvv test_p4metrics.py $testargs
 else
     echo "Skipping SDP tests as -nosdp was specified"
 fi
