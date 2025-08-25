@@ -6,6 +6,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -38,8 +39,92 @@ import (
 const p4InfoTimeFormat = "2006/01/02 15:04:05 -0700 MST"
 const checkpointTimeFormat = "2006-01-02 15:04:05"
 const opensslTimeFormat = "Jan 2 15:04:05 2006 MST"
+const BufferSize = 1024 * 1024 // 1MB buffer
 
 var logger logrus.Logger
+
+// CompressFileResult holds the result of the compression operation
+type CompressFileResult struct {
+	InputFile      string
+	OutputFile     string
+	OriginalSize   int64
+	CompressedSize int64
+	Error          error
+}
+
+// CompressFileAsync compresses a file in a separate goroutine
+func CompressFileAsync(logger *logrus.Logger, inputPath, outputPath string) <-chan CompressFileResult {
+	resultChan := make(chan CompressFileResult, 1)
+
+	go func() {
+		defer close(resultChan)
+
+		result := CompressFileResult{
+			InputFile:  inputPath,
+			OutputFile: outputPath,
+		}
+
+		// Open input file
+		inputFile, err := os.Open(inputPath)
+		if err != nil {
+			result.Error = fmt.Errorf("failed to open input file: %w", err)
+			resultChan <- result
+			return
+		}
+		defer inputFile.Close()
+
+		inputInfo, err := inputFile.Stat()
+		if err != nil {
+			result.Error = fmt.Errorf("failed to get input file info: %w", err)
+			resultChan <- result
+			return
+		}
+		result.OriginalSize = inputInfo.Size()
+		logger.Debugf("Compressing file: %s, size: %d bytes", inputPath, result.OriginalSize)
+
+		outputFile, err := os.Create(outputPath)
+		if err != nil {
+			result.Error = fmt.Errorf("failed to create output file: %w", err)
+			resultChan <- result
+			return
+		}
+		logger.Debugf("Creating compressed file: %s", outputPath)
+		defer outputFile.Close()
+
+		gzipWriter := gzip.NewWriter(outputFile)
+		defer gzipWriter.Close()
+
+		gzipWriter.Name = filepath.Base(inputPath)
+		buffer := make([]byte, BufferSize)
+
+		// Copy data from input to gzip writer using the buffer
+		_, err = io.CopyBuffer(gzipWriter, inputFile, buffer)
+		if err != nil {
+			result.Error = fmt.Errorf("failed to compress file: %w", err)
+			resultChan <- result
+			return
+		}
+
+		// Close gzip writer to flush any remaining data
+		err = gzipWriter.Close()
+		if err != nil {
+			result.Error = fmt.Errorf("failed to close gzip writer: %w", err)
+			resultChan <- result
+			return
+		}
+		outputInfo, err := outputFile.Stat()
+		if err != nil {
+			result.Error = fmt.Errorf("failed to get output file info: %w", err)
+			resultChan <- result
+			return
+		}
+		result.CompressedSize = outputInfo.Size()
+		logger.Debugf("Compression completed: %s, size: %d bytes", outputPath, result.CompressedSize)
+		resultChan <- result
+	}()
+
+	return resultChan
+}
 
 func sourceEnvVars() map[string]string {
 	// Return a list of p4 env vars
@@ -903,11 +988,31 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 		fileName := filepath.Base(p4m.p4log)
 		now := time.Now()
 		newFile := filepath.Join(logDir, now.Format(fmt.Sprintf("%s.2006-01-02_15-04-05", fileName)))
+		zipFile := newFile + ".gz"
 		err := os.Rename(p4m.p4log, newFile)
 		if err != nil {
 			p4m.logger.Errorf("Error renaming %q to %q, err:%q", p4m.p4log, newFile, err)
 		} else {
-			p4m.logger.Info("Log rotated")
+			p4m.logger.Infof("Log rotated - starting compression in background: %q to %q", newFile, zipFile)
+			zipResultChan := CompressFileAsync(p4m.logger, newFile, zipFile)
+			go func() {
+				// Wait for compression to complete
+				result := <-zipResultChan
+				if result.Error != nil {
+					p4m.logger.Errorf("Compression failed: %v", result.Error)
+				} else {
+					compressionRatio := float64(result.CompressedSize) / float64(result.OriginalSize) * 100
+					p4m.logger.Infof("Log compression completed successfully!")
+					p4m.logger.Infof("Original size: %d, compressed %d, ratio %.2f%%",
+						result.OriginalSize, result.CompressedSize, compressionRatio)
+					err := os.Remove(newFile)
+					if err != nil {
+						p4m.logger.Errorf("Error removing compressed file %q, err:%q", zipFile, err)
+					} else {
+						p4m.logger.Infof("Removed compressed file: %q", newFile)
+					}
+				}
+			}()
 		}
 	}
 

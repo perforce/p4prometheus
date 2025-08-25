@@ -157,6 +157,7 @@ max_log_percent: 1
 
     logFiles = host.file("/p4/1/logs").listdir()
     assert len([x for x in logFiles if "log." in x]) > rotatedLogs
+    assert any(re.match(r"log\..*\.gz$", fname) for fname in logFiles)
 
 def test_service_down_up(host):
     cmd = host.run("sudo systemctl stop p4d_1")
