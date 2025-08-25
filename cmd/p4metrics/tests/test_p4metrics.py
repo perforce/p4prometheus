@@ -125,6 +125,7 @@ max_log_size: 100k
 
     logFiles = host.file("/p4/1/logs").listdir()
     assert len([x for x in logFiles if "log." in x]) > rotatedLogs
+    assert any(re.match(r"log\..*\.gz$", fname) for fname in logFiles)
 
 def test_log_percent_rotate(host):
     # set config value appropriately, then append to journal to exceed percentage size
