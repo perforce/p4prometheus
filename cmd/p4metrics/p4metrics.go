@@ -854,7 +854,14 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 		} else {
 			p4m.logger.Warningf("Not enough free space to rotate journal - size %d, free space %d", jstat.Size(), pvol.Free)
 		}
-		p4m.logger.Debugf("journal volume - size %d, free space %d", jstat.Size(), jvol.Free)
+		p4m.logger.Debugf("journal volume - size %d, free space %d, rotate %v", jstat.Size(), jvol.Free, rotate)
+		if !rotate && p4m.config.MaxJournalPercentInt > 0 {
+			percentSize := float64(jvol.Total) * float64(p4m.config.MaxJournalPercentInt) / float64(100.0)
+			if float64(jstat.Size()) > percentSize {
+				p4m.logger.Debugf("journal volume will rotate - size %d, max percent %d, val %.0f", jstat.Size(), p4m.config.MaxJournalPercentInt, percentSize)
+				rotate = true
+			}
+		}
 	}
 	if rotate {
 		if p4m.isSuper {

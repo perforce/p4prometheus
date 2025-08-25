@@ -44,6 +44,9 @@ def test_journal_size_rotate(host):
 max_journal_size: 100k
 """)
 
+    jnlFiles = host.file("/p4/1/checkpoints/").listdir()
+    rotatedJournals = len(jnlFiles)
+
     reload_metrics(host)
     sleep(2)
 
@@ -61,10 +64,39 @@ max_journal_size: 100k
     reload_metrics(host)
     sleep(2)
 
-    sf = host.file(f"/p4/metrics/p4_journal_logs{suffix}")
-    contents = sf.content_string
-    assert re.search(r"^p4_journal_size.* ([0-9]{2,})$", contents, re.MULTILINE)
-    assert not re.search(r"^p4_journal_size.* ([0-9]{5,})$", contents, re.MULTILINE)
+    jnlFiles = host.file("/p4/1/checkpoints/").listdir()
+    assert len(jnlFiles) == rotatedJournals + 1
+
+def test_journal_percent_rotate(host):
+    # set config value appropriately, then append to journal to exceed percentage size
+    # then check that it has rotated
+    # Filesystem      Size  Used Avail Use% Mounted on
+    # overlay          93G   25G   69G  27% /
+    with open("/p4/common/config/p4metrics.yaml", "w") as f:
+        f.write(f"""{base_config}
+max_journal_percent: 1
+""")
+
+    jnlFiles = host.file("/p4/1/checkpoints/").listdir()
+    rotatedJournals = len(jnlFiles)
+
+    reload_metrics(host)
+    sleep(2)
+
+    jnl = host.file("/p4/1/logs/journal")
+    jsize = jnl.size
+    line = "A" * 1000 + "\n"
+    for i in range(10):
+        with open("/p4/1/logs/journal", "a") as f:
+            f.write(line * 200 * 1000)  # 1GB addition to file should trigger rotation
+
+    assert jnl.size > jsize + 2 * 1000 * 1000 * 1000
+
+    reload_metrics(host)
+    sleep(3)
+
+    jnlFiles = host.file("/p4/1/checkpoints/").listdir()
+    assert len(jnlFiles) == rotatedJournals + 1
 
 def test_service_down_up(host):
     cmd = host.run("sudo systemctl stop p4d_1")
