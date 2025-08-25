@@ -92,7 +92,7 @@ fi
 
 if [[ $UseSDP -eq 1 ]]; then
     cd /p4/common/config
-    sed -i -e 's/update_interval: .*/update_interval: 5s/' p4metrics.yaml
+    # sed -i -e 's/update_interval: .*/update_interval: 5s/' p4metrics.yaml
     sudo systemctl restart p4metrics
     sleep 7
     ls -ltr /p4/metrics/*.prom

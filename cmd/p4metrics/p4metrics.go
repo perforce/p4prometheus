@@ -41,8 +41,6 @@ const checkpointTimeFormat = "2006-01-02 15:04:05"
 const opensslTimeFormat = "Jan 2 15:04:05 2006 MST"
 const BufferSize = 1024 * 1024 // 1MB buffer
 
-var logger logrus.Logger
-
 // CompressFileResult holds the result of the compression operation
 type CompressFileResult struct {
 	InputFile      string
@@ -244,6 +242,8 @@ type P4MonitorMetrics struct {
 	journalPrefix       string
 	p4errorsCSV         string
 	version             string
+	rotatedJournals     int       // Number of rotated journals
+	rotatedLogs         int       // Number of rotated logs
 	indErrSeverity      int       // Index of Severity in errors.csv
 	indErrSubsys        int       // Index of subsys
 	verifyLogModTime    time.Time // Time when last looked at verify
@@ -958,6 +958,7 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 				p4m.handleP4Error("Error running %s: %v, err:%q", p4cmd, err, errbuf)
 			} else {
 				p4m.logger.Info("Journal rotated")
+				p4m.rotatedJournals++
 			}
 		} else {
 			p4m.logger.Warning("Not super user - cannot rotate journal")
@@ -994,6 +995,7 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 			p4m.logger.Errorf("Error renaming %q to %q, err:%q", p4m.p4log, newFile, err)
 		} else {
 			p4m.logger.Infof("Log rotated - starting compression in background: %q to %q", newFile, zipFile)
+			p4m.rotatedLogs++
 			zipResultChan := CompressFileAsync(p4m.logger, newFile, zipFile)
 			go func() {
 				// Wait for compression to complete
@@ -1015,6 +1017,19 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 			}()
 		}
 	}
+
+	m := metricStruct{name: "p4_journals_rotated",
+		help:  "Count of rotations of P4JOURNAL by p4metrics",
+		mtype: "counter",
+		value: fmt.Sprintf("%d", p4m.rotatedJournals),
+	}
+	p4m.metrics = append(p4m.metrics, m)
+	m = metricStruct{name: "p4_logs_rotated",
+		help:  "Count of rotations of P4LOG by p4metrics",
+		mtype: "counter",
+		value: fmt.Sprintf("%d", p4m.rotatedLogs),
+	}
+	p4m.metrics = append(p4m.metrics, m)
 
 	p4m.writeMetricsFile()
 }

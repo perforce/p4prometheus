@@ -4,6 +4,7 @@
 *.pyc
 *.gz
 *.log
+*.out
 p4prometheus
 test/
 bin/

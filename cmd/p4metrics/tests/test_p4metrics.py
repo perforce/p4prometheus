@@ -9,7 +9,7 @@ suffix = "-1-master.1.prom"
 base_config = """metrics_root: /hxlogs/metrics
 sdp_instance:   1
 p4bin:      p4
-update_interval: 5s
+update_interval: 1m
 cmds_by_user:   true
 monitor_swarm:   true
 """
@@ -23,7 +23,7 @@ def test_metrics(host):
         assert f"{f}{suffix}" in metricsFiles
 
     config = host.file("/p4/common/config/p4metrics.yaml")
-    assert config.contains("^update_interval: 5s")
+    # assert config.contains("^update_interval: 5s")
 
     sf = host.file(f"/p4/metrics/p4_status{suffix}")
     assert sf.contains("^p4_monitoring_up.* 1")
@@ -50,6 +50,9 @@ max_journal_size: 100k
     reload_metrics(host)
     sleep(2)
 
+    sf = host.file(f"/p4/metrics/p4_journal_logs{suffix}")
+    assert sf.contains("^p4_journals_rotated.* 0")
+
     jnl = host.file("/p4/1/logs/journal")
     jsize = jnl.size
     line = "A" * 2000 + "\n"
@@ -66,6 +69,9 @@ max_journal_size: 100k
 
     jnlFiles = host.file("/p4/1/checkpoints/").listdir()
     assert len(jnlFiles) == rotatedJournals + 1
+
+    sf = host.file(f"/p4/metrics/p4_journal_logs{suffix}")
+    assert sf.contains("^p4_journals_rotated.* [1-9]$")
 
 def test_journal_percent_rotate(host):
     # set config value appropriately, then append to journal to exceed percentage size
@@ -112,6 +118,12 @@ max_log_size: 100k
     reload_metrics(host)
     sleep(2)
 
+    logsRotated = 0
+    sf = host.file(f"/p4/metrics/p4_journal_logs{suffix}")
+    m = re.search(r"^p4_logs_rotated.* ([0-9]+)", sf.content_string, re.M)
+    if m:
+        logsRotated = int(m.group(1))
+
     log = host.file("/p4/1/logs/log")
     lsize = log.size
     line = "A" * 2000 + "\n"
@@ -126,6 +138,13 @@ max_log_size: 100k
     logFiles = host.file("/p4/1/logs").listdir()
     assert len([x for x in logFiles if "log." in x]) > rotatedLogs
     assert any(re.match(r"log\..*\.gz$", fname) for fname in logFiles)
+
+    sf = host.file(f"/p4/metrics/p4_journal_logs{suffix}")
+    m = re.search(r"^p4_logs_rotated.* ([0-9]+)", sf.content_string, re.M)
+    if m:
+        assert int(m.group(1)) > logsRotated
+    else:
+        assert False, "Could not find p4_logs_rotated metric"
 
 def test_log_percent_rotate(host):
     # set config value appropriately, then append to journal to exceed percentage size
