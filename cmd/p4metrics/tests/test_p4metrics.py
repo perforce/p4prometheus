@@ -98,6 +98,65 @@ max_journal_percent: 1
     jnlFiles = host.file("/p4/1/checkpoints/").listdir()
     assert len(jnlFiles) == rotatedJournals + 1
 
+def test_log_size_rotate(host):
+    # set config value appropriately, then append to journal to exceed size
+    # then check that it has rotated
+    with open("/p4/common/config/p4metrics.yaml", "w") as f:
+        f.write(f"""{base_config}
+max_log_size: 100k
+""")
+
+    logFiles = host.file("/p4/1/logs").listdir()
+    rotatedLogs = len([x for x in logFiles if "log." in x])
+
+    reload_metrics(host)
+    sleep(2)
+
+    log = host.file("/p4/1/logs/log")
+    lsize = log.size
+    line = "A" * 2000 + "\n"
+    with open("/p4/1/logs/log", "a") as f:
+        f.write(line * 60)  # 120k addition to file should trigger rotation
+
+    assert log.size > lsize + 100000
+
+    reload_metrics(host)
+    sleep(2)
+
+    logFiles = host.file("/p4/1/logs").listdir()
+    assert len([x for x in logFiles if "log." in x]) > rotatedLogs
+
+def test_log_percent_rotate(host):
+    # set config value appropriately, then append to journal to exceed percentage size
+    # then check that it has rotated
+    # Filesystem      Size  Used Avail Use% Mounted on
+    # overlay          93G   25G   69G  27% /
+    with open("/p4/common/config/p4metrics.yaml", "w") as f:
+        f.write(f"""{base_config}
+max_log_percent: 1
+""")
+
+    logFiles = host.file("/p4/1/logs").listdir()
+    rotatedLogs = len([x for x in logFiles if "log." in x])
+
+    reload_metrics(host)
+    sleep(2)
+
+    log = host.file("/p4/1/logs/log")
+    lsize = log.size
+    line = "A" * 1000 + "\n"
+    for i in range(10):
+        with open("/p4/1/logs/log", "a") as f:
+            f.write(line * 200 * 1000)  # 1GB addition to file should trigger rotation
+    
+    assert log.size > lsize + 100000
+
+    reload_metrics(host)
+    sleep(3)
+
+    logFiles = host.file("/p4/1/logs").listdir()
+    assert len([x for x in logFiles if "log." in x]) > rotatedLogs
+
 def test_service_down_up(host):
     cmd = host.run("sudo systemctl stop p4d_1")
     assert cmd.rc == 0

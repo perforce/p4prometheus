@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -843,27 +844,27 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 	// Let's check for the size of the journal and whether we should rotate it
 	jvol, ok1 := volumes["P4JOURNAL"]
 	pvol, ok2 := volumes["journalPrefix"]
-	rotate := false
+	rotateJournal := false
 	if ok1 && ok2 {
 		p4m.logger.Debugf("journal volume - size %d, free space %d", jstat.Size(), jvol.Free)
 		if float64(jstat.Size())*1.1 < float64(pvol.Free) {
 			if p4m.config.MaxJournalSizeInt > 0 && jstat.Size() > p4m.config.MaxJournalSizeInt {
 				p4m.logger.Debugf("journal volume will rotate - size %d, max %d", jstat.Size(), p4m.config.MaxJournalSizeInt)
-				rotate = true
+				rotateJournal = true
 			}
 		} else {
 			p4m.logger.Warningf("Not enough free space to rotate journal - size %d, free space %d", jstat.Size(), pvol.Free)
 		}
-		p4m.logger.Debugf("journal volume - size %d, free space %d, rotate %v", jstat.Size(), jvol.Free, rotate)
-		if !rotate && p4m.config.MaxJournalPercentInt > 0 {
+		p4m.logger.Debugf("journal volume - size %d, free space %d, rotate %v", jstat.Size(), jvol.Free, rotateJournal)
+		if !rotateJournal && p4m.config.MaxJournalPercentInt > 0 {
 			percentSize := float64(jvol.Total) * float64(p4m.config.MaxJournalPercentInt) / float64(100.0)
 			if float64(jstat.Size()) > percentSize {
 				p4m.logger.Debugf("journal volume will rotate - size %d, max percent %d, val %.0f", jstat.Size(), p4m.config.MaxJournalPercentInt, percentSize)
-				rotate = true
+				rotateJournal = true
 			}
 		}
 	}
-	if rotate {
+	if rotateJournal {
 		if p4m.isSuper {
 			p4m.logger.Infof("Rotating journal - size %d, free space %d", jstat.Size(), pvol.Free)
 			p4cmd, errbuf, p := p4m.newP4CmdPipe("admin journal")
@@ -875,7 +876,38 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 			}
 		} else {
 			p4m.logger.Warning("Not super user - cannot rotate journal")
-			rotate = false
+			rotateJournal = false
+		}
+	}
+
+	// Same for size of the log file
+	lvol, ok3 := volumes["P4LOG"]
+	rotateLog := false
+	if ok3 {
+		p4m.logger.Debugf("log volume - size %d, free space %d", lstat.Size(), lvol.Free)
+		if p4m.config.MaxLogSizeInt > 0 && lstat.Size() > p4m.config.MaxLogSizeInt {
+			p4m.logger.Debugf("log will be rotate - size %d, max %d", lstat.Size(), p4m.config.MaxLogSizeInt)
+			rotateLog = true
+		}
+		if !rotateLog && p4m.config.MaxLogPercentInt > 0 {
+			percentSize := float64(lvol.Total) * float64(p4m.config.MaxLogPercentInt) / float64(100.0)
+			if float64(lstat.Size()) > percentSize {
+				p4m.logger.Debugf("log will rotate - size %d, max percent %d, val %.0f", lstat.Size(), p4m.config.MaxLogPercentInt, percentSize)
+				rotateLog = true
+			}
+		}
+	}
+	if rotateLog {
+		p4m.logger.Infof("Rotating log - size %d, free space %d", lstat.Size(), lvol.Free)
+		logDir := filepath.Dir(p4m.p4log)
+		fileName := filepath.Base(p4m.p4log)
+		now := time.Now()
+		newFile := filepath.Join(logDir, now.Format(fmt.Sprintf("%s.2006-01-02_15-04-05", fileName)))
+		err := os.Rename(p4m.p4log, newFile)
+		if err != nil {
+			p4m.logger.Errorf("Error renaming %q to %q, err:%q", p4m.p4log, newFile, err)
+		} else {
+			p4m.logger.Info("Log rotated")
 		}
 	}
 
