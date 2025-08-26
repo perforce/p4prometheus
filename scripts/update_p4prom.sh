@@ -19,7 +19,7 @@ metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.9.8"
+VER_P4PROMETHEUS="0.10.0"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -151,6 +151,9 @@ fi
 
 p4prom_config_file="$p4prom_config_dir/p4prometheus.yaml"
 p4metrics_config_file="$p4prom_config_dir/p4metrics.yaml"
+
+[[ -f "$p4prom_config_file" ]] || bail "Config file '$p4prom_config_file' does not exist - please run install_p4prom.sh instead of this script!"
+[[ -f "$p4metrics_config_file" ]] || bail "Config file '$p4metrics_config_file' does not exist - please run install_p4prom.sh instead of this script!"
 
 download_and_untar () {
     fname=$1

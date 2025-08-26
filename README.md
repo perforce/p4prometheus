@@ -150,6 +150,8 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_error_count | subsystem, error_id, level | (Deprecated - monitor_metrics.sh) Server errors by id - for sudden spurts of errors |
 | p4_errors_count | subsys, severity | Server errors by subsystem and severiy (e.g. error/fatal) - for sudden spurts of errors |
 | p4_filesys_min | filesys | Value of P4D configurable filesys.*.min |
+| p4_journal_size | | Size of P4JOURNAL in bytes |
+| p4_journals_rotated | | Count of rotations of P4JOURNAL by p4metrics |
 | p4_license_expires |  | P4D License expiry (epoch secs) |
 | p4_license_info | info | P4D License info (if present) |
 | p4_license_IP | IP | P4D License IP address (if present) |
@@ -157,6 +159,9 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_license_time_remaining |  | P4D License time remaining (secs) |
 | p4_licensed_user_count |  | P4D Licensed User count |
 | p4_licensed_user_limit |  | P4D Licensed User Limit |
+| p4_log_size | | Size of P4LOG in bytes |
+| p4_logs_file_count| | Count of files in SDP logs directory (not created for non-SDP) |
+| p4_logs_rotated | | Count of rotations of P4LOG by p4metrics |
 | p4_monitor_by_cmd | cmd | P4 running processes - counted by cmd |
 | p4_monitor_by_state | state | P4 running processes - counted by state (see 'p4 monitor show' status field) |
 | p4_monitor_by_user | user | P4 running processes - counted by user |

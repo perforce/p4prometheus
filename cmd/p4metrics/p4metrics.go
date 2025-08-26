@@ -941,7 +941,7 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 			p4m.logger.Debugf("journal volume - size %d, free space %d", jstat.Size(), jvol.Free)
 			if float64(jstat.Size())*1.1 < float64(pvol.Free) {
 				if p4m.config.MaxJournalSizeInt > 0 && jstat.Size() > p4m.config.MaxJournalSizeInt {
-					p4m.logger.Debugf("journal volume will rotate - size %d, max %d", jstat.Size(), p4m.config.MaxJournalSizeInt)
+					p4m.logger.Debugf("journal will be rotated - size %d, max %d", jstat.Size(), p4m.config.MaxJournalSizeInt)
 					rotateJournal = true
 				}
 			} else {
@@ -951,7 +951,7 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 			if !rotateJournal && p4m.config.MaxJournalPercentInt > 0 {
 				percentSize := float64(jvol.Total) * float64(p4m.config.MaxJournalPercentInt) / float64(100.0)
 				if float64(jstat.Size()) > percentSize {
-					p4m.logger.Debugf("journal volume will rotate - size %d, max percent %d, val %.0f", jstat.Size(), p4m.config.MaxJournalPercentInt, percentSize)
+					p4m.logger.Debugf("journal will be rotated - size %d, max percent %d, val %.0f", jstat.Size(), p4m.config.MaxJournalPercentInt, percentSize)
 					rotateJournal = true
 				}
 			}
@@ -987,13 +987,13 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 	if ok3 {
 		p4m.logger.Debugf("log volume - size %d, free space %d", lstat.Size(), lvol.Free)
 		if p4m.config.MaxLogSizeInt > 0 && lstat.Size() > p4m.config.MaxLogSizeInt {
-			p4m.logger.Debugf("log will be rotate - size %d, max %d", lstat.Size(), p4m.config.MaxLogSizeInt)
+			p4m.logger.Debugf("log will be rotated - size %d, max %d", lstat.Size(), p4m.config.MaxLogSizeInt)
 			rotateLog = true
 		}
 		if !rotateLog && p4m.config.MaxLogPercentInt > 0 {
 			percentSize := float64(lvol.Total) * float64(p4m.config.MaxLogPercentInt) / float64(100.0)
 			if float64(lstat.Size()) > percentSize {
-				p4m.logger.Debugf("log will rotate - size %d, max percent %d, val %.0f", lstat.Size(), p4m.config.MaxLogPercentInt, percentSize)
+				p4m.logger.Debugf("log will be rotated - size %d, max percent %d, val %.0f", lstat.Size(), p4m.config.MaxLogPercentInt, percentSize)
 				rotateLog = true
 			}
 		}
