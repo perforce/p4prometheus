@@ -917,7 +917,7 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 					fileCount++
 				}
 			}
-			m := metricStruct{name: "p4_logs_filecount",
+			m := metricStruct{name: "p4_logs_file_count",
 				help:  "Count of files in SDP logs directory",
 				mtype: "gauge",
 				value: fmt.Sprintf("%d", fileCount),
@@ -929,23 +929,38 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 	// Let's check for the size of the journal and whether we should rotate it
 	jvol, ok1 := volumes["P4JOURNAL"]
 	pvol, ok2 := volumes["journalPrefix"]
+	p4dServices := "unknown"
+	if v, ok := p4m.p4info["Server services"]; ok {
+		p4dServices = v
+	}
 	rotateJournal := false
-	if ok1 && ok2 {
-		p4m.logger.Debugf("journal volume - size %d, free space %d", jstat.Size(), jvol.Free)
-		if float64(jstat.Size())*1.1 < float64(pvol.Free) {
-			if p4m.config.MaxJournalSizeInt > 0 && jstat.Size() > p4m.config.MaxJournalSizeInt {
-				p4m.logger.Debugf("journal volume will rotate - size %d, max %d", jstat.Size(), p4m.config.MaxJournalSizeInt)
-				rotateJournal = true
+	if p4dServices != "standard" && p4dServices != "commit-server" {
+		p4m.logger.Debugf("Not checking for journal rotation as not commit/standard: %s", p4dServices)
+	} else {
+		if ok1 && ok2 {
+			p4m.logger.Debugf("journal volume - size %d, free space %d", jstat.Size(), jvol.Free)
+			if float64(jstat.Size())*1.1 < float64(pvol.Free) {
+				if p4m.config.MaxJournalSizeInt > 0 && jstat.Size() > p4m.config.MaxJournalSizeInt {
+					p4m.logger.Debugf("journal volume will rotate - size %d, max %d", jstat.Size(), p4m.config.MaxJournalSizeInt)
+					rotateJournal = true
+				}
+			} else {
+				p4m.logger.Warningf("Not enough free space to rotate journal - size %d, free space %d", jstat.Size(), pvol.Free)
+			}
+			p4m.logger.Debugf("journal volume - size %d, free space %d, rotate %v", jstat.Size(), jvol.Free, rotateJournal)
+			if !rotateJournal && p4m.config.MaxJournalPercentInt > 0 {
+				percentSize := float64(jvol.Total) * float64(p4m.config.MaxJournalPercentInt) / float64(100.0)
+				if float64(jstat.Size()) > percentSize {
+					p4m.logger.Debugf("journal volume will rotate - size %d, max percent %d, val %.0f", jstat.Size(), p4m.config.MaxJournalPercentInt, percentSize)
+					rotateJournal = true
+				}
 			}
 		} else {
-			p4m.logger.Warningf("Not enough free space to rotate journal - size %d, free space %d", jstat.Size(), pvol.Free)
-		}
-		p4m.logger.Debugf("journal volume - size %d, free space %d, rotate %v", jstat.Size(), jvol.Free, rotateJournal)
-		if !rotateJournal && p4m.config.MaxJournalPercentInt > 0 {
-			percentSize := float64(jvol.Total) * float64(p4m.config.MaxJournalPercentInt) / float64(100.0)
-			if float64(jstat.Size()) > percentSize {
-				p4m.logger.Debugf("journal volume will rotate - size %d, max percent %d, val %.0f", jstat.Size(), p4m.config.MaxJournalPercentInt, percentSize)
-				rotateJournal = true
+			if !ok1 {
+				p4m.logger.Debug("No volume information for P4JOURNAL")
+			}
+			if !ok2 {
+				p4m.logger.Debug("No volume information for journalPrefix")
 			}
 		}
 	}
@@ -966,7 +981,7 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 		}
 	}
 
-	// Same for size of the log file
+	// Same for size of the log file - but we can always rotate it irrespective of p4d services
 	lvol, ok3 := volumes["P4LOG"]
 	rotateLog := false
 	if ok3 {

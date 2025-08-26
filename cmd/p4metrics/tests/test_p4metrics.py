@@ -169,7 +169,7 @@ max_log_percent: 1
         with open("/p4/1/logs/log", "a") as f:
             f.write(line * 200 * 1000)  # 1GB addition to file should trigger rotation
     
-    assert log.size > lsize + 100000
+    assert log.size > lsize + 2 * 1000 * 1000 * 1000
 
     reload_metrics(host)
     sleep(3)
@@ -229,4 +229,4 @@ def test_service_down_up(host):
     sf = host.file(f"/p4/metrics/p4_journal_logs{suffix}")
     assert sf.contains("^p4_journal_size.* [1-9][0-9]*$")
     assert sf.contains("^p4_log_size.* [1-9][0-9]*$")
-    assert sf.contains("^p4_logs_filecount.* [1-9][0-9]*$")
+    assert sf.contains("^p4_logs_file_count.* [1-9][0-9]*$")
