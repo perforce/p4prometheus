@@ -446,6 +446,40 @@ swarm_url:
 # Defaults to true, but if you have a self-signed certificate or similar set to false
 swarm_secure: true
 
+# ----------------------
+# max_journal_size: Maximum size of journal file to monitor, e.g. 10G, 0 means no limit
+# Units are K/M/G/T/P (powers of 1024), e.g. 10M, 1.5G etc
+# If the journal file is larger than this value it will be rotated using: p4 admin journal
+# This is useful to avoid sudden large journal growth causing disk space issues (often a sign of automation problems).
+# Note that this is only actioned if the p4d server is a "standard" or "commit-server" (so no replicas or edge servers).
+# The system will only rotate the journal if the user is a super user and the journalPrefix volume has sufficient free space.
+# Leave blank or set to 0 to disable (see max_journal_percent below for alternative).
+max_journal_size:
+
+# ----------------------
+# max_journal_percent: Maximum size of journal as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
+# Values are integers 0-99
+# Volume information is read using: p4 diskspace
+# If the journal file is larger than this percentag value it will be rotated using: p4 admin journal
+# This is useful to avoid sudden large journal growth causing disk space issues (often a sign of automation problems).
+# Note that this is only actioned if the p4d server is a "standard" or "commit-server" (so no replicas or edge servers).
+# The system will only rotate the journal if the journalPrefix volume has sufficient free space.
+# Leave blank or set to 0 to disable (see max_journal_size above for alternative).
+max_journal_percent: 	30
+
+# ----------------------
+# max_log_size: Maximum size of P4LOG file to monitor - similar to max_journal_size above
+# Units are K/M/G/T/P (powers of 1024), e.g. 10M, 1.5G etc
+# If the log file is larger than this value it will be rotated and compressed (using rename + gzip)
+max_log_size:
+
+# ----------------------
+# max_log_percent: Maximum size of log as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
+# Values are integers 0-99
+# Volume information is read using: p4 diskspace
+# If the log file is larger than this percentage value it will be rotated and compressed (using rename + gzip)
+max_log_percent: 		30
+
 EOF
 
     chown "$OSUSER:$OSGROUP" "$p4metrics_config_file"

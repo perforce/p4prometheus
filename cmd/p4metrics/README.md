@@ -24,6 +24,7 @@ Flags:
       --p4config=""              P4CONFIG file to use (if sdp.instance is not set and no value in config file).
       --debug                    Enable debugging.
   -n, --dry.run                  Don't write metrics - but show the results - useful for debugging with --debug.
+  -C, --sample.config            Output a sample config file and exit. Useful for getting started to create p4metrics.yaml. E.g. p4metrics --sample.config > p4metrics.yaml
       --version                  Show application version.
 ```
 
@@ -38,7 +39,7 @@ kill %1     # Kill the running task when happy
 
 # Config file p4metrics.yaml
 
-See [p4metrics.yaml](p4metrics.yaml) for example and comments.
+Run `p4metrics --sample.config > p4metrics.yaml` to create an example.
 
 Note that [the installer](../../scripts/install_p4prom.sh) will create a default version of this file - suitable for SDP and non-SDP
 

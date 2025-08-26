@@ -2413,11 +2413,20 @@ func main() {
 			"dry.run",
 			"Don't write metrics - but show the results - useful for debugging with --debug.",
 		).Short('n').Bool()
+		sampleConfig = kingpin.Flag(
+			"sample.config",
+			"Output a sample config file and exit. Useful for getting started to create p4metrics.yaml. E.g. p4metrics --sample.config > p4metrics.yaml",
+		).Short('C').Bool()
 	)
 
 	kingpin.Version(version.Print("p4metrics"))
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
+
+	if *sampleConfig {
+		fmt.Print(config.SampleConfig)
+		return
+	}
 
 	logger := logrus.New()
 	logger.Level = logrus.InfoLevel
