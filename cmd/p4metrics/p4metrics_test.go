@@ -196,6 +196,42 @@ func TestP4MetricsLicense(t *testing.T) {
 
 }
 
+func TestP4ConfigParsing(t *testing.T) {
+	cfg := config.Config{}
+	initLogger()
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+	p4m.parseConfigShow([]string{
+		"P4ROOT=/p4/1/root (-r)",
+		"P4PORT=ssl:1999 (-p)",
+		"P4JOURNAL=/p4/1/logs/journal (-J)",
+		"P4LOG=/p4/1/logs/log (-L)",
+		"P4TICKETS=/p4/1/.p4tickets",
+		"P4TRUST=/p4/1/.p4trust",
+		"security=4 (configure)",
+		"monitor=2 (configure)",
+		"journalPrefix=/p4/1/checkpoints/p4_1 (configure)",
+		"filesys.P4ROOT.min=5G (configure)",
+		"filesys.P4JOURNAL.min=5G (configure)",
+		"filesys.depot.min=5G (configure)",
+		"server.depot.root=/p4/1/depots (configure)",
+		"server.extensions.dir=/p4/1/logs/p4-extensions (configure)",
+		"serverlog.file.1=/p4/1/logs/auth.csv (configure)",
+		"serverlog.file.3=/p4/1/logs/errors.csv (configure)",
+		"serverlog.file.7=/p4/1/logs/events.csv (configure)",
+		"serverlog.file.8=/p4/1/logs/integrity.csv (configure)",
+		"serverlog.file.11=/p4/1/logs/triggers.csv (configure)",
+		"serverlog.retain.1=21 (configure)",
+		"serverlog.retain.3=21 (configure)",
+		"serverlog.retain.7=21 (configure)",
+		"serverlog.retain.8=21 (configure)",
+		"serverlog.retain.11=21 (configure)"})
+	assert.Equal(t, "/p4/1/logs/log", p4m.p4log)
+	assert.Equal(t, "/p4/1/logs/journal", p4m.p4journal)
+	assert.Equal(t, "/p4/1/logs/errors.csv", p4m.p4errorsCSV)
+	assert.Equal(t, "/p4/1/checkpoints/p4_1", p4m.journalPrefix)
+}
+
 func TestP4MetricsFilesys(t *testing.T) {
 	cfg := config.Config{}
 	initLogger()

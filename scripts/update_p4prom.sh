@@ -19,7 +19,7 @@ metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.10.0"
+VER_P4PROMETHEUS="0.10.1"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -40,7 +40,7 @@ function usage
  
    echo "USAGE for update_p4prom.sh:
  
-update_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>] [-u <osuser>]
+update_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>] [-u <osuser>] [-c <p4prom_config_dir>] 
  
    or
 
@@ -50,6 +50,7 @@ update_p4prom.sh -h
     <metrics_link> is an alternative link to metrics_root where metrics will be written - default: $metrics_link
                 Typically only used for SDP installations.
     <osuser>    Operating system user, e.g. perforce, under which p4d process is running
+    <p4prom_config_dir> Specify directory to install p4prometheus config file - useful for nonsdp installs
 
 Specify either the SDP instance (e.g. 1), or -nosdp
 
@@ -59,7 +60,7 @@ WARNING: If using -nosdp, then please ensure P4PORT and P4USER are appropriately
 Examples:
 
 ./update_p4prom.sh 1
-./update_p4prom.sh -nosdp -m /p4metrics -u perforce
+./update_p4prom.sh -nosdp -m /p4metrics -u perforce -c /etc/p4prometheus
 
 "
 }
@@ -71,6 +72,7 @@ declare -i UseSDP=1
 declare -i SELinuxEnabled=0
 declare OsUser=""
 declare P4LOG=""
+declare p4prom_config_dir=""
 
 set +u
 while [[ $# -gt 0 ]]; do
@@ -81,6 +83,7 @@ while [[ $# -gt 0 ]]; do
         (-u) OsUser="$2"; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
         (-l) P4LOG="$2"; shiftArgs=1;;
+        (-c) p4prom_config_dir="$2"; shiftArgs=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
     esac
@@ -145,7 +148,7 @@ else
     OSGROUP=$(id -gn "$OSUSER")
     p4="p4 -u $p4user -p $p4port"
     $p4 info -s || bail "Can't connect to P4PORT: $p4port"
-    p4prom_config_dir="/etc/p4prometheus"
+    p4prom_config_dir=${p4prom_config_dir:-"/etc/p4prometheus"}
     p4prom_bin_dir="$p4prom_config_dir"
 fi
 

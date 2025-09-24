@@ -272,6 +272,35 @@ func newP4MonitorMetrics(config *config.Config, envVars *map[string]string, logg
 	}
 }
 
+func (p4m *P4MonitorMetrics) parseConfigShow(cfg []string) {
+	// serverlog.file.3=/p4/1/logs/errors.csv (configure)
+	for _, line := range cfg {
+		parts := strings.Split(line, "=")
+		if len(parts) < 2 {
+			continue
+		}
+		k := parts[0]
+		v := parts[1]
+		if strings.HasPrefix(k, "serverlog.") && strings.Contains(v, "errors.csv") {
+			p4m.p4errorsCSV = strings.TrimSpace(strings.Split(v, " ")[0])
+			continue
+		}
+		if k == "P4LOG" {
+			p4m.p4log = strings.TrimSpace(strings.Split(v, " ")[0])
+			continue
+		}
+		if k == "P4JOURNAL" {
+			p4m.p4journal = strings.TrimSpace(strings.Split(v, " ")[0])
+			continue
+		}
+		if k == "journalPrefix" {
+			p4m.journalPrefix = strings.TrimSpace(strings.Split(v, " ")[0])
+			continue
+		}
+	}
+	p4m.logger.Debugf("errorsFile: %s", p4m.p4errorsCSV)
+}
+
 func (p4m *P4MonitorMetrics) initVars() {
 	if p4m.initialised {
 		p4m.logger.Debug("initVars: already initialised")
@@ -384,32 +413,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 	}
 	p4m.logger.Debugf("configure show: %q", cfg)
 	// Searching for a line like:
-	// serverlog.file.3=/p4/1/logs/errors.csv (configure)
-	for _, line := range cfg {
-		parts := strings.Split(line, "=")
-		if len(parts) < 2 {
-			continue
-		}
-		k := parts[0]
-		v := parts[1]
-		if strings.HasPrefix(k, "serverlog.") && strings.Contains(v, "errors.csv") {
-			p4m.p4errorsCSV = strings.TrimSpace(strings.Split(v, " ")[0])
-			break
-		}
-		if k == "P4LOG" {
-			p4m.p4log = strings.TrimSpace(strings.Split(v, " ")[0])
-			break
-		}
-		if k == "P4JOURNAL" {
-			p4m.p4journal = strings.TrimSpace(strings.Split(v, " ")[0])
-			break
-		}
-		if k == "journalPrefix" {
-			p4m.journalPrefix = strings.TrimSpace(strings.Split(v, " ")[0])
-			break
-		}
-	}
-	p4m.logger.Debugf("errorsFile: %s", p4m.p4errorsCSV)
+	p4m.parseConfigShow(cfg)
 	if runtime.GOOS != "windows" && !strings.HasPrefix(p4m.p4errorsCSV, "/") {
 		// If the path is not absolute, it is relative to the rootDir
 		p4m.p4errorsCSV = path.Join(p4m.rootDir, p4m.p4errorsCSV)
@@ -815,13 +819,14 @@ func (p4m *P4MonitorMetrics) convertToBytes(size string) int64 {
 // serverlog.file.1 (type ext4 mounted on /hxlogs) : 48.6G free, 26G used, 78.6G total (34% full)
 
 // parseVolumeInfo parses a single line of volume information
-func (p4m *P4MonitorMetrics) parseVolumeInfo(line string) (*VolumeInfo, error) {
+func (p4m *P4MonitorMetrics) parseVolumeInfo(line string) (VolumeInfo, error) {
+	v := VolumeInfo{}
 	// Regular expression to parse the line format
 	// Example: P4ROOT (type ext4 mounted on /hxmetadata) : 100.3G free, 273.2G used, 393.5G total (73% full)
 	re := regexp.MustCompile(`^(\S+)\s*\(type\s+(\w+)\s+mounted\s+on\s+(.+?)\)\s*:\s*(.+?)\s+free,\s*(.+?)\s+used,\s*(.+?)\s+total\s*\((\d+)%\s+full\)`)
 	matches := re.FindStringSubmatch(strings.TrimSpace(line))
 	if len(matches) != 8 {
-		return nil, fmt.Errorf("parseVolumeInfo: invalid line format: %s", line)
+		return v, fmt.Errorf("parseVolumeInfo: invalid line format: %s", line)
 	}
 
 	name := strings.TrimSpace(matches[1])
@@ -834,10 +839,10 @@ func (p4m *P4MonitorMetrics) parseVolumeInfo(line string) (*VolumeInfo, error) {
 
 	percentFull, err := strconv.Atoi(matches[7])
 	if err != nil {
-		return nil, fmt.Errorf("error parsing percentage: %v", err)
+		return v, fmt.Errorf("error parsing percentage: %v", err)
 	}
 
-	return &VolumeInfo{
+	return VolumeInfo{
 		Name:        name,
 		Type:        fsType,
 		MountPoint:  mountPoint,
@@ -849,8 +854,8 @@ func (p4m *P4MonitorMetrics) parseVolumeInfo(line string) (*VolumeInfo, error) {
 }
 
 // parseVolumeData parses the entire volume data string and returns a map of volumes
-func (p4m *P4MonitorMetrics) parseDiskspace(lines []string) (map[string]*VolumeInfo, error) {
-	volumes := make(map[string]*VolumeInfo)
+func (p4m *P4MonitorMetrics) parseDiskspace(lines []string) (map[string]VolumeInfo, error) {
+	volumes := make(map[string]VolumeInfo)
 
 	for _, line := range lines {
 		if line == "" {
@@ -895,7 +900,7 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 	}
 	lstat, err := os.Stat(p4m.p4log)
 	if err != nil {
-		p4m.logger.Debugf("Failed to stat %s: %v", p4m.p4log, err)
+		p4m.logger.Debugf("Failed to stat %q: %v", p4m.p4log, err)
 	} else {
 		m := metricStruct{name: "p4_log_size",
 			help:  "Size of P4LOG in bytes",
@@ -937,7 +942,7 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 	if p4dServices != "standard" && p4dServices != "commit-server" {
 		p4m.logger.Debugf("Not checking for journal rotation as not commit/standard: %s", p4dServices)
 	} else {
-		if ok1 && ok2 {
+		if ok1 && ok2 && jstat != nil {
 			p4m.logger.Debugf("journal volume - size %d, free space %d", jstat.Size(), jvol.Free)
 			if float64(jstat.Size())*1.1 < float64(pvol.Free) {
 				if p4m.config.MaxJournalSizeInt > 0 && jstat.Size() > p4m.config.MaxJournalSizeInt {
@@ -984,7 +989,7 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 	// Same for size of the log file - but we can always rotate it irrespective of p4d services
 	lvol, ok3 := volumes["P4LOG"]
 	rotateLog := false
-	if ok3 {
+	if ok3 && lstat != nil {
 		p4m.logger.Debugf("log volume - size %d, free space %d", lstat.Size(), lvol.Free)
 		if p4m.config.MaxLogSizeInt > 0 && lstat.Size() > p4m.config.MaxLogSizeInt {
 			p4m.logger.Debugf("log will be rotated - size %d, max %d", lstat.Size(), p4m.config.MaxLogSizeInt)
