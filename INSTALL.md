@@ -3,73 +3,76 @@
 Note it is possible to perform a [Windows Installation](#windows-installation).
 
 On monitoring server, install:
-  - grafana
-  - prometheus (configured to store data for 15 days)
-  - victoria metrics (recommended due to performance and more efficient data storage - can store data for 6 months or as long as required)
-  - node_exporter
-  - alertmanager (optional)
+
+- grafana
+- prometheus (configured to store data for 15 days)
+- victoria metrics (recommended due to performance and more efficient data storage - can store data for 6 months or as long as required)
+- node_exporter
+- alertmanager (optional)
 
 On your commit/master or any perforce edge/replica server machines, install:
-  - node_exporter
-  - p4prometheus
-  - monitor_metrics.sh
-  - monitor_wrapper.sh and monitor_metrics.py
+
+- node_exporter
+- p4prometheus
+- p4metrics (was previously monitor_metrics.sh)
+- monitor_wrapper.sh and monitor_metrics.py
 
 On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc, install:
-  - node_exporter
+
+- node_exporter
 
 *Table of Contents:*
 
 - [Installation Details for P4Prometheus and Other Components](#installation-details-for-p4prometheus-and-other-components)
-- [Metrics Available](#metrics-available)
-- [Automated Script Installation](#automated-script-installation)
-- [Package Install of Grafana](#package-install-of-grafana)
-  - [Create your first Data Source](#create-your-first-data-source)
-  - [Setup of Grafana dashboards](#setup-of-grafana-dashboards)
+  - [Metrics Available](#metrics-available)
+  - [Automated Script Installation](#automated-script-installation)
+  - [Package Install of Grafana](#package-install-of-grafana)
+    - [Create your first Data Source](#create-your-first-data-source)
+    - [Setup of Grafana dashboards](#setup-of-grafana-dashboards)
     - [Script to create Grafana dashboard](#script-to-create-grafana-dashboard)
-- [Install Prometheus](#install-prometheus)
-  - [Prometheus config](#prometheus-config)
+  - [Install Prometheus](#install-prometheus)
+    - [Prometheus config](#prometheus-config)
   - [Install victoria metrics (optional but recommended)](#install-victoria-metrics-optional-but-recommended)
-      - [Substituting Victoria Metrics for Prometheus in Grafana](#substituting-victoria-metrics-for-prometheus-in-grafana)
+    - [Substituting Victoria Metrics for Prometheus in Grafana](#substituting-victoria-metrics-for-prometheus-in-grafana)
     - [Importing Prometheus data into Victoria Metrics](#importing-prometheus-data-into-victoria-metrics)
   - [Install node exporter](#install-node-exporter)
   - [Install p4prometheus - details](#install-p4prometheus---details)
-  - [Install p4metrics and monitor\_locks systemd timer service](#install-p4metrics-and-monitor_locks-systemd-timer-service)
+  - [Install p4metrics and monitor\_locks systemd timer services](#install-p4metrics-and-monitor_locks-systemd-timer-services)
     - [Checking for blocked commands](#checking-for-blocked-commands)
-  - [Start and enable service](#start-and-enable-service)
-- [Alerting](#alerting)
-  - [Alertmanager config](#alertmanager-config)
-  - [Alerting rules](#alerting-rules)
-  - [Prometheus config to reference alertmanager rules](#prometheus-config-to-reference-alertmanager-rules)
-- [Troubleshooting](#troubleshooting)
-  - [p4prometheus](#p4prometheus)
-  - [p4metrics](#p4metrics)
-  - [node exporter](#node-exporter)
-  - [prometheus](#prometheus)
-  - [Grafana](#grafana)
-- [Advanced config options](#advanced-config-options)
-- [Windows Installation](#windows-installation)
-  - [Windows Exporter](#windows-exporter)
-  - [P4prometheus on Windows](#p4prometheus-on-windows)
-  - [Running p4metrics](#running-p4metrics)
-  - [Installing Programs as Services](#installing-programs-as-services)
+    - [Start and enable service](#start-and-enable-service)
+  - [Alerting](#alerting)
+    - [Alertmanager config](#alertmanager-config)
+    - [Alerting rules](#alerting-rules)
+    - [Prometheus config to reference alertmanager rules](#prometheus-config-to-reference-alertmanager-rules)
+  - [Troubleshooting](#troubleshooting)
+    - [p4prometheus](#p4prometheus)
+    - [p4metrics](#p4metrics)
+    - [node exporter](#node-exporter)
+    - [prometheus](#prometheus)
+    - [Grafana](#grafana)
+  - [Advanced config options](#advanced-config-options)
+  - [Windows Installation](#windows-installation)
+    - [Windows Exporter](#windows-exporter)
+    - [P4prometheus on Windows](#p4prometheus-on-windows)
+    - [Running p4metrics](#running-p4metrics)
+    - [Installing Programs as Services](#installing-programs-as-services)
 
-# Metrics Available
+## Metrics Available
 
 The metrics available within Grafana are documented in [P4Prometheus README](README.md#metrics-available)
 
-# Automated Script Installation
+## Automated Script Installation
 
 There are scripts which automate the manual installation steps listed below. The scripts can be used with SDP
 structure or not - as desired.
 
 Checkout  following files:
-* [install_p4prom.sh](scripts/install_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance (`node_exporter`, `p4prometheus`, monitoring scripts)
-* [install_prom_graf.sh](scripts/install_prom_graf.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for the monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
-* [install_node.sh](scripts/install_node.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_node.sh) - the installer for monitoring a server hosting other tools such as Swarm, Hansoft, HTH (Helix TeamHub) etc. Just installs `node_exporter`
+- [install_p4prom.sh](scripts/install_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance (`node_exporter`, `p4prometheus`, monitoring scripts)
+- [install_prom_graf.sh](scripts/install_prom_graf.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for the monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
+- [install_node.sh](scripts/install_node.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_node.sh) - the installer for monitoring a server hosting other tools such as Swarm, Hansoft, HTH (Helix TeamHub) etc. Just installs `node_exporter`
 
 Standalone script just to install the `lslocks` monitoring (normally covered by `install_p4prom.sh` above):
-* [install_lslocks.sh](scripts/install_lslocks.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_lslocks.sh) - the installer for lslocks monitoring only (if `install_p4prom.sh` not performed)
+- [install_lslocks.sh](scripts/install_lslocks.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_lslocks.sh) - the installer for lslocks monitoring only (if `install_p4prom.sh` not performed)
 
 Example of use (as root):
 
@@ -77,38 +80,38 @@ Example of use (as root):
     chmod +x install_p4prom.sh
     ./install_p4prom.sh -h
 
-# Package Install of Grafana
+## Package Install of Grafana
 
 This should be done on the monitoring server only. If not using [automated scripts](#automated-script-installation) then follow these instructions.
 
 Use the appropriate link below depending if you using `apt` or `yum`:
 
-* https://grafana.com/docs/grafana/latest/installation/debian/
-* https://grafana.com/docs/grafana/latest/installation/rpm/
+- https://grafana.com/docs/grafana/latest/installation/debian/
+- https://grafana.com/docs/grafana/latest/installation/rpm/
 
-## Create your first Data Source
+### Create your first Data Source
 
 Assuming you are using Victoria Metrics (VM):
 
-* Data source > new
-  * Type is Prometheus (VM is API compatible)
-  * Name is `Victoria Metrics`
-  * Target/port: `http://localhost:8428`
-* Click `Save and test`
+- Data source > new
+  - Type is Prometheus (VM is API compatible)
+  - Name is `Victoria Metrics`
+  - Target/port: `http://localhost:8428`
+- Click `Save and test`
 
-## Setup of Grafana dashboards
+### Setup of Grafana dashboards
 
 Once Grafana is installed (and Prometheus/Victoria Metrics) the following dashboards are recommended to be imported as starting points for further customisation:
 
-* https://grafana.com/grafana/dashboards/12278 - P4 Stats
-* https://grafana.com/grafana/dashboards/15509 - P4 Stats (non-SDP)
-* https://grafana.com/grafana/dashboards/405 - Node Exporter Server Info
-* https://grafana.com/grafana/dashboards/1860 - Node Exporter Full
-* https://grafana.com/grafana/dashboards?search=node%20exporter
+- https://grafana.com/grafana/dashboards/12278 - P4 Stats
+- https://grafana.com/grafana/dashboards/15509 - P4 Stats (non-SDP)
+- https://grafana.com/grafana/dashboards/405 - Node Exporter Server Info
+- https://grafana.com/grafana/dashboards/1860 - Node Exporter Full
+- https://grafana.com/grafana/dashboards?search=node%20exporter
 
-They can be imported from Grafana dashboard management page. 
+They can be imported from Grafana dashboard management page.
 
-* Dashboard > New > Import
+- Dashboard > New > Import
 
 Alternatively see below for experimental script to create dashboards which is easier to customize.
 
@@ -122,8 +125,8 @@ If first time with Grafana, the default user/pwd: `admin`/`admin`. It will promp
 
 Download the following files:
 
-* [create_dashboard.py](scripts/create_dashboard.py) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/create_dashboard.py)
-* [dashboard.yaml](scripts/dashboard.yaml) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/dashboard.yaml)
+- [create_dashboard.py](scripts/create_dashboard.py) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/create_dashboard.py)
+- [dashboard.yaml](scripts/dashboard.yaml) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/dashboard.yaml)
 
 Create a [Grafana API key token](https://grafana.com/docs/grafana/latest/http_api/auth/#create-api-token) for your Grafana installation.
 
@@ -144,7 +147,7 @@ Create and upload the dashboard:
 
 You can re-upload the dashboard with the same title (it will create a new version).
 
-# Install Prometheus
+## Install Prometheus
 
 This must be done on the monitoring server only. If not using [automated scripts](#automated-script-installation) then follow these instructions.
 
@@ -200,7 +203,7 @@ WantedBy=multi-user.target
 EOF
 ```
 
-## Prometheus config
+### Prometheus config
 
 **It is important you edit and adjust the `targets` value appropriately below** (see `#####` section) to scrape from your commit/edge/replica servers (and localhost).
 
@@ -329,13 +332,13 @@ Either start or restart Prometheus:
     sudo systemctl restart prometheus
     make restart # Convenience command
 
-#### Substituting Victoria Metrics for Prometheus in Grafana
+### Substituting Victoria Metrics for Prometheus in Grafana
 
 If using Victoria Metrics, then you should:
 
-* Create a suitable data source in Grafana (e.g. use the Prometheus type since VM is API compatible, but specify target as `http://localhost:8428`)
-* Click the `Test and Save` button
-* Change existing dashboards to use it instead of Prometheus (it is API compatible)
+- Create a suitable data source in Grafana (e.g. use the Prometheus type since VM is API compatible, but specify target as `http://localhost:8428`)
+- Click the `Test and Save` button
+- Change existing dashboards to use it instead of Prometheus (it is API compatible)
 
 ### Importing Prometheus data into Victoria Metrics
 
@@ -506,9 +509,9 @@ As user `root`:
 
 Create service file as below - parameters you may need to customise:
 
-* `User`
-* `Group`
-* `ExecStart`
+- `User`
+- `Group`
+- `ExecStart`
 
 ```ini
 cat << EOF > /etc/systemd/system/p4prometheus.service
@@ -543,7 +546,7 @@ Check that metrics are being written:
 
     grep lines /hxlogs/metrics/p4_cmds.prom
 
-## Install p4metrics and monitor_locks systemd timer service
+## Install p4metrics and monitor_locks systemd timer services
 
 Use [Automated Script Installation](#automated-script-installation)!!
 
@@ -559,7 +562,7 @@ if you are not collecting the data at the time!
 
 Warning: make sure that `lslocks` is installed on your Linux distribution!
 
-The `monitor_metrics.py` (which is called by `monitor_wrapper.sh`) were previously installed in `crontab`. 
+The `monitor_metrics.py` (which is called by `monitor_wrapper.sh`) were previously installed in `crontab`.
 They are now installed as a systemd timer service.
 
 If not using SDP then please ensure that an appropriate LONG TERM TICKET is setup in the environment
@@ -591,7 +594,7 @@ It may also be worth checking for commands which are "blocking" others, e.g.
 
 Please note that metrics (counts of processes locked) are written to `/p4/metrics/locks.prom` (or your metrics dir) and will be available to Prometheus/Grafana. See [P4Prometheus Metrics (look for p4_lock*)](README.md#locks-metrics).
 
-## Start and enable service
+### Start and enable service
 
     sudo systemctl daemon-reload
     sudo systemctl start prometheus
@@ -608,7 +611,7 @@ Check that prometheus web interface is running:
 
 Or open URL in a browser.
 
-# Alerting
+## Alerting
 
 Done via `alertmanager`. Optional component.
 
@@ -663,11 +666,11 @@ Check logs for service in case of errors:
 
     journalctl -u alertmanager --no-pager | tail
 
-## Alertmanager config
+### Alertmanager config
 
 See sample config file here:
 
-* [EXAMPLES.md](examples/EXAMPLES.md)
+- [EXAMPLES.md](examples/EXAMPLES.md)
 
 *Strongly recommend*: set up a simple `Makefile` in `/etc/alertmanager` which validates config file:
 
@@ -697,7 +700,7 @@ Found:
  - 0 templates
 ```
 
-## Alerting rules
+### Alerting rules
 
 This is an example, assuming simple email and local postfix or equivalent have been setup.
 
@@ -707,7 +710,7 @@ It would be setup as `/etc/prometheus/perforce_rules.yml`
 
 Then uncomment the relevant section in `prometheus.yml`:
 
-```
+```yaml
 # Alertmanager configuration - optional
 alerting:
   alertmanagers:
@@ -720,13 +723,13 @@ rule_files:
   - "perforce_rules.yml"
 ```
 
-## Prometheus config to reference alertmanager rules
+### Prometheus config to reference alertmanager rules
 
 *Strongly recommend*: set up a simple `Makefile` in `/etc/prometheus` which validates config and rules file:
 
 Note that Makefile format requires a `<tab>` char (not spaces) at the start of 'action' lines.
 
-```
+```Makefile
 # Makefile for prometheus - convenience for validating and restarting the service
 validate:
         promtool check config prometheus.yml
@@ -738,7 +741,7 @@ restart: validate
 
 Then you can validate your config:
 
-```
+```bash
 # make validate
 promtool check config prometheus.yml
 Checking prometheus.yml
@@ -750,20 +753,21 @@ Checking perforce_rules.yml
 
 For an example of a good starter alertmanager rules file see: [example prometheus_rules.yml file](examples/prometheus/perforce_rules.yml)
 
-# Troubleshooting
+## Troubleshooting
 
 Make sure all *firewalls* are appropriately configured and the various components on each machine can see each other!
 
 Port defaults are:
-* Grafana: 3000
-* Prometheus: 9090
-* Victoria Metrics: 8428
-* Node_exporter: 9100
-* Alertmanager: 9093
 
-Use curl on the monitoring server to pull metrics from the other servers (from Node Exporter port).
+- Grafana: 3000
+- Prometheus: 9090
+- Victoria Metrics: 8428
+- Node_exporter: 9100
+- Alertmanager: 9093
 
-## p4prometheus
+Use curl on the monitoring server to ensure that you can pull metrics from the other servers (from the target Node Exporter ports) - see below.
+
+### p4prometheus
 
 If this is running correctly, it should write into the designated log file, e.g. `/hxlogs/metrics/p4_cmds.prom`
 
@@ -775,7 +779,7 @@ You can just grep for the most basic metric a couple of times (make sure it is i
     # TYPE p4_prom_log_lines_read counter
     p4_prom_log_lines_read{serverid="master.1",sdpinst="1"} 7143
 
-## p4metrics
+### p4metrics
 
 Make sure `p4metrics` is working:
 
@@ -792,7 +796,7 @@ Check that appropriate files are listed in your metrics dir (and are being updat
 
     ls -ltr /hxlogs/metrics/
 
-## node exporter
+### node exporter
 
 Make sure node_exporter is working (it is easy for there to be permissions access problems to the metrics dir).
 
@@ -806,41 +810,41 @@ If the above is empty, then double check the permissions on `/hxlogs/metrics' or
 
     sudo journalctl -u node_exporter --no-pager | less
 
-## prometheus
+### prometheus
 
 Access page http://localhost:9090 in your browser and search for some metrics.
 
-## Grafana
+### Grafana
 
 Check that a suitable data source is setup (i.e. Victoria Metrics or Prometheus - see below)
 
 Use the `Explore` option to look for some basic metrics, e.g. just start typing `p4_` and it should autocomplete if it has found `p4_` metrics being collected. Alternatively try `node_time_seconds`
 
-# Advanced config options
+## Advanced config options
 
 For improved security:
 
-* consider LDAP integration for Grafana
-* implement appropriate authentication for the various end-points such as Prometheus and node_exporter
+- consider LDAP integration for Grafana
+- implement appropriate authentication for the various end-points such as Prometheus and node_exporter
 
-# Windows Installation
+## Windows Installation
 
 The above instructions are all for Linux. However, all the components have Windows binaries, with the exception of the 
-crontab for `lslocks` monitoring ()`monitor_wrapper.sh` and `monitor_metrics.py`). Note that `p4metrics` now has a Windows
-executable version (it wraps the `p4.exe`)
+systemd timer service for `lslocks` monitoring (`monitor_wrapper.sh` and `monitor_metrics.py`). Note that `p4metrics` now has a Windows
+executable version (it wraps the `p4.exe` CLI)
 
 Details:
 
-* Grafana has a Windows Installer: [Grafana Installer](https://grafana.com/grafana/download)
-* Prometheus has a Windows executable: [Prometheus Executable](https://github.com/prometheus/prometheus/releases)
-* Instead of Node Exporter use: [Windows Exporter](https://github.com/prometheus-community/windows_exporter/releases)
-* P4Prometheus has a Windows executable: [P4prometheus Executable](https://github.com/perforce/p4prometheus/releases)
-* P4Metrics has a Windows executable: [P4metrics Executable](https://github.com/perforce/p4prometheus/releases)
+- Grafana has a Windows Installer: [Grafana Installer](https://grafana.com/grafana/download)
+- Prometheus has a Windows executable: [Prometheus Executable](https://github.com/prometheus/prometheus/releases)
+- Instead of Node Exporter use: [Windows Exporter](https://github.com/prometheus-community/windows_exporter/releases)
+- P4Prometheus has a Windows executable: [P4prometheus Executable](https://github.com/perforce/p4prometheus/releases)
+- P4Metrics has a Windows executable: [P4metrics Executable](https://github.com/perforce/p4prometheus/releases)
 
 For testing it is recommended just to run the various executables from command line first and test with Prometheus and Grafana. This allows you to test with firewalls/ports/access rights etc.
 When it is all working, you can wrap up and install each binary as a Service as noted below.
 
-## Windows Exporter
+### Windows Exporter
 
 This used to be called "WMI Exporter".
 
@@ -859,11 +863,11 @@ You can test in a similar way to on Linux:
 
 and see what the output is.
 
-## P4prometheus on Windows
+### P4prometheus on Windows
 
 The executable takes the `--config` parameter and the yaml file is same format as for Linux version. You can specify paths with forward slashes if desired, e.g. `c:/p4/metrics`
 
-## Running p4metrics
+### Running p4metrics
 
 Starting with the version [draft version of p4metrics](cmd/p4metrics/p4metrics.yaml) create locally and adjust path settings, e.g. `c:/p4/metrics`
 
@@ -873,7 +877,7 @@ Test the tool with your installation (analyse it's settings). First make sure yo
 
 It is important that the user account used has a long login ticket specified.
 
-## Installing Programs as Services
+### Installing Programs as Services
 
 To install as a service using for example [NSSM - Non Sucking Service Manager!](https://nssm.cc/) to wrap the Prometheus/Windows Exporter/P4Prometheus binaries downloaded above.
 
