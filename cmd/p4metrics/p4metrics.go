@@ -124,6 +124,28 @@ func CompressFileAsync(logger *logrus.Logger, inputPath, outputPath string) <-ch
 	return resultChan
 }
 
+func humanizeBytes(bytes int64) string {
+	const (
+		KB = 1 << (10 * 1)
+		MB = 1 << (10 * 2)
+		GB = 1 << (10 * 3)
+		TB = 1 << (10 * 4)
+	)
+
+	switch {
+	case bytes >= TB:
+		return fmt.Sprintf("%.2f TB", float64(bytes)/float64(TB))
+	case bytes >= GB:
+		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
+	case bytes >= MB:
+		return fmt.Sprintf("%.2f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("%.2f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
 func sourceEnvVars() map[string]string {
 	// Return a list of p4 env vars
 	env := make(map[string]string)
@@ -197,6 +219,17 @@ type VolumeInfo struct {
 	Used        int64  // Used space in bytes
 	Total       int64  // Total space in bytes
 	PercentFull int    // Percent full, e.g. 45
+}
+
+func (v VolumeInfo) String() string {
+	return fmt.Sprintf(
+		"Volume %s (%s) mounted at %s: Free=%s, Used=%s, Total=%s, Full=%d%%",
+		v.Name, v.Type, v.MountPoint,
+		humanizeBytes(v.Free),
+		humanizeBytes(v.Used),
+		humanizeBytes(v.Total),
+		v.PercentFull,
+	)
 }
 
 // defines metrics label
@@ -943,20 +976,20 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 		p4m.logger.Debugf("Not checking for journal rotation as not commit/standard: %s", p4dServices)
 	} else {
 		if ok1 && ok2 && jstat != nil {
-			p4m.logger.Debugf("journal volume - size %d, free space %d", jstat.Size(), jvol.Free)
+			p4m.logger.Debugf("journal volume - size %s, free space %s", humanizeBytes(jstat.Size()), humanizeBytes(jvol.Free))
 			if float64(jstat.Size())*1.1 < float64(pvol.Free) {
 				if p4m.config.MaxJournalSizeInt > 0 && jstat.Size() > p4m.config.MaxJournalSizeInt {
-					p4m.logger.Debugf("journal will be rotated - size %d, max %d", jstat.Size(), p4m.config.MaxJournalSizeInt)
+					p4m.logger.Debugf("journal will be rotated - size %s, max %s", humanizeBytes(jstat.Size()), humanizeBytes(p4m.config.MaxJournalSizeInt))
 					rotateJournal = true
 				}
 			} else {
 				p4m.logger.Warningf("Not enough free space to rotate journal - size %d, free space %d", jstat.Size(), pvol.Free)
 			}
-			p4m.logger.Debugf("journal volume - size %d, free space %d, rotate %v", jstat.Size(), jvol.Free, rotateJournal)
+			p4m.logger.Debugf("journal volume - size %s, free space %s, rotate %v", humanizeBytes(jstat.Size()), humanizeBytes(jvol.Free), rotateJournal)
 			if !rotateJournal && p4m.config.MaxJournalPercentInt > 0 {
 				percentSize := float64(jvol.Total) * float64(p4m.config.MaxJournalPercentInt) / float64(100.0)
 				if float64(jstat.Size()) > percentSize {
-					p4m.logger.Debugf("journal will be rotated - size %d, max percent %d, val %.0f", jstat.Size(), p4m.config.MaxJournalPercentInt, percentSize)
+					p4m.logger.Debugf("journal will be rotated - size %s, max percent %d, val %.0f", humanizeBytes(jstat.Size()), p4m.config.MaxJournalPercentInt, percentSize)
 					rotateJournal = true
 				}
 			}
@@ -971,18 +1004,22 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 	}
 	if rotateJournal {
 		if p4m.isSuper {
-			p4m.logger.Infof("Rotating journal - size %d, free space %d", jstat.Size(), pvol.Free)
-			p4cmd, errbuf, p := p4m.newP4CmdPipe("admin journal")
-			err := p.Exec(p4cmd).Error()
-			if err != nil {
-				p4m.handleP4Error("Error running %s: %v, err:%q", p4cmd, err, errbuf)
-			} else {
-				p4m.logger.Info("Journal rotated")
+			if p4m.dryrun {
+				p4m.logger.Infof("Dry run - would rotate journal - size %s, free space %s", humanizeBytes(jstat.Size()), humanizeBytes(pvol.Free))
 				p4m.rotatedJournals++
+			} else {
+				p4m.logger.Infof("Rotating journal - size %s, free space %s", humanizeBytes(jstat.Size()), humanizeBytes(pvol.Free))
+				p4cmd, errbuf, p := p4m.newP4CmdPipe("admin journal")
+				err := p.Exec(p4cmd).Error()
+				if err != nil {
+					p4m.handleP4Error("Error running %s: %v, err:%q", p4cmd, err, errbuf)
+				} else {
+					p4m.logger.Info("Journal rotated")
+					p4m.rotatedJournals++
+				}
 			}
 		} else {
 			p4m.logger.Warning("Not super user - cannot rotate journal")
-			rotateJournal = false
 		}
 	}
 
@@ -990,21 +1027,26 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 	lvol, ok3 := volumes["P4LOG"]
 	rotateLog := false
 	if ok3 && lstat != nil {
-		p4m.logger.Debugf("log volume - size %d, free space %d", lstat.Size(), lvol.Free)
+		p4m.logger.Debugf("log volume - size %s, free space %s", humanizeBytes(lstat.Size()), humanizeBytes(lvol.Free))
 		if p4m.config.MaxLogSizeInt > 0 && lstat.Size() > p4m.config.MaxLogSizeInt {
-			p4m.logger.Debugf("log will be rotated - size %d, max %d", lstat.Size(), p4m.config.MaxLogSizeInt)
+			p4m.logger.Debugf("log will be rotated - size %s, max %s", humanizeBytes(lstat.Size()), humanizeBytes(p4m.config.MaxLogSizeInt))
 			rotateLog = true
 		}
 		if !rotateLog && p4m.config.MaxLogPercentInt > 0 {
 			percentSize := float64(lvol.Total) * float64(p4m.config.MaxLogPercentInt) / float64(100.0)
 			if float64(lstat.Size()) > percentSize {
-				p4m.logger.Debugf("log will be rotated - size %d, max percent %d, val %.0f", lstat.Size(), p4m.config.MaxLogPercentInt, percentSize)
+				p4m.logger.Debugf("log will be rotated - size %s, max percent %d, val %.0f", humanizeBytes(lstat.Size()), p4m.config.MaxLogPercentInt, percentSize)
 				rotateLog = true
 			}
 		}
 	}
+	if rotateLog && p4m.dryrun {
+		p4m.logger.Infof("Dry run - would rotate log - size %s, free space %s", humanizeBytes(lstat.Size()), humanizeBytes(lvol.Free))
+		p4m.rotatedLogs++
+		rotateLog = false
+	}
 	if rotateLog {
-		p4m.logger.Infof("Rotating log - size %d, free space %d", lstat.Size(), lvol.Free)
+		p4m.logger.Infof("Rotating log - size %s, free space %s", humanizeBytes(lstat.Size()), humanizeBytes(lvol.Free))
 		logDir := filepath.Dir(p4m.p4log)
 		fileName := filepath.Base(p4m.p4log)
 		now := time.Now()
@@ -1025,8 +1067,8 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 				} else {
 					compressionRatio := float64(result.CompressedSize) / float64(result.OriginalSize) * 100
 					p4m.logger.Infof("Log compression completed successfully!")
-					p4m.logger.Infof("Original size: %d, compressed %d, ratio %.2f%%",
-						result.OriginalSize, result.CompressedSize, compressionRatio)
+					p4m.logger.Infof("Original size: %s, compressed %s, ratio %.2f%%",
+						humanizeBytes(result.OriginalSize), humanizeBytes(result.CompressedSize), compressionRatio)
 					err := os.Remove(newFile)
 					if err != nil {
 						p4m.logger.Errorf("Error removing compressed file %q, err:%q", zipFile, err)
