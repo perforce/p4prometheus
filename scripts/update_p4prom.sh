@@ -19,7 +19,7 @@ metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.10.1"
+VER_P4PROMETHEUS="0.10.2"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -70,6 +70,7 @@ Examples:
 declare -i shiftArgs=0
 declare -i UseSDP=1
 declare -i SELinuxEnabled=0
+declare -i NewP4MetricsConfig=0
 declare OsUser=""
 declare P4LOG=""
 declare p4prom_config_dir=""
@@ -156,7 +157,6 @@ p4prom_config_file="$p4prom_config_dir/p4prometheus.yaml"
 p4metrics_config_file="$p4prom_config_dir/p4metrics.yaml"
 
 [[ -f "$p4prom_config_file" ]] || bail "Config file '$p4prom_config_file' does not exist - please run install_p4prom.sh instead of this script!"
-[[ -f "$p4metrics_config_file" ]] || bail "Config file '$p4metrics_config_file' does not exist - please run install_p4prom.sh instead of this script!"
 
 download_and_untar () {
     fname=$1
@@ -317,6 +317,113 @@ update_p4metrics () {
     mkdir -p "$p4prom_config_dir" "$p4prom_bin_dir"
     chown "$OSUSER:$OSGROUP" "$p4prom_config_dir" "$p4prom_bin_dir"
 
+    if [[ ! -f "$p4metrics_config_file" ]]; then
+        NewP4MetricsConfig=1
+        cat << EOF > "$p4metrics_config_file"
+# ----------------------
+# metrics_root: REQUIRED! Directory into which to write metrics files for processing by node_exporter.
+# Ensure that node_exporter user has read access to this folder (and any parent directories)!
+metrics_root: $metrics_root
+
+# ----------------------
+# sdp_instance: SDP instance - typically integer, but can be alphanumeric
+# See: https://swarm.workshop.perforce.com/projects/perforce-software-sdp for more
+# If this value is blank then it is assumed to be a non-SDP instance, and you will want
+# to set other values with a prefix of p4 below.
+sdp_instance:   $SDP_INSTANCE
+
+# ----------------------
+# p4port: The value of P4PORT to use
+# IGNORED if sdp_instance is non-blank!
+p4port:         $p4port
+
+# ----------------------
+# p4user: The value of P4USER to use
+# IGNORED if sdp_instance is non-blank!
+p4user:         $p4user
+
+# ----------------------
+# p4config: The value of a P4CONFIG to use
+# This is very useful and should be set to an absolute path if you need values like P4TRUST/P4TICKETS etc
+# IGNORED if sdp_instance is non-blank!
+p4config:      
+
+# ----------------------
+# p4bin: The absolute path to the p4 binary to be used - important if not available in your PATH
+# E.g. /some/path/to/p4
+# IGNORED if sdp_instance is non-blank! (Will use /p4/<instance>/bin/p4_<instance>)
+p4bin:      p4
+
+# ----------------------
+# update_interval: how frequently metrics should be written - defaults to 1m
+# Values are as parsed by Go, e.g. 1m or 30s etc.
+update_interval:    1m
+
+# ----------------------
+# cmds_by_user: true/false - Whether to output metrics p4_monitor_by_user
+# Normally this should be set to true as the metrics are useful.
+# If you have a p4d instance with hundreds/thousands of users you may find the number
+# of metrics labels is too great (one per distinct user), so set this to false.
+# Or set it to false if any personal information concerns
+cmds_by_user:   true
+
+# ----------------------
+# monitor_swarm: true/false - Whether to monitor status and version of swarm
+# Normally this should be set to true - won't run if there is no Swarm property
+monitor_swarm:   true
+
+# ----------------------
+# swarm_url: URL of the Swarm instance to monitor
+# Normally this is blank, and p4metrics reads the p4 property value
+# Sometimes (e.g. due to VPN setup) that value is not correct - so set this instead
+# swarm_url: https://swarm.example.com
+swarm_url:
+
+# ----------------------
+# swarm_secure: true/false - Whether to validate SSL for swarm
+# Defaults to true, but if you have a self-signed certificate or similar set to false
+swarm_secure: true
+
+# ----------------------
+# max_journal_size: Maximum size of journal file to monitor, e.g. 10G, 0 means no limit
+# Units are K/M/G/T/P (powers of 1024), e.g. 10M, 1.5G etc
+# If the journal file is larger than this value it will be rotated using: p4 admin journal
+# This is useful to avoid sudden large journal growth causing disk space issues (often a sign of automation problems).
+# Note that this is only actioned if the p4d server is a "standard" or "commit-server" (so no replicas or edge servers).
+# The system will only rotate the journal if the user is a super user and the journalPrefix volume has sufficient free space.
+# Leave blank or set to 0 to disable (see max_journal_percent below for alternative).
+max_journal_size:
+
+# ----------------------
+# max_journal_percent: Maximum size of journal as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
+# Values are integers 0-99
+# Volume information is read using: p4 diskspace
+# If the journal file is larger than this percentag value it will be rotated using: p4 admin journal
+# This is useful to avoid sudden large journal growth causing disk space issues (often a sign of automation problems).
+# Note that this is only actioned if the p4d server is a "standard" or "commit-server" (so no replicas or edge servers).
+# The system will only rotate the journal if the journalPrefix volume has sufficient free space.
+# Leave blank or set to 0 to disable (see max_journal_size above for alternative).
+max_journal_percent: 	30
+
+# ----------------------
+# max_log_size: Maximum size of P4LOG file to monitor - similar to max_journal_size above
+# Units are K/M/G/T/P (powers of 1024), e.g. 10M, 1.5G etc
+# If the log file is larger than this value it will be rotated and compressed (using rename + gzip)
+max_log_size:
+
+# ----------------------
+# max_log_percent: Maximum size of log as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
+# Values are integers 0-99
+# Volume information is read using: p4 diskspace
+# If the log file is larger than this percentage value it will be rotated and compressed (using rename + gzip)
+max_log_percent: 		30
+
+EOF
+
+    fi
+
+    chown "$OSUSER:$OSGROUP" "$p4metrics_config_file"
+
     service_name="${progname}"
     service_file="/etc/systemd/system/${service_name}.service"
     msg "Creating service file for ${service_name}"
@@ -342,7 +449,6 @@ EOF
     systemctl enable "${service_name}"
     systemctl start "${service_name}"
     systemctl status "${service_name}" --no-pager
-
 
     # Update the crontab of the specified user - to comment out entries relating to previous installs of monitoring
     # These are replaced by the systemd timers or p4metrics service.
@@ -372,3 +478,9 @@ echo "
 
 Should have updated node_exporter and p4prometheus.
 "
+
+if [[ $NewP4MetricsConfig -eq 1 ]]; then
+    echo "A new p4metrics config file has been created at: $p4metrics_config_file
+Please edit this file to set any required parameters and consider re-starting the p4metrics service.
+"
+fi
