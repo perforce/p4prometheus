@@ -50,12 +50,12 @@ update_p4prom.sh -h
     <metrics_link> is an alternative link to metrics_root where metrics will be written - default: $metrics_link
                 Typically only used for SDP installations.
     <osuser>    Operating system user, e.g. perforce, under which p4d process is running
-    <p4prom_config_dir> Specify directory to install p4prometheus config file - useful for nonsdp installs
+    <p4prom_config_dir> Specify directory to install p4prometheus/p4metrics config files - useful for nonsdp installs
 
 Specify either the SDP instance (e.g. 1), or -nosdp
 
-WARNING: If using -nosdp, then please ensure P4PORT and P4USER are appropriately set and that you can connect
-    to your server (e.g. you have done a 'p4 trust' if required, and logged in already)
+WARNING: If using -nosdp, then please ensure P4PORT and P4USER are appropriately set in the environment and that you can connect
+    to your server (e.g. you have done a 'p4 trust' if required, and are logged in already)
 
 Examples:
 
@@ -105,18 +105,18 @@ fi
 
 # Check if the local_bin_dir exists
 if [[ ! -d "$local_bin_dir" ]]; then
-    echo "Error: Directory $local_bin_dir does not exist. Please create it before running this script."
+    echo "Error: Directory $local_bin_dir does not exist. Please create it before running this script!"
     exit 1
 fi
 
-command -v wget 2> /dev/null || bail "Failed to find wget in path"
+command -v wget 2> /dev/null || bail "Failed to find wget in path - please install it"
 
 if command -v getenforce > /dev/null; then
     selinux=$(getenforce)
     [[ "$selinux" == "Enforcing" ]] && SELinuxEnabled=1
 fi
 
-[[ -d "$metrics_root" ]] || bail "Specified metrics directory '$metrics_root' does not exist!"
+[[ -d "$metrics_root" ]] || bail "Specified metrics directory '$metrics_root' does not exist - please create it!"
 
 if [[ $UseSDP -eq 1 ]]; then
     SDP_INSTANCE=${SDP_INSTANCE:-Unset}
@@ -282,7 +282,7 @@ EOF
 
     systemctl daemon-reload
     systemctl enable ${service_name}
-    systemctl start ${service_name}
+    systemctl restart ${service_name}
     systemctl status ${service_name} --no-pager
 
 }
@@ -299,6 +299,7 @@ update_p4metrics () {
 
     systemctl stop $service_name
 
+    PVER="$VER_P4PROMETHEUS"
     fname="${progname}.linux-${arch}.gz"
     url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
     msg "downloading and extracting $url"
@@ -384,6 +385,13 @@ swarm_url:
 # Defaults to true, but if you have a self-signed certificate or similar set to false
 swarm_secure: true
 
+EOF
+    fi
+
+    # Now check if max_journal_size or max_journal_percent are present - if not then add them with defaults
+    # This allows us to add new parameters to existing config files
+    if ! grep -qE '^[[:space:]]*#?[[:space:]]*max_journal_size:' "$p4metrics_config_file"; then
+        cat << EOF >> "$p4metrics_config_file"
 # ----------------------
 # max_journal_size: Maximum size of journal file to monitor, e.g. 10G, 0 means no limit
 # Units are K/M/G/T/P (powers of 1024), e.g. 10M, 1.5G etc
@@ -403,7 +411,7 @@ max_journal_size:
 # Note that this is only actioned if the p4d server is a "standard" or "commit-server" (so no replicas or edge servers).
 # The system will only rotate the journal if the journalPrefix volume has sufficient free space.
 # Leave blank or set to 0 to disable (see max_journal_size above for alternative).
-max_journal_percent: 	30
+max_journal_percent:    30
 
 # ----------------------
 # max_log_size: Maximum size of P4LOG file to monitor - similar to max_journal_size above
@@ -416,10 +424,9 @@ max_log_size:
 # Values are integers 0-99
 # Volume information is read using: p4 diskspace
 # If the log file is larger than this percentage value it will be rotated and compressed (using rename + gzip)
-max_log_percent: 		30
+max_log_percent:        30
 
 EOF
-
     fi
 
     chown "$OSUSER:$OSGROUP" "$p4metrics_config_file"
@@ -447,7 +454,7 @@ EOF
     chmod 644 "${service_file}"
     systemctl daemon-reload
     systemctl enable "${service_name}"
-    systemctl start "${service_name}"
+    systemctl restart "${service_name}"
     systemctl status "${service_name}" --no-pager
 
     # Update the crontab of the specified user - to comment out entries relating to previous installs of monitoring
@@ -476,11 +483,14 @@ systemctl list-timers | grep -E "^NEXT|monitor"
 
 echo "
 
-Should have updated node_exporter and p4prometheus.
+Have updated node_exporter and p4prometheus.
 "
 
 if [[ $NewP4MetricsConfig -eq 1 ]]; then
     echo "A new p4metrics config file has been created at: $p4metrics_config_file
+
 Please edit this file to set any required parameters and consider re-starting the p4metrics service.
+
+    sudo systemctl restart p4metrics
 "
 fi
