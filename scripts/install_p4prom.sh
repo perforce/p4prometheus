@@ -21,7 +21,7 @@ metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.10.2"
+VER_P4PROMETHEUS="0.10.3"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -415,6 +415,12 @@ p4config:
 # E.g. /some/path/to/p4
 # IGNORED if sdp_instance is non-blank! (Will use /p4/<instance>/bin/p4_<instance>)
 p4bin:      p4
+
+# ----------------------
+# p4dbin: The absolute path to the p4d binary to be used - important if not available in your PATH
+# E.g. /some/path/to/p4d
+# IGNORED if sdp_instance is non-blank! (Will use /p4/<instance>/bin/p4d_<instance>)
+p4dbin:     p4d
 
 # ----------------------
 # update_interval: how frequently metrics should be written - defaults to 1m

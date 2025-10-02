@@ -18,6 +18,7 @@ type Config struct {
 	P4User               string        `yaml:"p4user"`       // ditto
 	P4Config             string        `yaml:"p4config"`     // P4CONFIG file - useful if non-SDP
 	P4Bin                string        `yaml:"p4bin"`        // Only useful if non SDP - path to "p4" binary if not in $PATH
+	P4DBin               string        `yaml:"p4dbin"`       // Only useful if non SDP - path to "p4d" binary if not in $PATH
 	UpdateInterval       time.Duration `yaml:"update_interval"`
 	LongUpdateInterval   time.Duration `yaml:"long_update_interval"`
 	MonitorSwarm         bool          `yaml:"monitor_swarm"`
@@ -75,6 +76,12 @@ p4config:
 # E.g. /some/path/to/p4
 # IGNORED if sdp_instance is non-blank! (Will use /p4/<instance>/bin/p4_<instance>)
 p4bin:      p4
+
+# ----------------------
+# p4dbin: The absolute path to the p4d binary to be used - important if not available in your PATH
+# E.g. /some/path/to/p4d
+# IGNORED if sdp_instance is non-blank! (Will use /p4/<instance>/bin/p4d_<instance>)
+p4dbin:     p4d
 
 # ----------------------
 # update_interval: how frequently metrics should be written - defaults to 1m
@@ -209,6 +216,13 @@ func LoadConfigFile(filename string) (*Config, error) {
 	cfg, err := LoadConfigString(content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load %v: %v", filename, err.Error())
+	}
+	// Set defaults
+	if cfg.P4Bin == "" {
+		cfg.P4Bin = "p4"
+	}
+	if cfg.P4DBin == "" {
+		cfg.P4DBin = "p4d"
 	}
 	return cfg, nil
 }

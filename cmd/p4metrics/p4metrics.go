@@ -262,7 +262,7 @@ type P4MonitorMetrics struct {
 	p4User              string
 	isSuper             bool // Is this user a super user?
 	serverID            string
-	rootDir             string
+	p4root              string
 	logsDir             string
 	p4Cmd               string
 	sdpInstance         string
@@ -373,6 +373,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 		p4m.sdpInstance = getVar(*p4m.env, "SDP_INSTANCE")
 		p4m.logger.Debugf("SDP: %s", p4m.sdpInstance)
 		p4bin = getVar(*p4m.env, "P4BIN")
+		p4m.config.P4DBin = getVar(*p4m.env, "P4DBIN")
 		p4m.p4log = getVar(*p4m.env, "P4LOG")
 		p4m.logger.Debugf("logFile: %s", p4m.p4log)
 		p4m.logsDir = getVar(*p4m.env, "LOGS")
@@ -432,7 +433,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 	// only about the ServerID value contained on the first line, so we use
 	// 'head -1' on the server.id file.
 	p4m.serverID = p4m.p4info["ServerID"]
-	p4m.rootDir = p4m.p4info["Server root"]
+	p4m.p4root = p4m.p4info["Server root"]
 	p4m.checkServerID()
 	if p4m.serverID == "" {
 		p4m.serverID = "UnsetServerID"
@@ -449,7 +450,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 	p4m.parseConfigShow(cfg)
 	if runtime.GOOS != "windows" && !strings.HasPrefix(p4m.p4errorsCSV, "/") {
 		// If the path is not absolute, it is relative to the rootDir
-		p4m.p4errorsCSV = path.Join(p4m.rootDir, p4m.p4errorsCSV)
+		p4m.p4errorsCSV = path.Join(p4m.p4root, p4m.p4errorsCSV)
 		p4m.logger.Debugf("errorsFile abspath: %s", p4m.p4errorsCSV)
 	}
 
@@ -471,10 +472,10 @@ func (p4m *P4MonitorMetrics) initVars() {
 
 func (p4m *P4MonitorMetrics) checkServerID() {
 	if p4m.serverID == "" {
-		if p4m.rootDir == "" {
-			p4m.rootDir = getVar(*p4m.env, "P4ROOT")
+		if p4m.p4root == "" {
+			p4m.p4root = getVar(*p4m.env, "P4ROOT")
 		}
-		idFile := path.Join(p4m.rootDir, "server.id")
+		idFile := path.Join(p4m.p4root, "server.id")
 		p4m.logger.Debugf("serverID file: %q", idFile)
 		if _, err := os.Stat(idFile); err == nil {
 			s, err := script.File(idFile).Slice()
@@ -2042,20 +2043,15 @@ func (p4m *P4MonitorMetrics) monitorRealTime() {
 	// p4d --show-realtime - only for 2021.1 or greater
 	p4m.startMonitor("monitorRealTime", "p4_realtime")
 
-	// Intially only available for SDP
-	if p4m.config.SDPInstance == "" {
-		return
-	}
-
-	p4dbin := getVar(*p4m.env, "P4DBIN")
-	if p4dbin == "" {
+	if p4m.config.P4DBin == "" {
+		p4m.logger.Debugf("No P4DBIN found so exiting")
 		return
 	}
 	errbuf := new(bytes.Buffer)
 	p := script.NewPipe().WithStderr(errbuf)
-	p4dVersion, err := p.Exec(fmt.Sprintf("%s -V", p4dbin)).Match("Rev.").String()
+	p4dVersion, err := p.Exec(fmt.Sprintf("%s -V", p4m.config.P4DBin)).Match("Rev.").String()
 	if err != nil {
-		p4m.logger.Errorf("Error running %s: %v, err:%q", p4dbin, err, errbuf.String())
+		p4m.logger.Errorf("Error running %s: %v, err:%q", p4m.config.P4DBin, err, errbuf.String())
 		return
 	}
 	parts := strings.Split(p4dVersion, "/")
@@ -2069,7 +2065,7 @@ func (p4m *P4MonitorMetrics) monitorRealTime() {
 
 	errbuf = new(bytes.Buffer)
 	p = script.NewPipe().WithStderr(errbuf)
-	cmd := fmt.Sprintf("%s --show-realtime", p4dbin)
+	cmd := fmt.Sprintf("%s -r %s --show-realtime", p4m.config.P4DBin, p4m.p4root)
 	lines, err := p.Exec(cmd).Slice()
 	if err != nil {
 		p4m.handleP4Error("Error running %s: %v, err:%q", cmd, err, errbuf)
