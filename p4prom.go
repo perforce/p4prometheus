@@ -240,11 +240,20 @@ func main() {
 			"case.insensitive.server",
 			"Set if server is case insensitive.",
 		).Default("false").Bool()
+		sampleConfig = kingpin.Flag(
+			"sample.config",
+			"Output a sample config file and exit. Useful for getting started to create p4prometheus.yaml. E.g. p4prometheus --sample.config > p4prometheus.yaml",
+		).Short('C').Bool()
 	)
 
 	kingpin.Version(version.Print("p4prometheus"))
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
+
+	if *sampleConfig {
+		fmt.Print(config.SampleConfig)
+		return
+	}
 
 	logger := logrus.New()
 	logger.Level = logrus.InfoLevel
