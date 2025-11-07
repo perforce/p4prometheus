@@ -1874,7 +1874,7 @@ func (p4m *P4MonitorMetrics) getPullTransfersAndBytes(pullOutput []string) (int6
 func (p4m *P4MonitorMetrics) monitorPull() {
 	// p4 pull metrics - only valid for replica servers
 	p4m.startMonitor("monitorPull", "p4_pull")
-	if getVar(*p4m.env, "P4REPLICA") != "TRUE" {
+	if _, ok := p4m.p4info["Replica of"]; !ok {
 		p4m.logger.Debugf("Exiting as not a replica")
 		return
 	}
@@ -1905,30 +1905,28 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 		_, err = p.Exec(p4cmd).WriteFile(tempPullQ)
 		if err != nil {
 			p4m.handleP4Error("Error running %s: %v, err:%q", p4cmd, err, errbuf)
-			return
-		}
-
-		reFailed := regexp.MustCompile(`failed\.$`)
-		failedCount, err := script.File(tempPullQ).MatchRegexp(reFailed).CountLines()
-		if err != nil {
-			p4m.logger.Errorf("Error counting failed pull errors: %v", err)
-			p4m.writeMetricsFile()
-			return
-		}
-		otherCount, err := script.File(tempPullQ).RejectRegexp(reFailed).CountLines()
-		if err != nil {
-			p4m.logger.Errorf("Error counting pull queue: %v", err)
 		} else {
-			// Old monitor_metrics.sh has p4_pull_errors - but incorrectly as a counter
-			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_error_count",
-				help:  "Count of p4 pull transfers in failed state",
-				mtype: "gauge",
-				value: fmt.Sprintf("%d", failedCount)})
-			// Old monitor_metrics.sh has p4_pull_queue - but incorrectly as a counter
-			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_queue_count",
-				help:  "Count of p4 pull files (not in failed state)",
-				mtype: "gauge",
-				value: fmt.Sprintf("%d", otherCount)})
+			reFailed := regexp.MustCompile(`failed\.$`)
+			failedCount, err := script.File(tempPullQ).MatchRegexp(reFailed).CountLines()
+			if err != nil {
+				p4m.logger.Errorf("Error counting failed pull errors: %v", err)
+			} else {
+				otherCount, err := script.File(tempPullQ).RejectRegexp(reFailed).CountLines()
+				if err != nil {
+					p4m.logger.Errorf("Error counting pull queue: %v", err)
+				} else {
+					// Old monitor_metrics.sh has p4_pull_errors - but incorrectly as a counter
+					p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_error_count",
+						help:  "Count of p4 pull transfers in failed state",
+						mtype: "gauge",
+						value: fmt.Sprintf("%d", failedCount)})
+					// Old monitor_metrics.sh has p4_pull_queue - but incorrectly as a counter
+					p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_queue_count",
+						help:  "Count of p4 pull files (not in failed state)",
+						mtype: "gauge",
+						value: fmt.Sprintf("%d", otherCount)})
+				}
+			}
 		}
 	}
 
@@ -1986,6 +1984,10 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 	_, err = p.Exec(p4cmd).WriteFile(tempPullStats)
 	if err != nil {
 		p4m.handleP4Error("Error running %s: %v, err:%q", p4cmd, err, errbuf)
+		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_pull_replication_error",
+			help:  "Set to 1 if replication error is true",
+			mtype: "gauge",
+			value: "1"})
 		p4m.writeMetricsFile()
 		return
 	}
@@ -1993,8 +1995,6 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 	journalRotationsBehind, err := script.File(tempPullStats).Match("... journalRotationsBehind").Column(3).String()
 	if err != nil {
 		p4m.logger.Errorf("Error getting journalRotationsBehind %v", err)
-		p4m.writeMetricsFile()
-		return
 	}
 	if journalRotationsBehind == "" {
 		journalRotationsBehind = "-1"
@@ -2002,8 +2002,6 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 	journalBytesBehind, err := script.File(tempPullStats).Match("... journalBytesBehind").Column(3).String()
 	if err != nil {
 		p4m.logger.Errorf("Error getting journalBytesBehind %v", err)
-		p4m.writeMetricsFile()
-		return
 	}
 	if journalBytesBehind == "" {
 		journalBytesBehind = "-1"
@@ -2024,8 +2022,6 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 	masterJournalSequence, err := script.File(tempPullStats).Match("... masterJournalSequence").Column(3).String()
 	if err != nil {
 		p4m.logger.Errorf("Error getting masterJournalSequence %v", err)
-		p4m.writeMetricsFile()
-		return
 	}
 	replicationError := "0"
 	if masterJournalSequence == "-1" {
