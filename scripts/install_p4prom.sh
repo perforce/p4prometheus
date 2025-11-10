@@ -21,7 +21,7 @@ metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.10.3"
+VER_P4PROMETHEUS="0.10.4"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -284,7 +284,7 @@ metrics_output: $metrics_root/p4_cmds.prom
 
 # ----------------------
 # server_id: Optional - serverid for metrics.
-# If SDP install then it will read /p4/<sdp_instance>/root/server.id for 
+# If SDP install then it will read /p4/<sdp_instance>/root/server.id automatically.
 # If non-SDP install, set this field or set server_id_path (this field has preference!)
 server_id:      $P4SERVERID
 
