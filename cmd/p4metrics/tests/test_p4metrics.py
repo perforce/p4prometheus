@@ -178,6 +178,41 @@ max_log_percent: 1
     assert len([x for x in logFiles if "log." in x]) > rotatedLogs
     assert any(re.match(r"log\..*\.gz$", fname) for fname in logFiles)
 
+# Test that creation of checkpoints and removing of it causes correct metrics to be reported
+def test_checkpoint_metrics(host):
+    metricsFiles = host.file("/p4/metrics").listdir()
+    notExpectedFiles = "p4_checkpoint"
+    for f in notExpectedFiles.split():
+        assert f"{f}{suffix}" not in metricsFiles
+
+    cmd = host.run("yum install -y file")
+    assert cmd.rc == 0
+    cmd = host.run("su -l perforce live_checkpoint.sh 1")
+    assert cmd.rc == 0
+    sleep(1)
+    cmd = host.run("su -l perforce daily_checkpoint.sh 1")
+    assert cmd.rc == 0
+    sleep(1)
+
+    reload_metrics(host)
+    sleep(2)
+    metricsFiles = host.file("/p4/metrics").listdir()
+    expectedFiles = "p4_checkpoint"
+    for f in expectedFiles.split():
+        assert f"{f}{suffix}" in metricsFiles
+
+    # Now remove checkpoint log and make sure metrics file is deleted
+    cmd = host.run("rm -f /p4/1/logs/checkpoint.log*")
+    assert cmd.rc == 0
+
+    reload_metrics(host)
+    sleep(2)
+
+    metricsFiles = host.file("/p4/metrics").listdir()
+    notExpectedFiles = "p4_checkpoint"
+    for f in notExpectedFiles.split():
+        assert f"{f}{suffix}" not in metricsFiles
+
 def test_service_down_up(host):
     cmd = host.run("sudo systemctl stop p4d_1")
     assert cmd.rc == 0
@@ -186,7 +221,7 @@ def test_service_down_up(host):
     sleep(2)
     metricsFiles = host.file("/p4/metrics").listdir()
 
-    notExpectedFiles = "p4_license p4_filesys p4_monitor"
+    notExpectedFiles = "p4_filesys p4_monitor"
     for f in notExpectedFiles.split():
         assert f"{f}{suffix}" not in metricsFiles
 

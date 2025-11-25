@@ -22,6 +22,7 @@ RUN yum update -y; \
     yum install -y policycoreutils-python-utils; \
     yum install -y passwd; \
     yum install -y bc; \
+    yum install -y file; \
     yum autoremove; \
     yum clean all
 
