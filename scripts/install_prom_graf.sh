@@ -2,6 +2,9 @@
 # Installs the following: node_exporter, prometheus, victoriametrics, grafana and alertmanager
 # This is the monitoring machine
 
+set -e  # Exit on error
+set -o pipefail  # Catch errors in pipes
+
 # shellcheck disable=SC2128
 if [[ -z "${BASH_VERSINFO}" ]] || [[ -z "${BASH_VERSINFO[0]}" ]] || [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
     echo "This script requires Bash version >= 4";
@@ -9,22 +12,41 @@ if [[ -z "${BASH_VERSINFO}" ]] || [[ -z "${BASH_VERSINFO[0]}" ]] || [[ ${BASH_VE
 fi
 
 # ============================================================
-# Configuration section
+# Configuration section - Updated to current versions as of Dec 2025
 
-VER_NODE_EXPORTER="1.3.1"
-VER_PROMETHEUS="2.37.6"
-VER_ALERTMANAGER="0.25.0"
-VER_PUSHGATEWAY="1.5.1"
-VER_VICTORIA_METRICS="1.87.5"
+VER_NODE_EXPORTER="1.8.2"
+VER_PROMETHEUS="2.54.1"
+VER_ALERTMANAGER="0.27.0"
+VER_PUSHGATEWAY="1.9.0"
+VER_VICTORIA_METRICS="1.105.0"
 
 # Default to amd but allow arm architecture
 arch="amd64"
 [[ $(uname -p) == 'aarch64' ]] && arch="arm64"
 
+# Cleanup function
+TEMP_FILES=()
+cleanup() {
+    if [[ ${#TEMP_FILES[@]} -gt 0 ]]; then
+        echo "Cleaning up temporary files..."
+        for f in "${TEMP_FILES[@]}"; do
+            [[ -f "$f" ]] && rm -f "$f"
+            [[ -d "$f" ]] && rm -rf "$f"
+        done
+    fi
+}
+
+trap cleanup EXIT
+
 # ============================================================
 
 function msg () { echo -e "$*"; }
-function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
+function bail () { msg "\nError: ${1:-Unknown Error}\n"; cleanup; exit "${2:-1}"; }
+
+function check_service_exists() {
+    local service=$1
+    systemctl list-unit-files | grep -q "^${service}.service" && return 0 || return 1
+}
 
 function usage
 {
@@ -83,32 +105,77 @@ if command -v getenforce > /dev/null; then
 fi
 
 download_and_untar () {
-    fname=$1
-    url=$2
-    [[ -f "$fname" ]] && rm -f "$fname"
+    local fname=$1
+    local url=$2
+    
+    TEMP_FILES+=("$fname")
+    
+    if [[ -f "$fname" ]]; then
+        msg "File $fname already exists, removing..."
+        rm -f "$fname"
+    fi
+    
     msg "Downloading $url"
-    wget -q "$url" || bail "Failed to download $url"
-    tar zxvf "$fname" || bail "Failed to untar $fname"
+    if ! wget -q --show-progress "$url"; then
+        bail "Failed to download $url"
+    fi
+    
+    msg "Extracting $fname"
+    tar zxf "$fname" || bail "Failed to untar $fname"
 }
 
 check_os () {
-    grep ubuntu /proc/version > /dev/null 2>&1
-    isubuntu="${?}"
-    grep centos /proc/version > /dev/null 2>&1
-    # shellcheck disable=SC2034
-    iscentos="${?}"
-    grep redhat /proc/version > /dev/null 2>&1
-    # shellcheck disable=SC2034
-    isredhat="${?}"
+    # Use /etc/os-release for better OS detection
+    if [[ -f /etc/os-release ]]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        OS_ID="$ID"
+        OS_VERSION="$VERSION_ID"
+        msg "Detected OS: $NAME $VERSION_ID"
+    else
+        # Fallback to old method
+        if grep -q ubuntu /proc/version 2>/dev/null; then
+            OS_ID="ubuntu"
+        elif grep -q centos /proc/version 2>/dev/null; then
+            OS_ID="centos"
+        elif grep -q redhat /proc/version 2>/dev/null; then
+            OS_ID="rhel"
+        else
+            bail "Unable to detect operating system"
+        fi
+    fi
+    
+    # Set compatibility flags
+    case "$OS_ID" in
+        ubuntu|debian)
+            isubuntu=0
+            ;;
+        centos|rhel|rocky|almalinux|fedora)
+            isubuntu=1
+            ;;
+        *)
+            bail "Unsupported OS: $OS_ID. This script supports Ubuntu, Debian, CentOS, RHEL, Rocky Linux, AlmaLinux, and Fedora."
+            ;;
+    esac
 }
 
 install_grafana () {
+    msg "Installing Grafana..."
+    
+    # Check if already installed
+    if check_service_exists grafana-server; then
+        msg "Grafana already installed"
+    fi
 
     if [[ $isubuntu -eq 0 ]]; then
-
-        apt-get install -y apt-transport-https software-properties-common wget
-        wget -q -O - https://packages.grafana.com/gpg.key | sudo apt-key add -
-        echo "deb https://packages.grafana.com/oss/deb stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+        # Modern approach for Ubuntu/Debian - no deprecated apt-key
+        apt-get install -y apt-transport-https software-properties-common wget gnupg
+        
+        # Add GPG key the modern way
+        wget -q -O - https://packages.grafana.com/gpg.key | gpg --dearmor | sudo tee /usr/share/keyrings/grafana-archive-keyring.gpg > /dev/null
+        
+        # Add repository with signed-by
+        echo "deb [signed-by=/usr/share/keyrings/grafana-archive-keyring.gpg] https://packages.grafana.com/oss/deb stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
 
         apt-get update
         apt-get install -y grafana
@@ -137,32 +204,40 @@ EOF
 }
 
 install_alertmanager () {
+    msg "Installing Alertmanager..."
+    
+    # Check if already installed and stop if running
+    if check_service_exists alertmanager && systemctl is-active --quiet alertmanager; then
+        msg "Stopping existing alertmanager service..."
+        systemctl stop alertmanager
+    fi
 
     userid="alertmanager"
     if ! grep -q "^$userid:" /etc/passwd ;then
         useradd --no-create-home --shell /bin/false "$userid" || bail "Failed to create user"
     fi
 
-    mkdir /etc/alertmanager
-    mkdir /var/lib/alertmanager
-    chown $userid:$userid /etc/alertmanager
-    chown $userid:$userid /var/lib/alertmanager
+    mkdir -p /etc/alertmanager
+    mkdir -p /var/lib/alertmanager
+    chown "$userid:$userid" /etc/alertmanager
+    chown "$userid:$userid" /var/lib/alertmanager
 
     cd /tmp || bail "failed to cd"
     PVER="$VER_ALERTMANAGER"
     fname="alertmanager-$PVER.linux-${arch}.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/alertmanager/releases/download/v$PVER/$fname"
+    TEMP_FILES+=("alertmanager-files")
 
     mv alertmanager-$PVER.linux-${arch} alertmanager-files
 
     for base_file in alertmanager amtool; do
         bin_file=/usr/local/bin/$base_file
         cp alertmanager-files/$base_file /usr/local/bin/
-        chown $userid:$userid $bin_file
-        chmod 755 $bin_file
+        chown "$userid:$userid" "$bin_file"
+        chmod 755 "$bin_file"
         if [[ $SELinuxEnabled -eq 1 ]]; then
-            semanage fcontext -a -t bin_t $bin_file
-            restorecon -vF $bin_file
+            semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
+            restorecon -vF "$bin_file"
         fi
     done
 
@@ -223,6 +298,13 @@ restart: validate
 }
 
 install_node_exporter () {
+    msg "Installing Node Exporter..."
+    
+    # Check if already installed and stop if running
+    if check_service_exists node_exporter && systemctl is-active --quiet node_exporter; then
+        msg "Stopping existing node_exporter service..."
+        systemctl stop node_exporter
+    fi
 
     userid="node_exporter"
     if ! grep -q "^$userid:" /etc/passwd ;then
@@ -233,12 +315,16 @@ install_node_exporter () {
     PVER="$VER_NODE_EXPORTER"
     fname="node_exporter-$PVER.linux-${arch}.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/node_exporter/releases/download/v$PVER/$fname"
+    TEMP_FILES+=("node_exporter-$PVER.linux-${arch}")
 
-    mv node_exporter-$PVER.linux-${arch}/node_exporter /usr/local/bin/
+    mv "node_exporter-$PVER.linux-${arch}/node_exporter" /usr/local/bin/
+    chown "$userid:$userid" /usr/local/bin/node_exporter
+    chmod 755 /usr/local/bin/node_exporter
+    
     if [[ $SELinuxEnabled -eq 1 ]]; then
         bin_file=/usr/local/bin/node_exporter
-        semanage fcontext -a -t bin_t $bin_file
-        restorecon -vF $bin_file
+        semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
+        restorecon -vF "$bin_file"
     fi
 
     cat << EOF > /etc/systemd/system/node_exporter.service
@@ -265,6 +351,13 @@ EOF
 }
 
 install_victoria_metrics () {
+    msg "Installing Victoria Metrics..."
+    
+    # Check if already installed and stop if running
+    if check_service_exists victoria-metrics && systemctl is-active --quiet victoria-metrics; then
+        msg "Stopping existing victoria-metrics service..."
+        systemctl stop victoria-metrics
+    fi
 
     userid="prometheus"
     if ! grep -q "^$userid:" /etc/passwd ;then
@@ -275,15 +368,19 @@ install_victoria_metrics () {
     PVER="$VER_VICTORIA_METRICS"
     for fname in victoria-metrics-linux-${arch}-v$PVER.tar.gz vmutils-linux-${arch}-v$PVER.tar.gz; do
         download_and_untar "$fname" "https://github.com/victoriametrics/victoriametrics/releases/download/v$PVER/$fname"
+        TEMP_FILES+=("$fname")
     done
 
     for base_file in victoria-metrics-prod vmagent-prod vmalert-prod vmauth-prod vmbackup-prod vmrestore-prod vmctl-prod; do
-        bin_file=/usr/local/bin/$base_file
-        mv $base_file /usr/local/bin/
-        chown $userid:$userid $bin_file
-        if [[ $SELinuxEnabled -eq 1 ]]; then
-            semanage fcontext -a -t bin_t $bin_file
-            restorecon -vF $bin_file
+        if [[ -f "$base_file" ]]; then
+            bin_file=/usr/local/bin/$base_file
+            mv "$base_file" /usr/local/bin/
+            chown "$userid:$userid" "$bin_file"
+            chmod 755 "$bin_file"
+            if [[ $SELinuxEnabled -eq 1 ]]; then
+                semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
+                restorecon -vF "$bin_file"
+            fi
         fi
     done
 
@@ -305,8 +402,8 @@ ExecStart=/usr/local/bin/victoria-metrics-prod \
 WantedBy=multi-user.target
 EOF
 
-    mkdir /var/lib/victoria-metrics
-    chown -R $userid:$userid /var/lib/victoria-metrics
+    mkdir -p /var/lib/victoria-metrics
+    chown -R "$userid:$userid" /var/lib/victoria-metrics
 
     systemctl daemon-reload
     systemctl enable victoria-metrics
@@ -315,39 +412,47 @@ EOF
 }
 
 install_prometheus () {
+    msg "Installing Prometheus..."
+    
+    # Check if already installed and stop if running
+    if check_service_exists prometheus && systemctl is-active --quiet prometheus; then
+        msg "Stopping existing prometheus service..."
+        systemctl stop prometheus
+    fi
 
     userid="prometheus"
     if ! grep -q "^$userid:" /etc/passwd ;then
         useradd --no-create-home --shell /bin/false "$userid" || bail "Failed to create user"
     fi
 
-    mkdir /etc/prometheus
-    mkdir /var/lib/prometheus
-    chown $userid:$userid /etc/prometheus
-    chown $userid:$userid /var/lib/prometheus
+    mkdir -p /etc/prometheus
+    mkdir -p /var/lib/prometheus
+    chown "$userid:$userid" /etc/prometheus
+    chown "$userid:$userid" /var/lib/prometheus
 
     cd /tmp || bail "failed to cd"
     PVER="$VER_PROMETHEUS"
     fname="prometheus-$PVER.linux-${arch}.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/prometheus/releases/download/v$PVER/prometheus-$PVER.linux-${arch}.tar.gz"
+    TEMP_FILES+=("prometheus-files")
 
     mv prometheus-$PVER.linux-${arch} prometheus-files
 
     for base_file in prometheus promtool; do
         bin_file=/usr/local/bin/$base_file
-        cp prometheus-files/$base_file /usr/local/bin/
-        chown $userid:$userid $bin_file
-        chmod 755 $bin_file
+        cp "prometheus-files/$base_file" /usr/local/bin/
+        chown "$userid:$userid" "$bin_file"
+        chmod 755 "$bin_file"
         if [[ $SELinuxEnabled -eq 1 ]]; then
-            semanage fcontext -a -t bin_t $bin_file
-            restorecon -vF $bin_file
+            semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
+            restorecon -vF "$bin_file"
         fi
     done
 
     cp -r prometheus-files/consoles /etc/prometheus
     cp -r prometheus-files/console_libraries /etc/prometheus
-    chown -R $userid:$userid /etc/prometheus/consoles
-    chown -R $userid:$userid /etc/prometheus/console_libraries
+    chown -R "$userid:$userid" /etc/prometheus/consoles
+    chown -R "$userid:$userid" /etc/prometheus/console_libraries
 
     cat << EOF > /etc/systemd/system/prometheus.service
 [Unit]
@@ -445,6 +550,13 @@ restart: validate
 
 
 install_pushgateway () {
+    msg "Installing Pushgateway..."
+    
+    # Check if already installed and stop if running
+    if check_service_exists pushgateway && systemctl is-active --quiet pushgateway; then
+        msg "Stopping existing pushgateway service..."
+        systemctl stop pushgateway
+    fi
 
     userid="pushgateway"
     if ! grep -q "^$userid:" /etc/passwd ;then
@@ -455,17 +567,25 @@ install_pushgateway () {
     PVER="$VER_PUSHGATEWAY"
     fname="pushgateway-$PVER.linux-${arch}.tar.gz"
     download_and_untar "$fname" "https://github.com/prometheus/pushgateway/releases/download/v$PVER/$fname"
+    TEMP_FILES+=("pushgateway-$PVER.linux-${arch}")
 
-    mv pushgateway-$PVER.linux-${arch}/pushgateway /usr/local/bin/
+    mv "pushgateway-$PVER.linux-${arch}/pushgateway" /usr/local/bin/
+    chown "$userid:$userid" /usr/local/bin/pushgateway
+    chmod 755 /usr/local/bin/pushgateway
+    
     if [[ $SELinuxEnabled -eq 1 ]]; then
         bin_file=/usr/local/bin/pushgateway
-        semanage fcontext -a -t bin_t $bin_file
-        restorecon -vF $bin_file
+        semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
+        restorecon -vF "$bin_file"
     fi
+    
+    # Create directory for persistence file
+    mkdir -p /var/lib/pushgateway
+    chown "$userid:$userid" /var/lib/pushgateway
 
     cat << EOF > /etc/systemd/system/pushgateway.service
 [Unit]
-Description=Node Exporter
+Description=Prometheus Pushgateway
 Wants=network-online.target
 After=network-online.target
 
@@ -476,7 +596,7 @@ Type=simple
 ExecStart=/usr/local/bin/pushgateway \
  --web.listen-address=:9091 \
  --web.telemetry-path=/metrics \
- --persistence.file=/tmp/metric.store \
+ --persistence.file=/var/lib/pushgateway/metric.store \
  --persistence.interval=15m \
  --log.level=info
 
@@ -490,13 +610,36 @@ EOF
     systemctl status pushgateway --no-pager
 }
 
+msg "Starting installation process..."
+msg "Architecture: $arch"
+
 check_os
+
+msg "Installing components..."
 install_node_exporter
 install_alertmanager
 install_victoria_metrics
 install_prometheus
 [[ $InstallPushgateway -eq 1 ]] && install_pushgateway
 install_grafana
+
+msg ""
+msg "Verifying installations..."
+for service in node_exporter alertmanager victoria-metrics prometheus grafana-server; do
+    if systemctl is-active --quiet "$service" 2>/dev/null; then
+        msg "✓ $service is running"
+    else
+        msg "✗ $service is NOT running - check logs with: journalctl -u $service"
+    fi
+done
+
+if [[ $InstallPushgateway -eq 1 ]]; then
+    if systemctl is-active --quiet pushgateway 2>/dev/null; then
+        msg "✓ pushgateway is running"
+    else
+        msg "✗ pushgateway is NOT running - check logs with: journalctl -u pushgateway"
+    fi
+fi
 
 echo "
 
