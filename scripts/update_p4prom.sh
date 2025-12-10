@@ -20,6 +20,7 @@ local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
 VER_P4PROMETHEUS="0.10.4"
+VER_VICTORIA_METRICS="1.105.0"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -30,18 +31,23 @@ arch="amd64"
 function msg () { echo -e "$*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
+function check_service_exists() {
+    local service=$1
+    systemctl list-unit-files | grep -q "^${service}.service" && return 0 || return 1
+}
+
 function usage
 {
    declare errorMessage=${2:-Unset}
- 
+
    if [[ "$errorMessage" != Unset ]]; then
       echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
    fi
- 
+
    echo "USAGE for update_p4prom.sh:
- 
-update_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>] [-u <osuser>] [-c <p4prom_config_dir>] 
- 
+
+update_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>] [-u <osuser>] [-c <p4prom_config_dir>]
+
    or
 
 update_p4prom.sh -h
@@ -51,6 +57,8 @@ update_p4prom.sh -h
                 Typically only used for SDP installations.
     <osuser>    Operating system user, e.g. perforce, under which p4d process is running
     <p4prom_config_dir> Specify directory to install p4prometheus/p4metrics config files - useful for nonsdp installs
+    -vmagent    Means install vmagent as replacement for pushgateway/report_data_instance cronjobs and config file.
+                Not relevant for most installations - intended for P4RA installations only.
 
 Specify either the SDP instance (e.g. 1), or -nosdp
 
@@ -66,11 +74,12 @@ Examples:
 }
 
 # Command Line Processing
- 
+
 declare -i shiftArgs=0
 declare -i UseSDP=1
 declare -i SELinuxEnabled=0
 declare -i NewP4MetricsConfig=0
+declare -i InstallVMAgent=0
 declare OsUser=""
 declare P4LOG=""
 declare p4prom_config_dir=""
@@ -83,12 +92,13 @@ while [[ $# -gt 0 ]]; do
         (-m) metrics_root=$2; shiftArgs=1;;
         (-u) OsUser="$2"; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
+        (-vmagent) InstallVMAgent=1;;
         (-l) P4LOG="$2"; shiftArgs=1;;
         (-c) p4prom_config_dir="$2"; shiftArgs=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
     esac
- 
+
     # Shift (modify $#) the appropriate number of times.
     shift; while [[ "$shiftArgs" -gt 0 ]]; do
         [[ $# -eq 0 ]] && usage -h "Incorrect number of arguments."
@@ -347,7 +357,7 @@ p4user:         $p4user
 # p4config: The value of a P4CONFIG to use
 # This is very useful and should be set to an absolute path if you need values like P4TRUST/P4TICKETS etc
 # IGNORED if sdp_instance is non-blank!
-p4config:      
+p4config:
 
 # ----------------------
 # p4bin: The absolute path to the p4 binary to be used - important if not available in your PATH
@@ -481,9 +491,202 @@ EOF
     fi
 }
 
+install_vmagent () {
+    msg "Installing Victoria Metrics Agent..."
+
+    # Check if already installed and stop if running
+    if check_service_exists vmagent && systemctl is-active --quiet vmagent; then
+        msg "Stopping existing vmagent service..."
+        systemctl stop vmagent
+    fi
+
+    userid="$OSUSER"
+    if ! grep -q "^$userid:" /etc/passwd ;then
+        useradd --no-create-home --shell /bin/false "$userid" || bail "Failed to create user"
+    fi
+
+    cd /tmp || bail "failed to cd"
+    PVER="$VER_VICTORIA_METRICS"
+    for fname in vmutils-linux-${arch}-v$PVER.tar.gz; do
+        download_and_untar "$fname" "https://github.com/victoriametrics/victoriametrics/releases/download/v$PVER/$fname"
+        TEMP_FILES+=("$fname")
+    done
+
+    for base_file in vmagent-prod; do
+        if [[ -f "$base_file" ]]; then
+            bin_file=/usr/local/bin/$base_file
+            mv "$base_file" /usr/local/bin/
+            chown "$userid:$userid" "$bin_file"
+            chmod 755 "$bin_file"
+            if [[ $SELinuxEnabled -eq 1 ]]; then
+                semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
+                restorecon -vF "$bin_file"
+            fi
+        fi
+    done
+
+    # Create vmagent configuration files by parsing .push_metrics.cfg
+    create_vmagent_configs
+
+    cat << EOF > /etc/systemd/system/vmagent.service
+[Unit]
+Description=Victoria Metrics Agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=$OSUSER
+Group=$OSGROUP
+Type=simple
+WorkingDirectory=/p4/common/site/config
+EnvironmentFile=/p4/common/site/config/vmagent.env
+ExecStart=/usr/local/bin/vmagent-prod \
+  -promscrape.config=vmagent.yml \
+  -remoteWrite.basicAuth.username=\${VM_CUSTOMER} \
+  -remoteWrite.basicAuth.passwordFile=.vmpassword \
+  -remoteWrite.urlRelabelConfig=relabelConfig.yml \
+  -remoteWrite.url=\${VM_METRICS_HOST}/api/v1/write
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable vmagent
+    # Don't start service yet - prompt user to do so at the end after verifying config files created!
+
+}
+
+create_vmagent_configs() {
+    local config_file="$p4prom_config_dir/.push_metrics.cfg"
+
+    if [[ ! -f "$config_file" ]]; then
+        msg "Warning: Config file $config_file not found, skipping vmagent config creation"
+        return
+    fi
+
+    # Parse the push_metrics.cfg file
+    # shellcheck disable=SC1090
+    source "$config_file"
+
+    # Extract customer and instance from metrics values
+    local customer="${metrics_customer:-}"
+    local instance="${metrics_instance:-}"
+    local host="${metrics_host:-}"
+
+    if [[ -z "$customer" || -z "$instance" || -z "$host" ]]; then
+        msg "Warning: Required metrics values not found in $config_file"
+        return
+    fi
+
+    # Convert pushgateway port (9091) to vmagent port (9092)
+    local vm_host="${host/:9091/:9092}"
+
+    # Determine config directory based on SDP or non-SDP
+    local vmagent_config_dir
+    if [[ $UseSDP -eq 1 ]]; then
+        vmagent_config_dir="/p4/common/site/config"
+    else
+        vmagent_config_dir="$p4prom_config_dir"
+    fi
+
+    mkdir -p "$vmagent_config_dir"
+    chown "$OSUSER:$OSGROUP" "$vmagent_config_dir"
+
+    # Create vmagent.env file
+    local vmagent_env_file="$vmagent_config_dir/vmagent.env"
+    cat << EOF > "$vmagent_env_file"
+# For use with vmagent to send to P4RA monitoring server
+VM_METRICS_HOST=$vm_host
+VM_CUSTOMER=$customer
+EOF
+
+    chown "$OSUSER:$OSGROUP" "$vmagent_env_file"
+    chmod 644 "$vmagent_env_file"
+    msg "Created vmagent environment file: $vmagent_env_file"
+
+    # Create relabelConfig.yml file
+    local relabel_config_file="$vmagent_config_dir/relabelConfig.yml"
+    cat << EOF > "$relabel_config_file"
+# Relabelling config for vmagent
+# These values are specific to each P4RA customer and need to conform to the values on P4RA Monitor server
+
+# P4RA customer tag
+- target_label: customer
+  replacement: $customer
+
+# Unique P4RA instance ID for this server
+- target_label: instance
+  replacement: $instance
+EOF
+
+    chown "$OSUSER:$OSGROUP" "$relabel_config_file"
+    chmod 644 "$relabel_config_file"
+    msg "Created vmagent config: $relabel_config_file"
+
+    # Create vmagent.yml file
+    local vmagent_config_file="$vmagent_config_dir/vmagent.yml"
+    cat << EOF > "$vmagent_config_file"
+# Configuration file for vmagent to scrape local node_exporter on (default) localhost:9100
+global:
+  scrape_interval:     30s # Set the scrape interval
+
+scrape_configs:
+  - job_name: 'remote_vmagent'
+    static_configs:
+    - targets:
+        - localhost:9100
+EOF
+
+    chown "$OSUSER:$OSGROUP" "$vmagent_config_file"
+    chmod 644 "$vmagent_config_file"
+    msg "Created vmagent config: $vmagent_config_file"
+
+    # Create .vmpassword file from metrics_passwd
+    local password="${metrics_passwd:-}"
+    if [[ -n "$password" ]]; then
+        local vmpassword_file="$vmagent_config_dir/.vmpassword"
+        echo "$password" > "$vmpassword_file"
+        chown "$OSUSER:$OSGROUP" "$vmpassword_file"
+        chmod 600 "$vmpassword_file"
+        msg "Created vmagent password file: $vmpassword_file"
+    else
+        msg "Warning: metrics_passwd not found in $config_file"
+    fi
+
+    # Update the crontab of the specified user - to comment out push_gateway entry (replaced by vmagent)
+    TEMP_FILE=$(mktemp)
+    crontab -u "$OSUSER" -l > "$TEMP_FILE" 2>/dev/null || echo "" > "$TEMP_FILE"
+    COMMENT="# This script has been replaced by systemd service (vmagent)"
+    CHANGES_MADE=false
+    for f in push_metrics.sh; do
+        if grep -v "^#" "$TEMP_FILE" | grep -q "${f}"; then
+            cp "$TEMP_FILE" "${TEMP_FILE}.bak"
+            sed -i "/^[^#].*\/${f}/ s|^|# ${COMMENT}\n# |" "$TEMP_FILE"
+            CHANGES_MADE=true
+        fi
+    done
+    if [ "$CHANGES_MADE" = true ]; then # Load up new crontab
+        crontab -u "$OSUSER" "$TEMP_FILE"
+    fi
+
+    msg ""
+    msg "===================================="
+    msg "vmagent configuration files created:"
+    msg "  - $vmagent_env_file"
+    msg "  - $relabel_config_file"
+    msg "  - $vmagent_config_file"
+    msg "  - $vmagent_config_dir/.vmpassword"
+    msg "===================================="
+    msg ""
+}
+
 update_node_exporter
 update_p4prometheus
 update_p4metrics
+if [[ $InstallVMAgent -eq 1 ]]; then
+    install_vmagent
+fi
 # update_monitor_locks
 systemctl list-timers | grep -E "^NEXT|monitor"
 
@@ -491,6 +694,14 @@ echo "
 
 Have updated node_exporter and p4prometheus.
 "
+
+if [[ $InstallVMAgent -eq 1 ]]; then
+    echo "Please start the  vmagent service when you have checked its configuration...
+
+    systemctl start vmagent
+    systemctl status vmagent --no-pager
+    "
+fi
 
 if [[ $NewP4MetricsConfig -eq 1 ]]; then
     echo "A new p4metrics config file has been created at: $p4metrics_config_file
