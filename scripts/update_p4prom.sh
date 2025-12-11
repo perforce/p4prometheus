@@ -20,7 +20,7 @@ local_bin_dir=/usr/local/bin
 
 VER_NODE_EXPORTER="1.3.1"
 VER_P4PROMETHEUS="0.10.4"
-VER_VICTORIA_METRICS="1.105.0"
+VER_VICTORIA_METRICS="1.131.0"
 
 # Default to amd but allow arm architecture
 arch="amd64"
