@@ -18,6 +18,9 @@ metrics_root=/var/metrics
 
 metrics_bin_dir=/etc/metrics
 
+# For SELinux compatibility, place vmagent config files here
+vmagent_config_dir=/var/vmagent
+
 local_bin_dir=/usr/local/bin
 
 # Version to download
@@ -224,8 +227,8 @@ After=network-online.target
 [Service]
 User=$userid
 Type=simple
-WorkingDirectory=$metrics_bin_dir
-EnvironmentFile=$metrics_bin_dir/vmagent.env
+WorkingDirectory=$vmagent_config_dir
+EnvironmentFile=$vmagent_config_dir/vmagent.env
 ExecStart=/usr/local/bin/vmagent-prod \
   -promscrape.config=vmagent.yml \
   -remoteWrite.basicAuth.username=\${VM_CUSTOMER} \
@@ -254,10 +257,10 @@ create_vmagent_configs() {
     if [[ ! -f "$config_file" ]]; then
         msg "Warning: Config file $config_file not found, skipping vmagent config creation"
         msg "You will need to manually create the following files:"
-        msg "  - $metrics_bin_dir/vmagent.env"
-        msg "  - $metrics_bin_dir/relabelConfig.yml"
-        msg "  - $metrics_bin_dir/vmagent.yml"
-        msg "  - $metrics_bin_dir/.vmpassword"
+        msg "  - $vmagent_config_dir/vmagent.env"
+        msg "  - $vmagent_config_dir/relabelConfig.yml"
+        msg "  - $vmagent_config_dir/vmagent.yml"
+        msg "  - $vmagent_config_dir/.vmpassword"
         return
     fi
     
@@ -279,10 +282,17 @@ create_vmagent_configs() {
     # Convert pushgateway port (9091) to vmagent port (9092)
     local vm_host="${host/:9091/:9092}"
     
-    mkdir -p "$metrics_bin_dir"
+    mkdir -p "$vmagent_config_dir"
+    chmod 755 "$vmagent_config_dir"
+    
+    # Set SELinux context for config directory if SELinux is enabled
+    if [[ $SELinuxEnabled -eq 1 ]]; then
+        semanage fcontext -a -t etc_t "$vmagent_config_dir(/.*)?" 2>/dev/null || true
+        restorecon -Rv "$vmagent_config_dir"
+    fi
     
     # Create vmagent.env file
-    local vmagent_env_file="$metrics_bin_dir/vmagent.env"
+    local vmagent_env_file="$vmagent_config_dir/vmagent.env"
     cat << EOF > "$vmagent_env_file"
 # For use with vmagent to send to P4RA monitoring server
 VM_METRICS_HOST=$vm_host
@@ -293,7 +303,7 @@ EOF
     msg "Created vmagent environment file: $vmagent_env_file"
     
     # Create relabelConfig.yml file
-    local relabel_config_file="$metrics_bin_dir/relabelConfig.yml"
+    local relabel_config_file="$vmagent_config_dir/relabelConfig.yml"
     cat << EOF > "$relabel_config_file"
 # Relabelling config for vmagent
 # These values are specific to each P4RA customer and need to conform to the values on P4RA Monitor server
@@ -311,7 +321,7 @@ EOF
     msg "Created vmagent relabel config: $relabel_config_file"
     
     # Create vmagent.yml file
-    local vmagent_config_file="$metrics_bin_dir/vmagent.yml"
+    local vmagent_config_file="$vmagent_config_dir/vmagent.yml"
     cat << EOF > "$vmagent_config_file"
 # Configuration file for vmagent to scrape local node_exporter on (default) localhost:9100
 global:
@@ -329,7 +339,7 @@ EOF
     
     # Create .vmpassword file from metrics_passwd
     if [[ -n "$password" ]]; then
-        local vmpassword_file="$metrics_bin_dir/.vmpassword"
+        local vmpassword_file="$vmagent_config_dir/.vmpassword"
         echo "$password" > "$vmpassword_file"
         chmod 600 "$vmpassword_file"
         msg "Created vmagent password file: $vmpassword_file"
@@ -343,7 +353,7 @@ EOF
     msg "  - $vmagent_env_file"
     msg "  - $relabel_config_file"
     msg "  - $vmagent_config_file"
-    msg "  - $metrics_bin_dir/.vmpassword"
+    msg "  - $vmagent_config_dir/.vmpassword"
     msg "===================================="
     msg ""
 }
@@ -382,7 +392,7 @@ if [[ $InstallVMAgent -eq 1 ]]; then
 
 The push_metrics.sh cron job has been removed.
 
-Please verify the configuration files in $metrics_bin_dir and then start the service:
+Please verify the configuration files in $vmagent_config_dir and then start the service:
 
     systemctl start vmagent
     systemctl status vmagent --no-pager

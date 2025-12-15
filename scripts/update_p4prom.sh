@@ -17,6 +17,9 @@ fi
 metrics_root=/hxlogs/metrics
 metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
+# To avoid issues with SELinux, install service config files into /var/vmagent
+vmagent_config_dir="/var/vmagent"
+
 
 VER_NODE_EXPORTER="1.3.1"
 VER_P4PROMETHEUS="0.10.4"
@@ -538,8 +541,8 @@ After=network-online.target
 User=$OSUSER
 Group=$OSGROUP
 Type=simple
-WorkingDirectory=/p4/common/site/config
-EnvironmentFile=/p4/common/site/config/vmagent.env
+WorkingDirectory=${vmagent_config_dir}
+EnvironmentFile=${vmagent_config_dir}/vmagent.env
 ExecStart=/usr/local/bin/vmagent-prod \
   -promscrape.config=vmagent.yml \
   -remoteWrite.basicAuth.username=\${VM_CUSTOMER} \
@@ -582,16 +585,15 @@ create_vmagent_configs() {
     # Convert pushgateway port (9091) to vmagent port (9093 on load balancer)
     local vm_host="${host/:9091/:9093}"
 
-    # Determine config directory based on SDP or non-SDP
-    local vmagent_config_dir
-    if [[ $UseSDP -eq 1 ]]; then
-        vmagent_config_dir="/p4/common/site/config"
-    else
-        vmagent_config_dir="$p4prom_config_dir"
-    fi
-
     mkdir -p "$vmagent_config_dir"
     chown "$OSUSER:$OSGROUP" "$vmagent_config_dir"
+    chmod 755 "$vmagent_config_dir"
+
+    # Set SELinux context for config directory if SELinux is enabled
+    if [[ $SELinuxEnabled -eq 1 ]]; then
+        semanage fcontext -a -t etc_t "$vmagent_config_dir(/.*)?" 2>/dev/null || true
+        restorecon -Rv "$vmagent_config_dir"
+    fi
 
     # Create vmagent.env file
     local vmagent_env_file="$vmagent_config_dir/vmagent.env"
