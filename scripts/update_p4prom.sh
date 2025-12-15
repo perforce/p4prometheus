@@ -579,8 +579,8 @@ create_vmagent_configs() {
         return
     fi
 
-    # Convert pushgateway port (9091) to vmagent port (9092)
-    local vm_host="${host/:9091/:9092}"
+    # Convert pushgateway port (9091) to vmagent port (9093 on load balancer)
+    local vm_host="${host/:9091/:9093}"
 
     # Determine config directory based on SDP or non-SDP
     local vmagent_config_dir
