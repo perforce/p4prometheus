@@ -1607,20 +1607,54 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 	p4m.logger.Debugf("Checkpoint files to process: %q", files)
 
 	ckpLog := ""
-	reStartEnd := regexp.MustCompile(fmt.Sprintf("Start p4_%s Checkpoint|End p4_%s Checkpoint", sdpInstance, sdpInstance))
-	var startEndLines []string
-	for _, f := range files {
-		startEndLines, err = script.File(f).MatchRegexp(reStartEnd).Slice()
-		if len(startEndLines) == 2 && err == nil {
+	reStart := regexp.MustCompile(fmt.Sprintf("Start p4_%s Checkpoint", sdpInstance))
+	reEnd := regexp.MustCompile(fmt.Sprintf("End p4_%s Checkpoint", sdpInstance))
+	reError := regexp.MustCompile(" ERROR!!! ")
+	var startLines, endLines []string
+	var startLine, endLine string
+	for _, f := range files { // Process in order of most recent first
+		cmd := fmt.Sprintf("head %s", f)
+		p = script.NewPipe().WithStderr(errbuf)
+		startLines, err = p.Exec(cmd).MatchRegexp(reStart).Slice()
+		if len(startLines) == 1 && err == nil {
 			ckpLog = f
-			break
+			startLine = startLines[0]
+		}
+
+		cmd = fmt.Sprintf("tail %s", ckpLog)
+		p = script.NewPipe().WithStderr(errbuf)
+		endLines, err = p.Exec(cmd).Slice()
+		if len(endLines) > 0 && err == nil {
+			ckpLog = f
+			for _, line := range endLines {
+				if reEnd.MatchString(line) {
+					ckpLog = f
+					endLine = line
+					break
+				}
+				if reError.MatchString(line) {
+					p4m.logger.Debugf("Found error in checkpoint log: %q", line)
+					p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_checkpoint_error",
+						help:  "SDP checkpoint error detected (1=error, 0=ok)",
+						mtype: "gauge",
+						value: "1"})
+					p4m.writeMetricsFile()
+					return
+				}
+			}
 		}
 	}
+	if startLine == "" || endLine == "" {
+		p4m.logger.Debugf("Failed to find Start and End or Error line in any checkpoint file")
+		return
+	}
+	p4m.logger.Debugf("Start line: %q, End line: %q", startLine, endLine)
 	if ckpLog == "" {
 		p4m.logger.Debugf("Failed to find an appropriate checkpoint file")
 		return
 	}
 	p4m.logger.Debugf("Found file: '%s'", ckpLog)
+
 	fileInfo, err := os.Stat(ckpLog)
 	if err != nil {
 		p4m.logger.Errorf("error getting file info: %v", err)
@@ -1631,8 +1665,8 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 		help:  "Time of last checkpoint log",
 		mtype: "gauge",
 		value: fmt.Sprintf("%d", fileInfo.ModTime().Unix())})
-	startTimeStr := startEndLines[0][0:len(checkpointTimeFormat)]
-	endTimeStr := startEndLines[1][0:len(checkpointTimeFormat)]
+	startTimeStr := startLine[0:len(checkpointTimeFormat)]
+	endTimeStr := endLine[0:len(checkpointTimeFormat)]
 	p4m.logger.Debugf("Start/end time %q/%q", startTimeStr, endTimeStr)
 	startTime, err := time.Parse(checkpointTimeFormat, startTimeStr)
 	if err != nil {
@@ -1645,6 +1679,10 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 		return
 	}
 	diff := endTime.Sub(startTime)
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_checkpoint_error",
+		help:  "SDP checkpoint error detected (1=error, 0=ok)",
+		mtype: "gauge",
+		value: "0"})
 	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_checkpoint_duration",
 		help:  "Time taken for last checkpoint/restore action",
 		mtype: "gauge",

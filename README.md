@@ -183,6 +183,7 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_replica_curr_jnl | servername | Current journal for server (from "servers -J" |
 | p4_replica_curr_pos | servername | Current journal for server - key measure of replication lag (from "servers -J" |
 | p4_sdp_checkpoint_duration |  | Time taken for last checkpoint/restore action - check for sudden increases |
+| p4_sdp_checkpoint_error | | SDP checkpoint error detected (1=error, 0=ok) |
 | p4_sdp_checkpoint_log_time |  | Time of last checkpoint log - helps check if automated jobs are running |
 | p4_sdp_verify_duration |  | How long in seconds last SDP p4verify.sh run took |
 | p4_sdp_verify_errors | type | Verify errors by type (submitted/sehlved/spec/upload) |
