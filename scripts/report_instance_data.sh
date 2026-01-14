@@ -185,7 +185,7 @@ rm -f $TempLog
     echo "# Output of hostnamectl"
     echo ""
     echo '```'
-    hostnamectl
+    hostnamectl | grep -v "Transient"
     echo '```'
     echo ""
 } >> $TempLog 2>&1
