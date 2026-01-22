@@ -4,7 +4,7 @@ go 1.24
 
 require (
 	github.com/bitfield/script v0.23.0
-	github.com/rcowham/go-libp4dlog v0.14.3
+	github.com/rcowham/go-libp4dlog v0.14.4
 	github.com/rcowham/go-libtail v0.1.3
 	github.com/rcowham/kingpin v0.0.0-20250417115600-e1d913e1a35e
 	github.com/sirupsen/logrus v1.9.3
