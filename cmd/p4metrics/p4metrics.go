@@ -2527,6 +2527,10 @@ func main() {
 			"dry.run",
 			"Don't write metrics - but show the results - useful for debugging with --debug.",
 		).Short('n').Bool()
+		maxIterations = kingpin.Flag(
+			"max.iterations",
+			"How many iterations to complete before exiting (valid only with --debug and --dry.run). 0 means unlimited.",
+		).Short('m').Default("5").Int()
 		sampleConfig = kingpin.Flag(
 			"sample.config",
 			"Output a sample config file and exit. Useful for getting started to create p4metrics.yaml. E.g. p4metrics --sample.config > p4metrics.yaml",
@@ -2566,8 +2570,12 @@ func main() {
 	}
 	p4m := newP4MonitorMetrics(cfg, &env, logger)
 	p4m.version = version.Version
+	iterations := -1
 	if *dryrun {
 		p4m.dryrun = true
+		if *debug {
+			iterations = *maxIterations
+		}
 	}
 
 	ticker := time.NewTicker(p4m.config.UpdateInterval)
@@ -2575,7 +2583,15 @@ func main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
 	p4m.runMonitorFunctions()
+	count := 1
 	for {
+		if iterations > -1 && count >= iterations {
+			p4m.logger.Infof("Exiting after %d iterations due to max.iterations=%d", iterations, *maxIterations)
+			if p4m.errTailer != nil {
+				(*p4m.errTailer).Close() // Stop the error tailer if running
+			}
+			break
+		}
 		select {
 		case sig := <-sigs:
 			if sig == syscall.SIGHUP {
@@ -2605,5 +2621,6 @@ func main() {
 		case <-ticker.C:
 			p4m.runMonitorFunctions()
 		}
+		count += 1
 	}
 }

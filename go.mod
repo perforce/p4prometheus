@@ -7,7 +7,7 @@ toolchain go1.24.2
 require (
 	github.com/bitfield/script v0.24.1
 	github.com/rcowham/go-libp4dlog v0.14.4
-	github.com/rcowham/go-libtail v0.1.4
+	github.com/rcowham/go-libtail v0.1.5
 	github.com/rcowham/kingpin v0.0.0-20250417115600-e1d913e1a35e
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
