@@ -262,6 +262,7 @@ type P4MonitorMetrics struct {
 	p4User              string
 	isSuper             bool // Is this user a super user?
 	serverID            string
+	p4port              string
 	p4root              string
 	logsDir             string
 	p4Cmd               string
@@ -410,23 +411,14 @@ func (p4m *P4MonitorMetrics) initVars() {
 	p4portStr := ""
 	if p4port != "" {
 		p4portStr = fmt.Sprintf("-p \"%s\"", p4port)
+		p4m.p4port = p4port
 	}
 	p4m.p4Cmd = fmt.Sprintf("%s %s %s %s", p4bin, p4configEnv, p4userStr, p4portStr)
 	p4m.logger.Debugf("p4Cmd: %s", p4m.p4Cmd)
-	p4cmd, errbuf, p := p4m.newP4CmdPipe("info -s")
-	i, err := p.Exec(p4cmd).Slice()
+	err := p4m.runInfo()
 	if err != nil {
-		p4m.checkServerID()
-		p4m.logger.Errorf("Error can't connect to P4PORT: %q, %v, %q", p4port, err, errbuf.String())
 		return
 	}
-	for _, s := range i {
-		parts := strings.Split(s, ": ")
-		if len(parts) == 2 {
-			p4m.p4info[parts[0]] = parts[1]
-		}
-	}
-	p4m.logger.Debugf("p4info -s: %d %v\n%v", len(i), i, p4m.p4info)
 	// Get server id. Usually server.id files are a single line containing the
 	// ServerID value. However, a server.id file will have a second line if a
 	// 'p4 failover' was done containing an error message displayed to users
@@ -441,7 +433,7 @@ func (p4m *P4MonitorMetrics) initVars() {
 		p4m.serverID = "UnsetServerID"
 	}
 	p4m.logger.Debugf("serverID: %q", p4m.serverID)
-	p4cmd, errbuf, p = p4m.newP4CmdPipe("configure show")
+	p4cmd, errbuf, p := p4m.newP4CmdPipe("configure show")
 	cfg, err := p.Exec(p4cmd).Slice()
 	if err != nil {
 		p4m.handleP4Error("Error running %s: %v, %q", "configure show", err, errbuf)
@@ -470,6 +462,24 @@ func (p4m *P4MonitorMetrics) initVars() {
 	}
 
 	p4m.initialised = true
+}
+
+func (p4m *P4MonitorMetrics) runInfo() error {
+	p4cmd, errbuf, p := p4m.newP4CmdPipe("info -s")
+	i, err := p.Exec(p4cmd).Slice()
+	if err != nil {
+		p4m.checkServerID()
+		p4m.logger.Errorf("Error can't connect to P4PORT: %q, %v, %q", p4m.p4port, err, errbuf.String())
+		return err
+	}
+	for _, s := range i {
+		parts := strings.Split(s, ": ")
+		if len(parts) == 2 {
+			p4m.p4info[parts[0]] = parts[1]
+		}
+	}
+	p4m.logger.Debugf("p4info -s: %d %v\n%v", len(i), i, p4m.p4info)
+	return nil
 }
 
 func (p4m *P4MonitorMetrics) checkServerID() {
@@ -2473,6 +2483,13 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 			go func() {
 				p4m.setupErrorMonitoring()
 			}()
+		}
+	} else {
+		err := p4m.runInfo() // update p4info to check connection and collect basic info
+		if err != nil {
+			p4m.initialised = false
+			p4m.logger.Warnf("Lost connection to p4d, will re-initialise on next run: %v", err)
+			return
 		}
 	}
 

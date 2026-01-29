@@ -29,6 +29,8 @@ def test_metrics(host):
     assert sf.contains("^p4_monitoring_up.* 1")
 
     # Uptime should be > 0
+    reload_metrics(host)
+    sleep(1)
     sf = host.file(f"/p4/metrics/p4_uptime{suffix}")
     assert sf.contains("^p4_server_uptime.* [1-9]$")
 
@@ -200,6 +202,27 @@ def test_checkpoint_metrics(host):
     expectedFiles = "p4_checkpoint"
     for f in expectedFiles.split():
         assert f"{f}{suffix}" in metricsFiles
+
+    sf = host.file(f"/p4/metrics/p4_checkpoint{suffix}")
+    assert sf.contains("^p4_sdp_checkpoint_error.* 0$")
+
+    # Now cause an error in checkpointing and check metric is created
+    sleep(1)
+    cmd = host.run("rm -f /p4/1/offline_db/offline_db_usable.txt")
+    assert cmd.rc == 0
+    cmd = host.run("su -l perforce daily_checkpoint.sh 1")
+    assert cmd.rc != 0
+    sleep(1)
+
+    reload_metrics(host)
+    sleep(2)
+    metricsFiles = host.file("/p4/metrics").listdir()
+    expectedFiles = "p4_checkpoint"
+    for f in expectedFiles.split():
+        assert f"{f}{suffix}" in metricsFiles
+
+    sf = host.file(f"/p4/metrics/p4_checkpoint{suffix}")
+    assert sf.contains("^p4_sdp_checkpoint_error.* 1$")
 
     # Now remove checkpoint log and make sure metrics file is deleted
     cmd = host.run("rm -f /p4/1/logs/checkpoint.log*")
