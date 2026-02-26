@@ -742,11 +742,12 @@ func TestParseMonitorShow(t *testing.T) {
 			monitorOutput: []string{
 				"12345 R alice 00:00:05 sync",
 				"12346 R bob 00:00:10 edit",
-				"12347 I charlie 00:00:15 sync",
+				"12347 I charlie 00:00:15 IDLE none",
 			},
 			expectedCmds: map[string]int{
-				"sync": 2,
+				"sync": 1,
 				"edit": 1,
+				"IDLE": 1,
 			},
 			expectedUsers: map[string]int{
 				"alice":   1,
@@ -767,7 +768,7 @@ func TestParseMonitorShow(t *testing.T) {
 			monitorOutput: []string{
 				"12345 R alice 00:00:05 sync",
 				"12346 R bob 00:00:10 transmit",
-				"12347 I charlie 00:00:15 shelve",
+				"12347 I charlie 00:00:15 IDLE none",
 				"12348 R dave 00:00:20 unshelve",
 			},
 			monitorGroups: []config.MonitorGroup{
@@ -777,7 +778,7 @@ func TestParseMonitorShow(t *testing.T) {
 			expectedCmds: map[string]int{
 				"sync":     1,
 				"transmit": 1,
-				"shelve":   1,
+				"IDLE":     1,
 				"unshelve": 1,
 			},
 			expectedUsers: map[string]int{
@@ -791,16 +792,16 @@ func TestParseMonitorShow(t *testing.T) {
 				"I": 1,
 			},
 			expectedGroups: map[string]int{
-				"sync_transmit": 2,
-				"shelf_ops":     2,
+				"sync_transmit": 2, // sync R + transmit R
+				"shelf_ops":     1, // only unshelve R (I not counted)
 			},
 			expectedRuntime: map[string]int{
 				"sync_transmit": 15, // 5 + 10
-				"shelf_ops":     35, // 15 + 20
+				"shelf_ops":     20, // only unshelve (20), I not counted
 			},
 			expectedMaxRuntime: map[string]int{
 				"sync_transmit": 10, // max(5, 10)
-				"shelf_ops":     20, // max(15, 20)
+				"shelf_ops":     20, // only unshelve
 			},
 			expectedMaxTime: 20,
 		},
@@ -809,7 +810,7 @@ func TestParseMonitorShow(t *testing.T) {
 			monitorOutput: []string{
 				"12345 R alice 00:00:05 sync",
 				"12346 R svc 00:10:00 ldapsync",
-				"12347 I charlie 00:00:15 shelve",
+				"12347 I charlie 00:00:15 IDLE none",
 			},
 			monitorIgnore: "ldapsync",
 			monitorGroups: []config.MonitorGroup{
@@ -818,7 +819,7 @@ func TestParseMonitorShow(t *testing.T) {
 			expectedCmds: map[string]int{
 				"sync":     1,
 				"ldapsync": 1,
-				"shelve":   1,
+				"IDLE":     1,
 			},
 			expectedUsers: map[string]int{
 				"alice":   1,
@@ -830,13 +831,13 @@ func TestParseMonitorShow(t *testing.T) {
 				"I": 1,
 			},
 			expectedGroups: map[string]int{
-				"other": 2, // sync and shelve, but not ldapsync (ignored)
+				"other": 1, // only sync (R), IDLE is I, ldapsync is ignored
 			},
 			expectedRuntime: map[string]int{
-				"other": 20, // 5 + 15, ldapsync is ignored
+				"other": 5, // only sync (5), IDLE is I, ldapsync is ignored
 			},
 			expectedMaxRuntime: map[string]int{
-				"other": 15, // max(5, 15), ldapsync is ignored
+				"other": 5, // only sync, shelve is I, ldapsync is ignored
 			},
 			expectedMaxTime: 600,
 		},
@@ -874,6 +875,50 @@ func TestParseMonitorShow(t *testing.T) {
 			expectedRuntime:    map[string]int{},
 			expectedMaxRuntime: map[string]int{},
 			expectedMaxTime:    10,
+		},
+		{
+			name: "state filtering - only R processes grouped",
+			monitorOutput: []string{
+				"12345 R alice 00:00:05 sync",
+				"12346 B bob 00:00:10 sync",          // Background - not counted
+				"12347 I charlie 00:00:15 IDLE none", // Idle - not counted
+				"12348 R dave 00:00:20 edit",
+				"12349 B eve 00:00:25 edit", // Background - not counted
+			},
+			monitorGroups: []config.MonitorGroup{
+				{Commands: "sync", Label: "sync_group"},
+				{Commands: "edit", Label: "edit_group"},
+			},
+			expectedCmds: map[string]int{
+				"sync": 2,
+				"edit": 2,
+				"IDLE": 1,
+			},
+			expectedUsers: map[string]int{
+				"alice":   1,
+				"bob":     1,
+				"charlie": 1,
+				"dave":    1,
+				"eve":     1,
+			},
+			expectedStates: map[string]int{
+				"R": 2,
+				"B": 2,
+				"I": 1,
+			},
+			expectedGroups: map[string]int{
+				"sync_group": 1, // only alice's sync (R)
+				"edit_group": 1, // only dave's edit (R)
+			},
+			expectedRuntime: map[string]int{
+				"sync_group": 5,  // only alice's sync
+				"edit_group": 20, // only dave's edit
+			},
+			expectedMaxRuntime: map[string]int{
+				"sync_group": 5,  // only alice's sync
+				"edit_group": 20, // only dave's edit
+			},
+			expectedMaxTime: 25, // eve's blocked edit is max
 		},
 	}
 

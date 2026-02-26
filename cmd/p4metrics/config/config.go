@@ -171,13 +171,19 @@ monitor_ignore: "admin resource-monitor|ldapsync"
 #   label: a name for this group of commands - used as a label value in the p4_monitor_commands metric, so should be a valid label value (see reLabelName in config.go for details)
 # These values are ignored if monitor_ignore matches (first match wins), 
 # and then the command is checked against the patterns in order, with the first match winning (so more specific patterns should come first).
+# Note that only Running commands (state 'R') are counted for these groups, not Background ('B') or Idle ('I'), 
+# as typically you want to monitor the runtime of active commands (and some IDLE commands can be long running and skew the metrics).
 # Example:
 # monitor_groups:
+# - commands: "^rmt.*"
+#   label:    rmt
 # - commands: "sync|transmit"
 #   label: sync_transmit
-# - commands: "shelve|unshelve"
-#   label: shelf_ops
+# - commands: ".*"
+#   label:    other
 monitor_groups:
+  - commands: "^rmt.*"
+    label:    rmt
   - commands: "sync|transmit"
     label:    sync_transmit
   - commands: ".*"

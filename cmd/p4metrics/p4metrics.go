@@ -1572,7 +1572,8 @@ func (p4m *P4MonitorMetrics) parseMonitorShow(monitorOutput []string) *monitorSh
 		result.stateCounts[state]++
 
 		// Group counts and runtime (if monitor_groups configured)
-		if len(p4m.config.MonitorGroups) > 0 {
+		// Only count running processes (state 'R'), not blocked ('B') or idle ('I')
+		if len(p4m.config.MonitorGroups) > 0 && state == "R" {
 			label := p4m.getMonitorGroupLabel(cmd)
 			if label != "" {
 				result.groupCounts[label]++
