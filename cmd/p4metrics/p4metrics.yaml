@@ -72,3 +72,62 @@ swarm_url:
 # swarm_secure: true/false - Whether to validate SSL for swarm
 # Defaults to true, but if you have a self-signed certificate or similar set to false
 swarm_secure:     true
+
+
+# ----------------------
+# max_journal_size: Maximum size of journal file to monitor, e.g. 10G, 0 means no limit
+# Units are K/M/G/T/P (powers of 1024), e.g. 10M, 1.5G etc
+# If the journal file is larger than this value it will be rotated using: p4 admin journal
+# This is useful to avoid sudden large journal growth causing disk space issues (often a sign of automation problems).
+# Note that this is only actioned if the p4d server is a "standard" or "commit-server" (so no replicas or edge servers).
+# The system will only rotate the journal if the user is a super user and the journalPrefix volume has sufficient free space.
+# Leave blank or set to 0 to disable (see max_journal_percent below for alternative).
+max_journal_size:
+
+# ----------------------
+# max_journal_percent: Maximum size of journal as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
+# Values are integers 0-99
+# Volume information is read using: p4 diskspace
+# If the journal file is larger than this percentag value it will be rotated using: p4 admin journal
+# This is useful to avoid sudden large journal growth causing disk space issues (often a sign of automation problems).
+# Note that this is only actioned if the p4d server is a "standard" or "commit-server" (so no replicas or edge servers).
+# The system will only rotate the journal if the journalPrefix volume has sufficient free space.
+# Leave blank or set to 0 to disable (see max_journal_size above for alternative).
+max_journal_percent:     30
+
+# ----------------------
+# max_log_size: Maximum size of P4LOG file to monitor - similar to max_journal_size above
+# Units are K/M/G/T/P (powers of 1024), e.g. 10M, 1.5G etc
+# If the log file is larger than this value it will be rotated and compressed (using rename + gzip)
+max_log_size:
+
+# ----------------------
+# max_log_percent: Maximum size of log as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
+# Values are integers 0-99
+# Volume information is read using: p4 diskspace
+# If the log file is larger than this percentage value it will be rotated and compressed (using rename + gzip)
+max_log_percent:        30
+
+# ----------------------
+# monitor_ignore: Monitor commmands to ignore - e.g. long running background tasks
+# Values are a Go regex pattern - e.g. "admin resource-monitor|ldapsync"
+monitor_ignore: "admin resource-monitor|ldapsync"
+
+# ----------------------
+# monitor_groups: Optional (but recommended) grouping of commands for monitor entries (useful for spotting slow commands).
+# Each entry has:
+#   commands: a Go regex pattern matching command names
+#   label: a name for this group of commands - used as a label value in the p4_monitor_cmds metric, so should be a valid label value (see reLabelName in config.go for details)
+# These values are ignored if monitor_ignore matches (first match wins), 
+# and then the command is checked against the patterns in order, with the first match winning (so more specific patterns should come first).
+# Example:
+# monitor_groups:
+# - commands: "sync|transmit"
+#   label: sync_transmit
+# - commands: "shelve|unshelve"
+#   label: shelf_ops
+monitor_groups:
+  - commands: "sync|transmit"
+    label:    sync_transmit
+  - commands: ".*"
+    label:    other
