@@ -3,12 +3,20 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	yaml "gopkg.in/yaml.v2"
 )
+
+// MonitorGroup defines a group of commands to monitor together
+type MonitorGroup struct {
+	Commands   string         `yaml:"commands"` // Regex pattern for commands
+	ReCommands *regexp.Regexp `yaml:"-"`        // Compiled regex for commands - not set from YAML
+	Label      string         `yaml:"label"`    // Group label name
+}
 
 // Config for p4metrics - see SampleConfig for details
 type Config struct {
@@ -33,6 +41,9 @@ type Config struct {
 	MaxJournalPercentInt int
 	MaxLogSizeInt        int64
 	MaxLogPercentInt     int
+	MonitorIgnore        string         `yaml:"monitor_ignore"` // Monitor commmands to ignore - e.g. long running background tasks - values are a Go regex pattern - e.g. "admin resource-monitor|ldapsync"
+	MonitorIgnoreRe      *regexp.Regexp `yaml:"-"`              // Compiled regex for monitor_ignore - not set from YAML
+	MonitorGroups        []MonitorGroup `yaml:"monitor_groups"` // Array of command groups - each with a regex pattern to match commands and a label value to use for those commands (see SampleConfig for details)
 }
 
 // SampleConfig shows a sample config file - this can be used as a template
@@ -148,6 +159,30 @@ max_log_size:
 # If the log file is larger than this percentage value it will be rotated and compressed (using rename + gzip)
 max_log_percent:        30
 
+# ----------------------
+# monitor_ignore: Monitor commmands to ignore - e.g. long running background tasks
+# Values are a Go regex pattern - e.g. "admin resource-monitor|ldapsync"
+monitor_ignore: "admin resource-monitor|ldapsync"
+
+# ----------------------
+# monitor_groups: Optional (but recommended) grouping of commands for monitor entries (useful for spotting slow commands).
+# Each entry has:
+#   commands: a Go regex pattern matching command names
+#   label: a name for this group of commands - used as a label value in the p4_monitor_commands metric, so should be a valid label value (see reLabelName in config.go for details)
+# These values are ignored if monitor_ignore matches (first match wins), 
+# and then the command is checked against the patterns in order, with the first match winning (so more specific patterns should come first).
+# Example:
+# monitor_groups:
+# - commands: "sync|transmit"
+#   label: sync_transmit
+# - commands: "shelve|unshelve"
+#   label: shelf_ops
+monitor_groups:
+  - commands: "sync|transmit"
+    label:    sync_transmit
+  - commands: ".*"
+    label:    other
+
 `
 
 func ConvertToBytes(size string) (int64, error) {
@@ -234,6 +269,13 @@ func LoadConfigString(content []byte) (*Config, error) {
 	return cfg, err
 }
 
+// reLabelName - any chars in label values not matching this will be converted to underscores.
+// We exclude chars such as: <space>;!="^'
+// Allowed values must be valid for node_exporter and also the graphite text protocol for labels/tags
+// https://graphite.readthedocs.io/en/latest/tags.html
+// In addition any backslashes must be double quoted for node_exporter.
+var reLabelName = regexp.MustCompile(`[\t =/+:;!@{}&%<>*\\.,\(\)\[\]-]`)
+
 func (c *Config) validate() error {
 	if c.MetricsRoot == "" {
 		return fmt.Errorf("invalid metrics_root: please specify directory to which p4metrics *.prom files should be written, e.g. /hxlogs/metrics")
@@ -268,6 +310,31 @@ func (c *Config) validate() error {
 			return fmt.Errorf("invalid max_log_percent: %q please specify valid percent in range 0-99", c.MaxLogPercent)
 		}
 		c.MaxLogPercentInt = int(val)
+	}
+	// Validate and compile monitor_ignore regex
+	if c.MonitorIgnore != "" {
+		re, err := regexp.Compile(c.MonitorIgnore)
+		if err != nil {
+			return fmt.Errorf("failed to parse monitor_ignore '%s' as a regex: %v", c.MonitorIgnore, err)
+		}
+		c.MonitorIgnoreRe = re
+	}
+	// Validate monitor_groups regex patterns and label values
+	for i, mg := range c.MonitorGroups {
+		if mg.Commands == "" {
+			return fmt.Errorf("monitor_groups[%d]: commands cannot be empty", i)
+		}
+		if mg.Label == "" {
+			return fmt.Errorf("monitor_groups[%d]: label cannot be empty", i)
+		}
+		if reLabelName.MatchString(mg.Label) {
+			return fmt.Errorf("monitor_groups[%d]: label '%s' contains invalid characters for a label value", i, mg.Label)
+		}
+		re, err := regexp.Compile(mg.Commands)
+		if err != nil {
+			return fmt.Errorf("monitor_groups[%d]: failed to parse '%s' as a regex: %v", i, mg.Commands, err)
+		}
+		c.MonitorGroups[i].ReCommands = re
 	}
 	return nil
 }

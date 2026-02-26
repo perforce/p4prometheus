@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -718,4 +719,210 @@ func TestSwarmProcessingUnauth(t *testing.T) {
 	}
 	tlogger.Debugf("Metrics: %q", p4m.metrics)
 	compareMetricValues(t, expected, p4m.metrics)
+}
+
+func TestParseMonitorShow(t *testing.T) {
+	initLogger()
+
+	testCases := []struct {
+		name               string
+		monitorOutput      []string
+		monitorGroups      []config.MonitorGroup
+		monitorIgnore      string
+		expectedCmds       map[string]int
+		expectedUsers      map[string]int
+		expectedStates     map[string]int
+		expectedGroups     map[string]int
+		expectedRuntime    map[string]int
+		expectedMaxRuntime map[string]int
+		expectedMaxTime    int
+	}{
+		{
+			name: "basic parsing",
+			monitorOutput: []string{
+				"12345 R alice 00:00:05 sync",
+				"12346 R bob 00:00:10 edit",
+				"12347 I charlie 00:00:15 sync",
+			},
+			expectedCmds: map[string]int{
+				"sync": 2,
+				"edit": 1,
+			},
+			expectedUsers: map[string]int{
+				"alice":   1,
+				"bob":     1,
+				"charlie": 1,
+			},
+			expectedStates: map[string]int{
+				"R": 2,
+				"I": 1,
+			},
+			expectedGroups:     map[string]int{},
+			expectedRuntime:    map[string]int{},
+			expectedMaxRuntime: map[string]int{},
+			expectedMaxTime:    15,
+		},
+		{
+			name: "with monitor groups",
+			monitorOutput: []string{
+				"12345 R alice 00:00:05 sync",
+				"12346 R bob 00:00:10 transmit",
+				"12347 I charlie 00:00:15 shelve",
+				"12348 R dave 00:00:20 unshelve",
+			},
+			monitorGroups: []config.MonitorGroup{
+				{Commands: "sync|transmit", Label: "sync_transmit"},
+				{Commands: "shelve|unshelve", Label: "shelf_ops"},
+			},
+			expectedCmds: map[string]int{
+				"sync":     1,
+				"transmit": 1,
+				"shelve":   1,
+				"unshelve": 1,
+			},
+			expectedUsers: map[string]int{
+				"alice":   1,
+				"bob":     1,
+				"charlie": 1,
+				"dave":    1,
+			},
+			expectedStates: map[string]int{
+				"R": 3,
+				"I": 1,
+			},
+			expectedGroups: map[string]int{
+				"sync_transmit": 2,
+				"shelf_ops":     2,
+			},
+			expectedRuntime: map[string]int{
+				"sync_transmit": 15, // 5 + 10
+				"shelf_ops":     35, // 15 + 20
+			},
+			expectedMaxRuntime: map[string]int{
+				"sync_transmit": 10, // max(5, 10)
+				"shelf_ops":     20, // max(15, 20)
+			},
+			expectedMaxTime: 20,
+		},
+		{
+			name: "with monitor ignore",
+			monitorOutput: []string{
+				"12345 R alice 00:00:05 sync",
+				"12346 R svc 00:10:00 ldapsync",
+				"12347 I charlie 00:00:15 shelve",
+			},
+			monitorIgnore: "ldapsync",
+			monitorGroups: []config.MonitorGroup{
+				{Commands: ".*", Label: "other"},
+			},
+			expectedCmds: map[string]int{
+				"sync":     1,
+				"ldapsync": 1,
+				"shelve":   1,
+			},
+			expectedUsers: map[string]int{
+				"alice":   1,
+				"svc":     1,
+				"charlie": 1,
+			},
+			expectedStates: map[string]int{
+				"R": 2,
+				"I": 1,
+			},
+			expectedGroups: map[string]int{
+				"other": 2, // sync and shelve, but not ldapsync (ignored)
+			},
+			expectedRuntime: map[string]int{
+				"other": 20, // 5 + 15, ldapsync is ignored
+			},
+			expectedMaxRuntime: map[string]int{
+				"other": 15, // max(5, 15), ldapsync is ignored
+			},
+			expectedMaxTime: 600,
+		},
+		{
+			name:               "empty output",
+			monitorOutput:      []string{},
+			expectedCmds:       map[string]int{},
+			expectedUsers:      map[string]int{},
+			expectedStates:     map[string]int{},
+			expectedGroups:     map[string]int{},
+			expectedRuntime:    map[string]int{},
+			expectedMaxRuntime: map[string]int{},
+			expectedMaxTime:    0,
+		},
+		{
+			name: "malformed lines ignored",
+			monitorOutput: []string{
+				"12345 R alice 00:00:05 sync",
+				"incomplete line",
+				"12346 R bob",
+				"12347 R charlie 00:00:10 edit",
+			},
+			expectedCmds: map[string]int{
+				"sync": 1,
+				"edit": 1,
+			},
+			expectedUsers: map[string]int{
+				"alice":   1,
+				"charlie": 1,
+			},
+			expectedStates: map[string]int{
+				"R": 2,
+			},
+			expectedGroups:     map[string]int{},
+			expectedRuntime:    map[string]int{},
+			expectedMaxRuntime: map[string]int{},
+			expectedMaxTime:    10,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{
+				MonitorGroups: tc.monitorGroups,
+			}
+
+			// Compile monitor ignore regex if specified
+			if tc.monitorIgnore != "" {
+				cfg.MonitorIgnore = tc.monitorIgnore
+				re, err := regexp.Compile(tc.monitorIgnore)
+				assert.NoError(t, err)
+				cfg.MonitorIgnoreRe = re
+			}
+
+			// Compile monitor group regexes
+			for i := range cfg.MonitorGroups {
+				re, err := regexp.Compile(cfg.MonitorGroups[i].Commands)
+				assert.NoError(t, err)
+				cfg.MonitorGroups[i].ReCommands = re
+			}
+
+			env := map[string]string{}
+			p4m := newP4MonitorMetrics(cfg, &env, tlogger)
+
+			result := p4m.parseMonitorShow(tc.monitorOutput)
+
+			// Verify command counts
+			assert.Equal(t, tc.expectedCmds, result.cmdCounts, "cmdCounts mismatch")
+
+			// Verify user counts
+			assert.Equal(t, tc.expectedUsers, result.userCounts, "userCounts mismatch")
+
+			// Verify state counts
+			assert.Equal(t, tc.expectedStates, result.stateCounts, "stateCounts mismatch")
+
+			// Verify group counts
+			assert.Equal(t, tc.expectedGroups, result.groupCounts, "groupCounts mismatch")
+
+			// Verify group runtime
+			assert.Equal(t, tc.expectedRuntime, result.groupRuntime, "groupRuntime mismatch")
+
+			// Verify group max runtime
+			assert.Equal(t, tc.expectedMaxRuntime, result.groupMaxRuntime, "groupMaxRuntime mismatch")
+
+			// Verify max time
+			assert.Equal(t, tc.expectedMaxTime, result.maxNonSvcTime, "maxNonSvcTime mismatch")
+		})
+	}
 }

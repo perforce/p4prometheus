@@ -102,3 +102,63 @@ func loadOrFail(t *testing.T, cfgString string) *Config {
 	}
 	return cfg
 }
+
+const configWithMonitorGroups = `
+metrics_root:				/hxlogs/metrics
+sdp_instance: 				1
+monitor_groups:
+- commands: "sync|transmit"
+  label: sync_transmit
+- commands: "shelve|unshelve"
+  label: shelf_ops
+`
+
+const configWithInvalidGroupRegex = `
+metrics_root:				/hxlogs/metrics
+sdp_instance: 				1
+monitor_groups:
+- commands: "sync|[invalid"
+  label: sync_ops
+`
+
+const configWithInvalidGroupName = `
+metrics_root:				/hxlogs/metrics
+sdp_instance: 				1
+monitor_groups:
+- commands: "sync|transmit"
+  label: "sync transmit"
+`
+
+const configWithEmptyCommands = `
+metrics_root:				/hxlogs/metrics
+sdp_instance: 				1
+monitor_groups:
+- commands: ""
+  label: sync_ops
+`
+
+const configWithEmptyGroup = `
+metrics_root:				/hxlogs/metrics
+sdp_instance: 				1
+monitor_groups:
+- commands: "sync"
+  label: ""
+`
+
+func TestValidMonitorGroups(t *testing.T) {
+	cfg := loadOrFail(t, configWithMonitorGroups)
+	if len(cfg.MonitorGroups) != 2 {
+		t.Fatalf("Expected 2 monitor groups, got %d", len(cfg.MonitorGroups))
+	}
+	checkValue(t, "MonitorGroups[0].Commands", cfg.MonitorGroups[0].Commands, "sync|transmit")
+	checkValue(t, "MonitorGroups[0].Label", cfg.MonitorGroups[0].Label, "sync_transmit")
+	checkValue(t, "MonitorGroups[1].Commands", cfg.MonitorGroups[1].Commands, "shelve|unshelve")
+	checkValue(t, "MonitorGroups[1].Label", cfg.MonitorGroups[1].Label, "shelf_ops")
+}
+
+func TestInvalidMonitorGroups(t *testing.T) {
+	ensureFail(t, configWithInvalidGroupRegex, "invalid regex in commands")
+	ensureFail(t, configWithInvalidGroupName, "invalid characters in group name")
+	ensureFail(t, configWithEmptyCommands, "empty commands field")
+	ensureFail(t, configWithEmptyGroup, "empty group field")
+}

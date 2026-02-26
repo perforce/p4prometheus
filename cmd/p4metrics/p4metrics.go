@@ -1512,6 +1512,85 @@ func (p4m *P4MonitorMetrics) getMaxNonSvcCmdTime(lines []string) int {
 	return maxTime
 }
 
+// getMonitorGroupLabel returns the label for a command based on monitor_groups config
+// Returns empty string if command should be ignored
+func (p4m *P4MonitorMetrics) getMonitorGroupLabel(cmd string) string {
+	// Check if command should be ignored
+	if p4m.config.MonitorIgnoreRe != nil && p4m.config.MonitorIgnoreRe.MatchString(cmd) {
+		return ""
+	}
+	// Find first matching monitor group
+	for _, mg := range p4m.config.MonitorGroups {
+		if mg.ReCommands != nil && mg.ReCommands.MatchString(cmd) {
+			return mg.Label
+		}
+	}
+	return ""
+}
+
+// monitorShowResult holds the parsed results from monitor show -l output
+type monitorShowResult struct {
+	cmdCounts       map[string]int
+	userCounts      map[string]int
+	stateCounts     map[string]int
+	groupCounts     map[string]int
+	groupRuntime    map[string]int
+	groupMaxRuntime map[string]int
+	maxNonSvcTime   int
+}
+
+// parseMonitorShow parses the output of p4 monitor show -l and returns structured data
+func (p4m *P4MonitorMetrics) parseMonitorShow(monitorOutput []string) *monitorShowResult {
+	result := &monitorShowResult{
+		cmdCounts:       make(map[string]int),
+		userCounts:      make(map[string]int),
+		stateCounts:     make(map[string]int),
+		groupCounts:     make(map[string]int),
+		groupRuntime:    make(map[string]int),
+		groupMaxRuntime: make(map[string]int),
+	}
+
+	// Parse all lines and collect data
+	for _, line := range monitorOutput {
+		fields := strings.Fields(line)
+		if len(fields) < 5 { // Skip lines that don't have sufficient fields
+			continue
+		}
+		state := fields[1]
+		user := fields[2]
+		timeStr := fields[3]
+		cmd := fields[4]
+		timeSeconds := p4m.getTime(timeStr)
+
+		// Count by command
+		result.cmdCounts[cmd]++
+
+		// Count by user
+		result.userCounts[user]++
+
+		// Count by state
+		result.stateCounts[state]++
+
+		// Group counts and runtime (if monitor_groups configured)
+		if len(p4m.config.MonitorGroups) > 0 {
+			label := p4m.getMonitorGroupLabel(cmd)
+			if label != "" {
+				result.groupCounts[label]++
+				result.groupRuntime[label] += timeSeconds
+				// Track max runtime for this group
+				if timeSeconds > result.groupMaxRuntime[label] {
+					result.groupMaxRuntime[label] = timeSeconds
+				}
+			}
+		}
+	}
+
+	// Calculate max non-svc command time
+	result.maxNonSvcTime = p4m.getMaxNonSvcCmdTime(monitorOutput)
+
+	return result
+}
+
 func (p4m *P4MonitorMetrics) monitorProcesses() {
 	// Monitor metrics summarised by cmd or user
 	p4m.startMonitor("monitorProcesses", "p4_monitor")
@@ -1526,17 +1605,46 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 		return
 	}
 	p4m.logger.Debugf("Monitor output: %q", monitorOutput)
-	cmdCounts := p4m.getFieldCounts(monitorOutput, 5)
-	for cmd, count := range cmdCounts {
+
+	// Parse monitor output using testable function
+	result := p4m.parseMonitorShow(monitorOutput)
+
+	// Generate metrics from parsed results
+	for cmd, count := range result.cmdCounts {
 		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitor_by_cmd",
 			help:   "P4 running processes by cmd in monitor table",
 			mtype:  "counter",
 			value:  fmt.Sprintf("%d", count),
 			labels: []labelStruct{{name: "cmd", value: cmd}}})
 	}
+
+	// Output grouped command metrics if configured
+	if len(p4m.config.MonitorGroups) > 0 {
+		for label, count := range result.groupCounts {
+			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitor_cmds",
+				help:   "P4 running processes count grouped by command patterns",
+				mtype:  "gauge",
+				value:  fmt.Sprintf("%d", count),
+				labels: []labelStruct{{name: "cmd_group", value: label}}})
+		}
+		for label, runtime := range result.groupRuntime {
+			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitor_cmds_runtime",
+				help:   "P4 running processes total runtime (seconds) grouped by command patterns",
+				mtype:  "gauge",
+				value:  fmt.Sprintf("%d", runtime),
+				labels: []labelStruct{{name: "cmd_group", value: label}}})
+		}
+		for label, maxRuntime := range result.groupMaxRuntime {
+			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitor_cmds_max_runtime",
+				help:   "P4 running processes max runtime (seconds) grouped by command patterns",
+				mtype:  "gauge",
+				value:  fmt.Sprintf("%d", maxRuntime),
+				labels: []labelStruct{{name: "cmd_group", value: label}}})
+		}
+	}
+
 	if p4m.config.CmdsByUser {
-		userCounts := p4m.getFieldCounts(monitorOutput, 3)
-		for user, count := range userCounts {
+		for user, count := range result.userCounts {
 			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitor_by_user",
 				help:   "P4 running processes by user in monitor table",
 				mtype:  "counter",
@@ -1544,18 +1652,19 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 				labels: []labelStruct{{name: "user", value: user}}})
 		}
 	}
-	stateCounts := p4m.getFieldCounts(monitorOutput, 2)
-	for state, count := range stateCounts {
+
+	for state, count := range result.stateCounts {
 		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitor_by_state",
 			help:   "P4 running processes by state in monitor table",
 			mtype:  "gauge",
 			value:  fmt.Sprintf("%d", count),
 			labels: []labelStruct{{name: "state", value: state}}})
 	}
+
 	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitor_max_cmd_time",
 		help:  "P4 monitor max (non-svc) command run time",
 		mtype: "gauge",
-		value: fmt.Sprintf("%d", p4m.getMaxNonSvcCmdTime(monitorOutput))})
+		value: fmt.Sprintf("%d", result.maxNonSvcTime)})
 	if runtime.GOOS == "linux" { // Don't bother on Windows
 		var proc string
 		if p4m.config.SDPInstance != "" {

@@ -165,7 +165,10 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_monitor_by_cmd | cmd | P4 running processes - counted by cmd |
 | p4_monitor_by_state | state | P4 running processes - counted by state (see 'p4 monitor show' status field) |
 | p4_monitor_by_user | user | P4 running processes - counted by user |
-| p4_monitor_max_cmd_time | user | Max time in seconds for a non-service user command in the monitor table |
+| p4_monitor_cmds | cmd_group | P4 running processes count grouped by command patterns |
+| p4_monitor_cmds_max_runtime | cmd_group | P4 running processes max runtime (seconds) grouped by command patterns |
+| p4_monitor_cmds_runtime | cmd_group | P4 running processes total runtime (seconds) grouped by command patterns |
+| p4_monitor_max_cmd_time |  | Max time in seconds for a non-service user command in the monitor table |
 | p4_p4d_build_info | version | P4D Version/build info |
 | p4_p4d_server_type | services | P4D server type/services |
 | p4_process_count |  | (Deprecated monitor_metrics.sh) P4 running processes - counted via 'ps' |
