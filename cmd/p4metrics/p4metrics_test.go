@@ -920,6 +920,59 @@ func TestParseMonitorShow(t *testing.T) {
 			},
 			expectedMaxTime: 25, // eve's blocked edit is max
 		},
+		{
+			name: "larger output with various states and groups",
+			monitorOutput: []string{
+				"208188 R p4sdp      00:00:00 monitor show -al",
+				"208182 R ecagent    00:00:01 client -d cmdr-sources-186564700-99226",
+				"1152895 R svc_p4d_ha_chi 00:00:01 rmt-Journal",
+				"208137 R qtdev      00:00:03 transmit -t208015 -b8 -s524288",
+				"208015 R qtdev      00:00:04 sync -f -q //...",
+				"208026 R qtdev      00:00:04 transmit -t208015 -b8 -s524288",
+				"208029 R qtdev      00:00:04 transmit -t208015 -b8 -s524288",
+				"208030 R qtdev      00:00:04 transmit -t208015 -b8 -s524288",
+				"4055366 R fred      100:47:20 dm-SubmitChange",
+			},
+			monitorGroups: []config.MonitorGroup{
+				{Commands: "^rmt.*", Label: "rmt_group"},
+				{Commands: "sync|transmit", Label: "sync_group"},
+				{Commands: ".*", Label: "other_group"},
+			},
+			expectedCmds: map[string]int{
+				"client":          1,
+				"dm-SubmitChange": 1,
+				"monitor":         1,
+				"rmt-Journal":     1,
+				"sync":            1,
+				"transmit":        4,
+			},
+			expectedUsers: map[string]int{
+				"ecagent":        1,
+				"fred":           1,
+				"p4sdp":          1,
+				"qtdev":          5,
+				"svc_p4d_ha_chi": 1,
+			},
+			expectedStates: map[string]int{
+				"R": 9,
+			},
+			expectedGroups: map[string]int{
+				"other_group": 3,
+				"rmt_group":   1,
+				"sync_group":  5,
+			},
+			expectedRuntime: map[string]int{
+				"other_group": 362841, // monitor (0) + client (1) + dm-SubmitChange (100 * 3600 + 47 * 60 + 20 = 362840)
+				"rmt_group":   1,
+				"sync_group":  19,
+			},
+			expectedMaxRuntime: map[string]int{
+				"other_group": 362840,
+				"rmt_group":   1,
+				"sync_group":  4,
+			},
+			expectedMaxTime: 362840, // dm-SubmitChange is max
+		},
 	}
 
 	for _, tc := range testCases {
