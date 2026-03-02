@@ -12,7 +12,7 @@ import json
 curr_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(curr_dir))
 
-from monitor_metrics import P4Monitor
+from monitor_metrics import P4Monitor, parse_elapsed_to_seconds
 
 # os.environ["LOGS"] = "."
 # LOGGER_NAME = "testMonitorMetrics"
@@ -28,6 +28,15 @@ class TestMonitorMetrics(unittest.TestCase):
 
     def tearDown(self):
         pass
+
+    def testParseElapsedToSeconds(self):
+        """Check conversion of HH:MM:SS elapsed strings"""
+        self.assertEqual(61, parse_elapsed_to_seconds("00:01:01"))
+        self.assertEqual(3661, parse_elapsed_to_seconds("01:01:01"))
+        self.assertEqual(669, parse_elapsed_to_seconds("00:11:09"))
+        self.assertEqual(6, parse_elapsed_to_seconds("00:00:06"))
+        self.assertEqual(0, parse_elapsed_to_seconds("unknown"))
+        self.assertEqual(0, parse_elapsed_to_seconds(None))
 
     def testFindLocks(self):
         """Check parsing of lockdata"""
@@ -150,7 +159,9 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
                  p4_locks_cliententity_write 0
                  p4_locks_meta_read 0
                  p4_locks_meta_write 0
-                 p4_locks_cmds_blocked 2""".split("\n")
+                 p4_locks_cmds_blocked 2
+                 p4_locks_blocking_elapsed_seconds{blocker_pid="166",blocker_user="jim",blocker_cmd="sync",table="db.have"} 61
+                 p4_locks_blocking_cmds_count{blocker_pid="166",blocker_user="jim",blocker_cmd="sync",table="db.have"} 2""".split("\n")
         exp_lines = [x.strip() for x in exp]
         exp_lines.sort()
         lines.sort()
@@ -199,7 +210,9 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
                  p4_locks_cliententity_write 0
                  p4_locks_meta_read 1
                  p4_locks_meta_write 0
-                 p4_locks_cmds_blocked 1""".split("\n")
+                 p4_locks_cmds_blocked 1
+                 p4_locks_blocking_elapsed_seconds{blocker_pid="92079",blocker_user="jteam",blocker_cmd="sync",table="db.sendq"} 6
+                 p4_locks_blocking_cmds_count{blocker_pid="92079",blocker_user="jteam",blocker_cmd="sync",table="db.sendq"} 1""".split("\n")
         exp_lines = [x.strip() for x in exp]
         exp_lines.sort()
         lines.sort()
@@ -231,7 +244,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
                          metrics.msgs[0])
         self.assertEqual(r"pid 920, user jteam, cmd sync, table db.sendq, blocked by pid 921, user jteam, cmd sync, args ...",
                          metrics.msgs[1])
-        self.assertEqual(r"pid 921, user jteam, cmd sync, table meta, blocked by pid 900, user jteam, cmd sync, args ...",
+        self.assertEqual(r"pid 921, user jteam, cmd sync, table metaLock, blocked by pid 900, user jteam, cmd sync, args ...",
                          metrics.msgs[2])
         blines = obj.findBlockers(metrics)
         print(json.dumps(obj.blocking_tree, indent=4))
@@ -325,7 +338,9 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
                  p4_locks_cliententity_write 0
                  p4_locks_meta_read 0
                  p4_locks_meta_write 0
-                 p4_locks_cmds_blocked 2""".split("\n")
+                 p4_locks_cmds_blocked 2
+                 p4_locks_blocking_elapsed_seconds{blocker_pid="3727",blocker_user="fred",blocker_cmd="reconcile",table="unknown"} 669
+                 p4_locks_blocking_cmds_count{blocker_pid="3727",blocker_user="fred",blocker_cmd="reconcile",table="unknown"} 2""".split("\n")
         exp_lines = [x.strip() for x in exp]
         exp_lines.sort()
         lines.sort()

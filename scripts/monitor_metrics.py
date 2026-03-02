@@ -25,6 +25,7 @@ from __future__ import print_function
 
 import sys
 import os
+import socket
 import textwrap
 import argparse
 import logging
@@ -37,6 +38,17 @@ python3 = (sys.version_info[0] >= 3)
 
 LOGGER_NAME = 'monitor_metrics'
 logger = logging.getLogger(LOGGER_NAME)
+
+
+def parse_elapsed_to_seconds(elapsed_str):
+    """Convert HH:MM:SS elapsed string from p4 monitor to integer seconds. Returns 0 on failure."""
+    try:
+        parts = elapsed_str.split(":")
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+    except (ValueError, AttributeError):
+        pass
+    return 0
 
 metrics_root = "/p4/metrics"
 metrics_file = "locks.prom"
@@ -281,6 +293,9 @@ class P4Monitor(object):
                             default=default_verbosity,
                             choices=('DEBUG', 'WARNING', 'INFO', 'ERROR', 'FATAL'),
                             help="Output verbosity level. Default is: " + default_verbosity)
+        parser.add_argument('-g', '--graylog-file', default=None,
+                            help="Optional path to append GELF-formatted JSON events for Graylog ingestion. "
+                                 "One JSON object per line, written only when blocking commands are detected.")
 
     def init_logger(self, logger_name=None):
         if not logger_name:
@@ -499,6 +514,28 @@ class P4Monitor(object):
         name = "p4_locks_cmds_blocked"
         lines.extend(self.metricsHeader(name, "cmds blocked by locks", "gauge"))
         lines.append("%s%s %s" % (name, self.formatLabels(labels), metrics.blockedCommands))
+        if metrics.blockingCommands:
+            name = "p4_locks_blocking_elapsed_seconds"
+            lines.extend(self.metricsHeader(name, "Elapsed seconds for process holding a blocking lock", "gauge"))
+            for pid, blocker in sorted(metrics.blockingCommands.items()):
+                elapsed_secs = parse_elapsed_to_seconds(blocker.elapsed)
+                blocker_labels = labels + [
+                    'blocker_pid="%s"' % pid,
+                    'blocker_user="%s"' % blocker.user,
+                    'blocker_cmd="%s"' % blocker.cmd,
+                    'table="%s"' % blocker.table,
+                ]
+                lines.append("%s%s %s" % (name, self.formatLabels(blocker_labels), elapsed_secs))
+            name = "p4_locks_blocking_cmds_count"
+            lines.extend(self.metricsHeader(name, "Number of commands directly blocked by this process", "gauge"))
+            for pid, blocker in sorted(metrics.blockingCommands.items()):
+                blocker_labels = labels + [
+                    'blocker_pid="%s"' % pid,
+                    'blocker_user="%s"' % blocker.user,
+                    'blocker_cmd="%s"' % blocker.cmd,
+                    'table="%s"' % blocker.table,
+                ]
+                lines.append("%s%s %s" % (name, self.formatLabels(blocker_labels), len(blocker.blockedPids)))
         return lines
 
     def writeMetrics(self, lines):
@@ -526,6 +563,67 @@ class P4Monitor(object):
         with open(self.options.log, "a") as f:
             f.write("\n".join(lines))
             f.write("\n")
+
+    def writeGraylogEvents(self, metrics):
+        """Append one GELF JSON object per active blocker to the graylog file.
+
+        Each event includes the blocking process details, the list of blocked
+        processes, and a human-readable short_message suitable for Graylog alerts.
+        The file is intended to be tailed by a Graylog GELF file input.
+        Only writes if --graylog-file is set and there are active blockers.
+        """
+        if not self.options.graylog_file:
+            return
+        if not metrics.blockingCommands:
+            return
+        hostname = socket.gethostname()
+        timestamp = self.now.timestamp()
+        serverid = ""
+        sdpinst = ""
+        if self.serverid_label:
+            m = re.match(r'serverid="([^"]*)"', self.serverid_label)
+            if m:
+                serverid = m.group(1)
+        if self.sdpinst_label:
+            m = re.match(r'sdpinst="([^"]*)"', self.sdpinst_label)
+            if m:
+                sdpinst = m.group(1)
+        with open(self.options.graylog_file, "a") as f:
+            for pid, blocker in sorted(metrics.blockingCommands.items()):
+                elapsed_secs = parse_elapsed_to_seconds(blocker.elapsed)
+                blocked_count = len(blocker.blockedPids)
+                blocked_users = []
+                blocked_cmds = []
+                for bpid in blocker.blockedPids:
+                    if bpid in metrics.monitorCommands:
+                        mp = metrics.monitorCommands[bpid]
+                        blocked_users.append(mp.user)
+                        blocked_cmds.append(mp.cmd)
+                short_msg = (
+                    "P4 DB lock: pid %s (%s/%s) blocked %d process(es) for %ds on %s" %
+                    (pid, blocker.user, blocker.cmd, blocked_count, elapsed_secs, blocker.table)
+                )
+                gelf = {
+                    "version": "1.1",
+                    "host": hostname,
+                    "short_message": short_msg,
+                    "timestamp": timestamp,
+                    "level": 4,
+                    "_blocker_pid": pid,
+                    "_blocker_user": blocker.user,
+                    "_blocker_cmd": blocker.cmd,
+                    "_blocker_table": blocker.table,
+                    "_blocker_elapsed_seconds": elapsed_secs,
+                    "_blocked_pids": ",".join(blocker.blockedPids),
+                    "_blocked_count": blocked_count,
+                    "_blocked_users": ",".join(blocked_users),
+                    "_blocked_cmds": ",".join(blocked_cmds),
+                }
+                if serverid:
+                    gelf["_serverid"] = serverid
+                if sdpinst:
+                    gelf["_sdpinst"] = sdpinst
+                f.write(json.dumps(gelf) + "\n")
 
     def getLslocksVer(self, ver):
         # lslocks from util-linux 2.23.2
@@ -610,6 +708,7 @@ class P4Monitor(object):
                         blines = self.findBlockers(metrics)
                         self.writeLog([timestamp + x for x in blines])
                         self.writeMetrics(self.formatMetrics(metrics))
+                        self.writeGraylogEvents(metrics)
                         locklines = []
                         monlines = []
                         stage = 0
@@ -623,6 +722,7 @@ class P4Monitor(object):
             self.writeLog(self.formatLog(metrics))
             self.findBlockers(metrics)
             self.writeMetrics(self.formatMetrics(metrics))
+            self.writeGraylogEvents(metrics)
 
     def run(self):
         """Runs script"""
@@ -653,6 +753,7 @@ class P4Monitor(object):
         blines = self.findBlockers(metrics)
         self.writeLog([timestamp + x for x in blines])
         self.writeMetrics(self.formatMetrics(metrics))
+        self.writeGraylogEvents(metrics)
 
 
 if __name__ == '__main__':

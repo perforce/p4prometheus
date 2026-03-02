@@ -270,7 +270,83 @@ groups:
       description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 10 mins."
       runbook_id: _app_memory_usage_high
 
-  - alert: Hansoft Diskspace Low
+  # ---------------------------------------------------------------------------
+  # DB Lock alerts
+  # ---------------------------------------------------------------------------
+
+  - alert: P4 DB Lock - Commands Blocked
+    # Fires when any commands are currently blocked by a lock. Use a short
+    # window so the alert clears quickly once the lock resolves.
+    expr: p4_locks_cmds_blocked > 0
+    for: 2m
+    labels:
+      severity: "warning"
+    annotations:
+      summary: "{{ $labels.instance }} has {{ $value }} command(s) blocked by DB locks"
+      description: >
+        One or more p4 commands on {{ $labels.instance }} (serverid={{ $labels.serverid }})
+        are blocked by database locks. Check p4_locks_blocking_elapsed_seconds and
+        p4_locks_blocking_cmds_count for the offending process details.
+      runbook_id: _p4_db_lock_cmds_blocked
+
+  - alert: P4 DB Lock - Long-Running Blocker
+    # Fires when a single process has been holding a lock for more than 60s.
+    # Labeled with blocker_pid/user/cmd/table from the new per-blocker metrics.
+    expr: p4_locks_blocking_elapsed_seconds > 60
+    for: 1m
+    labels:
+      severity: "warning"
+    annotations:
+      summary: >
+        {{ $labels.instance }} lock held {{ $value | printf "%.0f" }}s by
+        pid {{ $labels.blocker_pid }} ({{ $labels.blocker_user }}/{{ $labels.blocker_cmd }})
+        on {{ $labels.table }}
+      description: >
+        Process pid={{ $labels.blocker_pid }} user={{ $labels.blocker_user }}
+        cmd={{ $labels.blocker_cmd }} on {{ $labels.instance }} has held a lock on
+        table {{ $labels.table }} for {{ $value | printf "%.0f" }} seconds.
+        Check whether this is an IO wait issue or a slow command.
+      runbook_id: _p4_db_lock_long_running_blocker
+
+  - alert: P4 DB Lock - Critical Long-Running Blocker
+    # Escalation: blocker held for more than 5 minutes → Jira ticket.
+    expr: p4_locks_blocking_elapsed_seconds > 300
+    for: 1m
+    labels:
+      severity: "critical"
+    annotations:
+      summary: >
+        CRITICAL: {{ $labels.instance }} lock held {{ $value | printf "%.0f" }}s by
+        pid {{ $labels.blocker_pid }} ({{ $labels.blocker_user }}/{{ $labels.blocker_cmd }})
+        on {{ $labels.table }}
+      description: >
+        Process pid={{ $labels.blocker_pid }} user={{ $labels.blocker_user }}
+        cmd={{ $labels.blocker_cmd }} on {{ $labels.instance }} has held a lock on
+        table {{ $labels.table }} for over 5 minutes ({{ $value | printf "%.0f" }}s).
+        This is likely causing significant user impact. Immediate investigation required.
+      runbook_id: _p4_db_lock_critical_long_running_blocker
+
+  - alert: P4 DB Lock - Cascading Block
+    # Fires when one process is blocking 5 or more others. High cascading
+    # impact regardless of elapsed time — create a Jira ticket immediately.
+    expr: p4_locks_blocking_cmds_count >= 5
+    for: 1m
+    labels:
+      severity: "critical"
+    annotations:
+      summary: >
+        {{ $labels.instance }}: pid {{ $labels.blocker_pid }}
+        ({{ $labels.blocker_user }}/{{ $labels.blocker_cmd }}) blocking
+        {{ $value | printf "%.0f" }} commands on {{ $labels.table }}
+      description: >
+        A single process (pid={{ $labels.blocker_pid }} user={{ $labels.blocker_user }}
+        cmd={{ $labels.blocker_cmd }}) on {{ $labels.instance }} is directly blocking
+        {{ $value | printf "%.0f" }} other p4 commands on table {{ $labels.table }}.
+        Cascading lock contention of this scale requires immediate investigation.
+      runbook_id: _p4_db_lock_cascading_block
+
+  # ---------------------------------------------------------------------------
+  # Hansoft Diskspace Low
     expr: >
         predict_linear(node_filesystem_free_bytes{instance=~".*hansoft.*",mountpoint="/"}[1h], 7 * 24 * 3600) < 0 or
         predict_linear(node_filesystem_free_bytes{instance=~".*hansoft.*",mountpoint="/opt/HansoftServer"}[1h], 7 * 24 * 3600) < 0 or
