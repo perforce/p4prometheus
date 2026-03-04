@@ -22,7 +22,7 @@ vmagent_config_dir="/var/vmagent"
 
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.10.5"
+VER_P4PROMETHEUS="0.10.6"
 VER_VICTORIA_METRICS="1.131.0"
 
 # Default to amd but allow arm architecture
@@ -444,6 +444,43 @@ max_log_size:
 # Volume information is read using: p4 diskspace
 # If the log file is larger than this percentage value it will be rotated and compressed (using rename + gzip)
 max_log_percent:        30
+
+EOF
+    fi
+
+    # Now add section for monitor_ignore and monitor_groups if not present - these are used to control which 
+    # commands are monitored and how they are grouped in the p4_monitor_cmds metric
+    if ! grep -qE '^[[:space:]]*#?[[:space:]]*monitor_ignore:' "$p4metrics_config_file"; then
+        cat << EOF >> "$p4metrics_config_file"
+# ----------------------
+# monitor_ignore: Monitor commmands to ignore - e.g. long running background tasks
+# Values are a Go regex pattern - e.g. "admin resource-monitor|ldapsync"
+monitor_ignore: "admin resource-monitor|ldapsync"
+
+# ----------------------
+# monitor_groups: Optional (but recommended) grouping of commands for monitor entries (useful for spotting slow commands).
+# Each entry has:
+#   commands: a Go regex pattern matching command names
+#   label: a name for this group of commands - used as a label value in the p4_monitor_commands metric, so should be a valid label value (see reLabelName in config.go for details)
+# These values are ignored if monitor_ignore matches (first match wins), 
+# and then the command is checked against the patterns in order, with the first match winning (so more specific patterns should come first).
+# Note that only Running commands (state 'R') are counted for these groups, not Background ('B') or Idle ('I'), 
+# as typically you want to monitor the runtime of active commands (and some IDLE commands can be long running and skew the metrics).
+# Example:
+# monitor_groups:
+# - commands: "^rmt.*"
+#   label:    rmt
+# - commands: "sync|transmit"
+#   label: sync_transmit
+# - commands: ".*"
+#   label:    other
+monitor_groups:
+  - commands: "^rmt.*"
+    label:    rmt
+  - commands: "sync|transmit"
+    label:    sync_transmit
+  - commands: ".*"
+    label:    other
 
 EOF
     fi
