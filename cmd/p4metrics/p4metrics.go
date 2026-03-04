@@ -1763,6 +1763,10 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 				}
 			}
 		}
+		// If we found both start and end lines in this file, we're done
+		if startLine != "" && endLine != "" {
+			break
+		}
 	}
 	if startLine == "" || endLine == "" {
 		p4m.logger.Debugf("Failed to find Start and End or Error line in any checkpoint file")
