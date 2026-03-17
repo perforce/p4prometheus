@@ -1733,22 +1733,22 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 	var startLines, endLines []string
 	var startLine, endLine string
 	for _, f := range files { // Process in order of most recent first
+		startLine = ""
+		endLine = ""
+
 		cmd := fmt.Sprintf("head %s", f)
 		p = script.NewPipe().WithStderr(errbuf)
 		startLines, err = p.Exec(cmd).MatchRegexp(reStart).Slice()
 		if len(startLines) == 1 && err == nil {
-			ckpLog = f
 			startLine = startLines[0]
 		}
 
-		cmd = fmt.Sprintf("tail %s", ckpLog)
+		cmd = fmt.Sprintf("tail %s", f)
 		p = script.NewPipe().WithStderr(errbuf)
 		endLines, err = p.Exec(cmd).Slice()
 		if len(endLines) > 0 && err == nil {
-			ckpLog = f
 			for _, line := range endLines {
 				if reEnd.MatchString(line) {
-					ckpLog = f
 					endLine = line
 					break
 				}
@@ -1763,9 +1763,9 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 				}
 			}
 		}
-		// If we found both start and end lines in this file, we're done
 		if startLine != "" && endLine != "" {
-			break
+			ckpLog = f
+			break // Found a complete checkpoint in this file; stop at the most recent one.
 		}
 	}
 	if startLine == "" || endLine == "" {
