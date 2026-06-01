@@ -210,6 +210,282 @@ func getVar(vars map[string]string, k string) string {
 	return ""
 }
 
+// LinuxProcMemReader reads memory information from /proc on Linux
+type LinuxProcMemReader struct{}
+
+// GetPIDRSSBytes returns the resident set size in bytes for a given PID by reading /proc/<pid>/status
+func (r *LinuxProcMemReader) GetPIDRSSBytes(pid int) (int64, error) {
+	statusPath := fmt.Sprintf("/proc/%d/status", pid)
+	content, err := os.ReadFile(statusPath)
+	if err != nil {
+		return 0, err // PID may have exited
+	}
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.HasPrefix(line, "VmRSS:") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				kbytes, err := strconv.ParseInt(fields[1], 10, 64)
+				if err == nil {
+					return kbytes * 1024, nil // Convert kB to bytes
+				}
+			}
+		}
+	}
+	return 0, fmt.Errorf("VmRSS not found in /proc/%d/status", pid)
+}
+
+// GetMemTotalBytes returns the total system memory in bytes by reading /proc/meminfo
+func (r *LinuxProcMemReader) GetMemTotalBytes() (int64, error) {
+	content, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0, err
+	}
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.HasPrefix(line, "MemTotal:") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				kbytes, err := strconv.ParseInt(fields[1], 10, 64)
+				if err == nil {
+					return kbytes * 1024, nil // Convert kB to bytes
+				}
+			}
+		}
+	}
+	return 0, fmt.Errorf("MemTotal not found in /proc/meminfo")
+}
+
+// evaluateMemLimits evaluates memory limits and returns metrics and kill actions
+// evaluateMemLimits analyzes running processes against configured memory thresholds.
+// It identifies processes exceeding limits across four dimensions:
+// 1. cmd_max_percentage: Individual command's memory % of system total
+// 2. cmd_max_value: Individual command's absolute memory usage
+// 3. user_cumulative_max_percentage: All processes by user as % of system total
+// 4. user_cumulative_max_value: All processes by user in absolute bytes
+//
+// Returns MemLimitEvaluation with memory statistics and kill candidate list.
+// Kill candidates are only identified; actual termination requires EnforceKills config.
+func evaluateMemLimits(
+	processes []MonitorProcess,
+	memlimits *config.MemLimits,
+	memReader MemReader,
+	logger *logrus.Logger) (*MemLimitEvaluation, error) {
+
+	eval := &MemLimitEvaluation{
+		MemoryPctByCmd: make(map[string]float64),
+		MemoryPctByUser: make(map[string]float64),
+		KillCandidates: make([]KillAction, 0),
+	}
+
+	if memlimits == nil || memReader == nil {
+		return eval, nil
+	}
+
+	memTotal, err := memReader.GetMemTotalBytes()
+	if err != nil || memTotal <= 0 {
+		logger.Debugf("Could not get total memory: %v", err)
+		return eval, nil
+	}
+
+	// Build map of candidate running processes
+	pidRSS := make(map[int]int64)      // pid -> RSS bytes
+	userProcs := make(map[string][]MonitorProcess) // user -> processes
+	cmdProcs := make(map[string][]MonitorProcess)  // cmd -> processes
+
+	for _, proc := range processes {
+		if proc.State != "R" && proc.State != "I" {
+			continue // Only evaluate running and idle processes
+		}
+
+		// Check candidate_cmds filter
+		if memlimits.ReCandidateCmds != nil && !memlimits.ReCandidateCmds.MatchString(proc.Cmd) {
+			continue
+		}
+
+		// Get memory for this process
+		rss, err := memReader.GetPIDRSSBytes(proc.Pid)
+		if err != nil {
+			logger.Debugf("Could not get memory for PID %d: %v", proc.Pid, err)
+			continue
+		}
+
+		pidRSS[proc.Pid] = rss
+		userProcs[proc.User] = append(userProcs[proc.User], proc)
+		cmdProcs[proc.Cmd] = append(cmdProcs[proc.Cmd], proc)
+	}
+
+	// Calculate per-command memory percentages
+	for cmd, procs := range cmdProcs {
+		totalRSS := int64(0)
+		for _, proc := range procs {
+			if rss, ok := pidRSS[proc.Pid]; ok {
+				totalRSS += rss
+			}
+		}
+		pct := float64(totalRSS) * 100.0 / float64(memTotal)
+		eval.MemoryPctByCmd[cmd] = pct
+	}
+
+	// Calculate per-user memory percentages
+	for user, procs := range userProcs {
+		totalRSS := int64(0)
+		for _, proc := range procs {
+			if rss, ok := pidRSS[proc.Pid]; ok {
+				totalRSS += rss
+			}
+		}
+		pct := float64(totalRSS) * 100.0 / float64(memTotal)
+		eval.MemoryPctByUser[user] = pct
+	}
+
+	// Evaluate thresholds and find kill candidates
+	for _, proc := range processes {
+		if proc.State != "R" && proc.State != "I" {
+			continue
+		}
+
+		// Check candidate_cmds filter
+		if memlimits.ReCandidateCmds != nil && !memlimits.ReCandidateCmds.MatchString(proc.Cmd) {
+			continue
+		}
+
+		rss, ok := pidRSS[proc.Pid]
+		if !ok {
+			continue
+		}
+
+		pct := float64(rss) * 100.0 / float64(memTotal)
+
+		// Find matching group (first match wins)
+		var matchedGroup *config.MemLimitGroup
+		for i := range memlimits.Groups {
+			if memlimits.Groups[i].ReUsers != nil && memlimits.Groups[i].ReUsers.MatchString(proc.User) {
+				matchedGroup = &memlimits.Groups[i]
+				break
+			}
+		}
+
+		if matchedGroup == nil {
+			continue
+		}
+
+		// Check per-command thresholds
+		if matchedGroup.CmdMaxPercentageInt > 0 && pct > float64(matchedGroup.CmdMaxPercentageInt) {
+			eval.KillCandidates = append(eval.KillCandidates, KillAction{
+				Pid:            proc.Pid,
+				User:           proc.User,
+				Cmd:            proc.Cmd,
+				RSSBytes:       rss,
+				MemPercentage:  pct,
+				ReasonType:     "cmd_max_percentage",
+				MatchedGroup:   matchedGroup.Description,
+				ThresholdValue: fmt.Sprintf("%d%%", matchedGroup.CmdMaxPercentageInt),
+			})
+			continue
+		}
+
+		if matchedGroup.CmdMaxValueInt > 0 && rss > matchedGroup.CmdMaxValueInt {
+			eval.KillCandidates = append(eval.KillCandidates, KillAction{
+				Pid:            proc.Pid,
+				User:           proc.User,
+				Cmd:            proc.Cmd,
+				RSSBytes:       rss,
+				MemPercentage:  pct,
+				ReasonType:     "cmd_max_value",
+				MatchedGroup:   matchedGroup.Description,
+				ThresholdValue: humanizeBytes(matchedGroup.CmdMaxValueInt),
+			})
+			continue
+		}
+
+		// Check per-user cumulative thresholds
+		if matchedGroup.UserCumulativeMaxPercentageInt > 0 {
+			userTotal := int64(0)
+			for _, uproc := range userProcs[proc.User] {
+				if rss, ok := pidRSS[uproc.Pid]; ok {
+					userTotal += rss
+				}
+			}
+			userPct := float64(userTotal) * 100.0 / float64(memTotal)
+			if userPct > float64(matchedGroup.UserCumulativeMaxPercentageInt) {
+				eval.KillCandidates = append(eval.KillCandidates, KillAction{
+					Pid:            proc.Pid,
+					User:           proc.User,
+					Cmd:            proc.Cmd,
+					RSSBytes:       rss,
+					MemPercentage:  userPct,
+					ReasonType:     "user_cumulative_max_percentage",
+					MatchedGroup:   matchedGroup.Description,
+					ThresholdValue: fmt.Sprintf("%d%%", matchedGroup.UserCumulativeMaxPercentageInt),
+				})
+				continue
+			}
+		}
+
+		if matchedGroup.UserCumulativeMaxValueInt > 0 {
+			userTotal := int64(0)
+			for _, uproc := range userProcs[proc.User] {
+				if rss, ok := pidRSS[uproc.Pid]; ok {
+					userTotal += rss
+				}
+			}
+			if userTotal > matchedGroup.UserCumulativeMaxValueInt {
+				eval.KillCandidates = append(eval.KillCandidates, KillAction{
+					Pid:            proc.Pid,
+					User:           proc.User,
+					Cmd:            proc.Cmd,
+					RSSBytes:       rss,
+					MemPercentage:  pct,
+					ReasonType:     "user_cumulative_max_value",
+					MatchedGroup:   matchedGroup.Description,
+					ThresholdValue: humanizeBytes(matchedGroup.UserCumulativeMaxValueInt),
+				})
+				continue
+			}
+		}
+	}
+
+	// Log summary if kill candidates identified
+	if len(eval.KillCandidates) > 0 {
+		logger.Infof("Memory limit evaluation: %d kill candidates identified", len(eval.KillCandidates))
+		for _, action := range eval.KillCandidates {
+			logger.Debugf("Kill candidate: PID %d user=%s cmd=%s reason=%s threshold=%s usage=%d bytes (%.1f%%)",
+				action.Pid, action.User, action.Cmd, action.ReasonType, action.ThresholdValue, action.RSSBytes, action.MemPercentage)
+		}
+	}
+
+	return eval, nil
+}
+
+// terminateMemLimitViolators executes termination of processes in kill candidates list.
+// For each candidate, calls the ProcessTerminator to terminate the process.
+// Respects dryrun mode - if enabled, ProcessTerminator logs what would be killed without executing.
+// Returns the count of successfully terminated processes.
+// Note: Individual kill failures are logged but don't stop processing of remaining candidates.
+func (p4m *P4MonitorMetrics) terminateMemLimitViolators(eval *MemLimitEvaluation, terminator ProcessTerminator) int {
+	if eval == nil || len(eval.KillCandidates) == 0 {
+		return 0
+	}
+
+	killed := 0
+	for _, action := range eval.KillCandidates {
+		success, err := terminator.TerminateProcess(action.Pid, action.User, action.Cmd)
+		if success {
+			killed++
+			p4m.memlimitKillCount++
+			p4m.logger.Infof("Process terminated: PID %d user=%s cmd=%s reason=%s usage=%.1f%%",
+				action.Pid, action.User, action.Cmd, action.ReasonType, action.MemPercentage)
+		} else {
+			p4m.logger.Warnf("Failed to kill PID %d (%s from %s): %v", action.Pid, action.Cmd, action.User, err)
+		}
+	}
+
+	if killed > 0 {
+		p4m.logger.Infof("Terminated %d processes due to memory limits (total: %d)", killed, p4m.memlimitKillCount)
+	}
+
+	return killed
+}
+
 // VolumeInfo represents disk usage information for a volume
 type VolumeInfo struct {
 	Name        string // Volume name, e.g. P4JOURNAL
@@ -251,7 +527,75 @@ type ErrorMetric struct {
 	Severity  string
 }
 
+// MemReader provides memory usage information for processes
+type MemReader interface {
+	// GetPIDRSSBytes returns the resident set size in bytes for a given PID
+	GetPIDRSSBytes(pid int) (int64, error)
+	// GetMemTotalBytes returns the total system memory in bytes
+	GetMemTotalBytes() (int64, error)
+}
+
+// KillAction represents a process to be killed
+type KillAction struct {
+	Pid            int
+	User           string
+	Cmd            string
+	RSSBytes       int64
+	MemPercentage  float64
+	ReasonType     string // "cmd_max_percentage", "cmd_max_value", "user_cumulative_max_percentage", "user_cumulative_max_value"
+	MatchedGroup   string // Name of the matched memlimit group
+	ThresholdValue string // The threshold that was exceeded (e.g., "30%" or "2G")
+}
+
+// MemLimitEvaluation holds the results of evaluating memory limits
+type MemLimitEvaluation struct {
+	MemoryPctByCmd map[string]float64 // Command -> percentage
+	MemoryPctByUser map[string]float64 // User -> percentage
+	KillCandidates []KillAction       // Processes to kill (if enabled)
+}
+
+// ProcessTerminator defines the interface for terminating processes
+type ProcessTerminator interface {
+	// TerminateProcess terminates a process by PID, returning true if successful
+	TerminateProcess(pid int, user, cmd string) (bool, error)
+}
+
+// P4ProcessTerminator implements ProcessTerminator using p4 monitor terminate
+// Respects the parent P4MonitorMetrics.dryrun flag for safe testing without actual termination.
+// When dryrun=true, logs action but doesn't execute p4 command.
+// When dryrun=false, executes 'p4 monitor terminate <pid>' via p4 API.
+type P4ProcessTerminator struct {
+	p4m    *P4MonitorMetrics
+	logger *logrus.Logger
+}
+
+// TerminateProcess terminates a process using p4 monitor terminate <pid>.
+// Honors the dryrun flag from p4m - if set, returns success without executing.
+// On successful termination, logs action at INFO level.
+// On failure, logs warning with error details.
+// Returns (true, nil) on success or dry-run mode.
+// Returns (false, error) if p4 command execution fails.
+func (t *P4ProcessTerminator) TerminateProcess(pid int, user, cmd string) (bool, error) {
+	// Check dryrun flag from p4m
+	if t.p4m.dryrun {
+		t.logger.Infof("[DRY-RUN] Would terminate PID %d (%s from user %s)", pid, cmd, user)
+		return true, nil
+	}
+
+	// Execute: p4 monitor terminate <pid>
+	p4cmd, errbuf, p := t.p4m.newP4CmdPipe(fmt.Sprintf("monitor terminate %d", pid))
+	output, err := p.Exec(p4cmd).String()
+	if err != nil {
+		t.logger.Warnf("Failed to terminate PID %d: %v, output: %q, err: %q", pid, err, output, errbuf.String())
+		return false, fmt.Errorf("terminate PID %d failed: %w", pid, err)
+	}
+
+	t.logger.Infof("Terminated PID %d (%s from user %s)", pid, cmd, user)
+	return true, nil
+}
+
 // P4MonitorMetrics structure
+
 type P4MonitorMetrics struct {
 	config              *config.Config
 	initialised         bool
@@ -294,10 +638,13 @@ type P4MonitorMetrics struct {
 	metricNames         map[string]int // Used when printing to avoid duplicate headers
 	metrics             []metricStruct
 	errTailer           *fswatcher.FileTailer
+	memReader           MemReader // Interface for reading process memory (Linux /proc)
+	memlimitKillCount   int       // Cumulative count of processes killed by memlimit enforcement
+	terminator          ProcessTerminator // Interface for terminating processes
 }
 
 func newP4MonitorMetrics(config *config.Config, envVars *map[string]string, logger *logrus.Logger) (p4m *P4MonitorMetrics) {
-	return &P4MonitorMetrics{
+	p4m = &P4MonitorMetrics{
 		config:       config,
 		env:          envVars,
 		logger:       logger,
@@ -305,7 +652,14 @@ func newP4MonitorMetrics(config *config.Config, envVars *map[string]string, logg
 		p4license:    make(map[string]string),
 		errorMetrics: make(map[ErrorMetric]int),
 		metrics:      make([]metricStruct, 0),
+		memReader:    &LinuxProcMemReader{},
 	}
+	// Initialize terminator
+	p4m.terminator = &P4ProcessTerminator{
+		p4m:    p4m,
+		logger: logger,
+	}
+	return
 }
 
 func (p4m *P4MonitorMetrics) parseConfigShow(cfg []string) {
@@ -1528,8 +1882,18 @@ func (p4m *P4MonitorMetrics) getMonitorGroupLabel(cmd string) string {
 	return ""
 }
 
+// MonitorProcess represents a single process from p4 monitor show -l
+type MonitorProcess struct {
+	Pid         int
+	State       string
+	User        string
+	TimeSeconds int
+	Cmd         string
+}
+
 // monitorShowResult holds the parsed results from monitor show -l output
 type monitorShowResult struct {
+	processes       []MonitorProcess // List of individual processes
 	cmdCounts       map[string]int
 	userCounts      map[string]int
 	stateCounts     map[string]int
@@ -1542,6 +1906,7 @@ type monitorShowResult struct {
 // parseMonitorShow parses the output of p4 monitor show -l and returns structured data
 func (p4m *P4MonitorMetrics) parseMonitorShow(monitorOutput []string) *monitorShowResult {
 	result := &monitorShowResult{
+		processes:       make([]MonitorProcess, 0),
 		cmdCounts:       make(map[string]int),
 		userCounts:      make(map[string]int),
 		stateCounts:     make(map[string]int),
@@ -1556,11 +1921,26 @@ func (p4m *P4MonitorMetrics) parseMonitorShow(monitorOutput []string) *monitorSh
 		if len(fields) < 5 { // Skip lines that don't have sufficient fields
 			continue
 		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil {
+			// Skip lines with invalid pid
+			continue
+		}
 		state := fields[1]
 		user := fields[2]
 		timeStr := fields[3]
 		cmd := fields[4]
 		timeSeconds := p4m.getTime(timeStr)
+
+		// Store process record
+		proc := MonitorProcess{
+			Pid:         pid,
+			State:       state,
+			User:        user,
+			TimeSeconds: timeSeconds,
+			Cmd:         cmd,
+		}
+		result.processes = append(result.processes, proc)
 
 		// Count by command
 		result.cmdCounts[cmd]++
@@ -1685,6 +2065,52 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 				help:  "P4 count of running processes (via ps)",
 				mtype: "gauge",
 				value: fmt.Sprintf("%d", pcount)})
+		}
+
+		// Evaluate memory limits if configured
+		if p4m.config.MemLimits != nil && p4m.config.MemLimits.Enabled {
+			eval, err := evaluateMemLimits(result.processes, p4m.config.MemLimits, p4m.memReader, p4m.logger)
+			if err == nil && eval != nil {
+				// Emit per-command memory percentages
+				for cmd, pct := range eval.MemoryPctByCmd {
+					p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_memory_pct_by_cmd",
+						help:   "Memory percentage used by processes running cmd",
+						mtype:  "gauge",
+						value:  fmt.Sprintf("%.2f", pct),
+						labels: []labelStruct{{name: "cmd", value: cmd}}})
+				}
+
+				// Emit per-user memory percentages
+				for user, pct := range eval.MemoryPctByUser {
+					p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_memory_pct_by_user",
+						help:   "Memory percentage used by processes running as user",
+						mtype:  "gauge",
+						value:  fmt.Sprintf("%.2f", pct),
+						labels: []labelStruct{{name: "user", value: user}}})
+				}
+
+				// Emit kill candidates metric
+				p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_memlimit_kill_candidates",
+					help:  "Number of processes exceeding memory limits",
+					mtype: "gauge",
+					value: fmt.Sprintf("%d", len(eval.KillCandidates))})
+
+				// Terminate violating processes if configured and not in dry-run
+				if p4m.config.MemLimits.EnforceKills && len(eval.KillCandidates) > 0 {
+					p4m.logger.Infof("Enforcing memory limits: terminating %d violating processes", len(eval.KillCandidates))
+					p4m.terminateMemLimitViolators(eval, p4m.terminator)
+				} else if len(eval.KillCandidates) > 0 {
+					p4m.logger.Debugf("Memory limit violations detected (%d processes) but enforcement disabled (enforce_kills: false)", len(eval.KillCandidates))
+				}
+
+				// Emit kill count metric
+				p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_memlimit_kills_total",
+					help:  "Total number of processes killed by memlimit enforcement",
+					mtype: "counter",
+					value: fmt.Sprintf("%d", p4m.memlimitKillCount)})
+			} else if err != nil {
+				p4m.logger.Warnf("Failed to evaluate memory limits: %v", err)
+			}
 		}
 	}
 	p4m.writeMetricsFile()

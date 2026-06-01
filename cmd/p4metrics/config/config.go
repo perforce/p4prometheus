@@ -18,6 +18,30 @@ type MonitorGroup struct {
 	Label      string         `yaml:"label"`    // Group label name
 }
 
+// MemLimitGroup defines memory limits for a group of users
+type MemLimitGroup struct {
+	Description                    string         `yaml:"description"`                      // Name for this group - used for logging/debugging
+	Users                          string         `yaml:"users"`                             // Go regex pattern matching user names
+	ReUsers                        *regexp.Regexp `yaml:"-"`                                 // Compiled regex for users - not set from YAML
+	CmdMaxPercentage               string         `yaml:"cmd_max_percentage"`                // 0-99 (with optional % suffix), 0/blank means no limit
+	CmdMaxPercentageInt            int            `yaml:"-"`                                 // Parsed integer value
+	CmdMaxValue                    string         `yaml:"cmd_max_value"`                     // e.g. 10M, 1.5G; blank/0 means no limit
+	CmdMaxValueInt                 int64          `yaml:"-"`                                 // Parsed bytes value
+	UserCumulativeMaxPercentage    string         `yaml:"user_cumulative_max_percentage"`    // 0-99 (with optional % suffix), 0/blank means no limit
+	UserCumulativeMaxPercentageInt int            `yaml:"-"`                                 // Parsed integer value
+	UserCumulativeMaxValue         string         `yaml:"user_cumulative_max_value"`         // e.g. 10M, 1.5G; blank/0 means no limit
+	UserCumulativeMaxValueInt      int64          `yaml:"-"`                                 // Parsed bytes value
+}
+
+// MemLimits defines memory limit monitoring/enforcement configuration
+type MemLimits struct {
+	CandidateCmds   string         `yaml:"candidate_cmds"`  // Go regex pattern matching command names to consider
+	ReCandidateCmds *regexp.Regexp `yaml:"-"`               // Compiled regex - not set from YAML
+	Enabled         bool           `yaml:"enabled"`         // Whether to evaluate and report memory limits
+	EnforceKills    bool           `yaml:"enforce_kills"`   // Whether to actually terminate processes (requires enabled)
+	Groups          []MemLimitGroup `yaml:"groups"`         // Ordered list of user groups with limits
+}
+
 // Config for p4metrics - see SampleConfig for details
 type Config struct {
 	MetricsRoot          string        `yaml:"metrics_root"`
@@ -44,6 +68,7 @@ type Config struct {
 	MonitorIgnore        string         `yaml:"monitor_ignore"` // Monitor commmands to ignore - e.g. long running background tasks - values are a Go regex pattern - e.g. "admin resource-monitor|ldapsync"
 	MonitorIgnoreRe      *regexp.Regexp `yaml:"-"`              // Compiled regex for monitor_ignore - not set from YAML
 	MonitorGroups        []MonitorGroup `yaml:"monitor_groups"` // Array of command groups - each with a regex pattern to match commands and a label value to use for those commands (see SampleConfig for details)
+	MemLimits            *MemLimits     `yaml:"memlimits"`      // Optional memory limit monitoring/enforcement configuration
 }
 
 // SampleConfig shows a sample config file - this can be used as a template
@@ -189,7 +214,63 @@ monitor_groups:
   - commands: ".*"
     label:    other
 
+# ----------------------
+# memlimits: Optional (but recommended) way to define which users and commands to monitor for memory limits 
+#   (useful for inadvertently high memory usage). Some users run commands on inappropriate paths such as the entire repository,
+#   or a huge depot. Commands which exceed these settings have 'p4 monitor terminate' run on them, which will ask the command to terminate.
+#   This is related to the MaxMemory setting for p4 groups but has some more flexibility for cumulative limits across multiple commands for a user.
+# candidate_cmds: A Go regex pattern matching command names to be considered for memory monitoring - e.g. "sync|transmit|print|fstat|files|changes"
+#   We default to reporting commands only.
+# enabled: true/false - whether to enable this memory monitoring functionality (if false will report the metrics but not take any action, 
+#   so you can monitor the metrics and adjust settings before enabling the termination functionality).
+# Groups:
+#   Each entry has:
+#     description: Name for this group of settings - used for logging and debugging, so should be unique and descriptive
+#     users:       Go regex pattern matching user names
+#     cmd_max_percentage:             0-99, where 0 means no limit
+#     cmd_max_value:                  Units are M/G (powers of 1024), e.g. 10M, 1.5G etc, if blank or 0 then no limit
+#     user_cumulative_max_percentage: For all commands for a user, 0-99, where 0 means no limit
+#     user_cumulative_max_value:      Units are M/G (powers of 1024), e.g. 10M, 1.5G etc, if blank or 0 then no limit
+# The order of the groups is important - the first match wins, so more specific patterns should come first (e.g. admin users should be first, 
+# with no limits, and then (optionally) a group for build users with higher limits, followed by a catch-all for other users with limits).
+# Note that only Running commands (state 'R') and Idle ('I') are counted for these groups, not Background ('B'), 
+# since Background commands are things like replication and resource monitoring
+# Example:
+memlimits:
+  candidate_cmds:  "sync|transmit|print|files|fstat|changes|changelists|integrated|interchanges|opened"
+  enabled:         true
+  groups:
+  - description: "No limits for super and perforce users (as they hopefully know what they are doing!)"
+    users: "super|perforce"
+    cmd_max_percentage:             
+    cmd_max_value:                  
+    user_cumulative_max_percentage: 
+    user_cumulative_max_value:      
+  - description: "Default limits for all other users"
+    users: ".*"
+    cmd_max_percentage:             30%
+    cmd_max_value:                  
+    user_cumulative_max_percentage: 50%
+    user_cumulative_max_value:      
+
 `
+
+// parsePercentage parses a percentage string (e.g. "30" or "30%") into an integer 0-99.
+// Returns 0 for blank or "0" inputs (meaning no limit).
+func parsePercentage(val string) (int, error) {
+	if val == "" || val == "0" {
+		return 0, nil
+	}
+	s := strings.TrimSuffix(strings.TrimSpace(val), "%")
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0, fmt.Errorf("invalid percentage value %q: must be an integer 0-99", val)
+	}
+	if n < 0 || n > 99 {
+		return 0, fmt.Errorf("invalid percentage value %q: must be in range 0-99", val)
+	}
+	return n, nil
+}
 
 func ConvertToBytes(size string) (int64, error) {
 	if len(size) == 0 {
@@ -341,6 +422,43 @@ func (c *Config) validate() error {
 			return fmt.Errorf("monitor_groups[%d]: failed to parse '%s' as a regex: %v", i, mg.Commands, err)
 		}
 		c.MonitorGroups[i].ReCommands = re
+	}
+	// Validate memlimits
+	if c.MemLimits != nil {
+		ml := c.MemLimits
+		if ml.CandidateCmds != "" {
+			re, err := regexp.Compile(ml.CandidateCmds)
+			if err != nil {
+				return fmt.Errorf("memlimits.candidate_cmds: failed to parse '%s' as a regex: %v", ml.CandidateCmds, err)
+			}
+			ml.ReCandidateCmds = re
+		}
+		for i, g := range ml.Groups {
+			if g.Users == "" {
+				return fmt.Errorf("memlimits.groups[%d]: users cannot be empty", i)
+			}
+			re, err := regexp.Compile(g.Users)
+			if err != nil {
+				return fmt.Errorf("memlimits.groups[%d]: failed to parse users '%s' as a regex: %v", i, g.Users, err)
+			}
+			ml.Groups[i].ReUsers = re
+			if ml.Groups[i].CmdMaxPercentageInt, err = parsePercentage(g.CmdMaxPercentage); err != nil {
+				return fmt.Errorf("memlimits.groups[%d]: invalid cmd_max_percentage: %v", i, err)
+			}
+			if g.CmdMaxValue != "" && g.CmdMaxValue != "0" {
+				if ml.Groups[i].CmdMaxValueInt, err = ConvertToBytes(g.CmdMaxValue); err != nil {
+					return fmt.Errorf("memlimits.groups[%d]: invalid cmd_max_value %q: %v", i, g.CmdMaxValue, err)
+				}
+			}
+			if ml.Groups[i].UserCumulativeMaxPercentageInt, err = parsePercentage(g.UserCumulativeMaxPercentage); err != nil {
+				return fmt.Errorf("memlimits.groups[%d]: invalid user_cumulative_max_percentage: %v", i, err)
+			}
+			if g.UserCumulativeMaxValue != "" && g.UserCumulativeMaxValue != "0" {
+				if ml.Groups[i].UserCumulativeMaxValueInt, err = ConvertToBytes(g.UserCumulativeMaxValue); err != nil {
+					return fmt.Errorf("memlimits.groups[%d]: invalid user_cumulative_max_value %q: %v", i, g.UserCumulativeMaxValue, err)
+				}
+			}
+		}
 	}
 	return nil
 }

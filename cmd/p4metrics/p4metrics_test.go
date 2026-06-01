@@ -10,6 +10,7 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -1023,4 +1024,590 @@ func TestParseMonitorShow(t *testing.T) {
 			assert.Equal(t, tc.expectedMaxTime, result.maxNonSvcTime, "maxNonSvcTime mismatch")
 		})
 	}
+}
+
+// FakeMemReader is a mock implementation of MemReader for testing
+type FakeMemReader struct {
+	RSSByPid    map[int]int64
+	TotalMemory int64
+}
+
+func (f *FakeMemReader) GetPIDRSSBytes(pid int) (int64, error) {
+	if rss, ok := f.RSSByPid[pid]; ok {
+		return rss, nil
+	}
+	return 0, fmt.Errorf("PID %d not in fake reader", pid)
+}
+
+func (f *FakeMemReader) GetMemTotalBytes() (int64, error) {
+	if f.TotalMemory > 0 {
+		return f.TotalMemory, nil
+	}
+	return 0, fmt.Errorf("total memory not set in fake reader")
+}
+
+// TestEvaluateMemLimits tests the evaluateMemLimits function with various scenarios
+func TestEvaluateMemLimits(t *testing.T) {
+	initLogger()
+
+	type testCase struct {
+		name         string
+		processes    []MonitorProcess
+		memLimits    *config.MemLimits
+		memReader    MemReader
+		expectKills  int
+		expectCmds   map[string]bool
+		expectUsers  map[string]bool
+	}
+
+	tests := []testCase{
+		{
+			name:      "no_memlimits_configured",
+			processes: []MonitorProcess{},
+			memLimits: nil,
+			memReader: &FakeMemReader{TotalMemory: 1000 * 1024 * 1024},
+			expectKills: 0,
+		},
+		{
+			name:      "no_running_processes",
+			processes: []MonitorProcess{},
+			memLimits: &config.MemLimits{
+				Enabled: true,
+				Groups: []config.MemLimitGroup{
+					{
+						Description: "test_group",
+						Users:       ".*",
+						ReUsers:     regexp.MustCompile(".*"),
+						CmdMaxPercentageInt: 10,
+					},
+				},
+			},
+			memReader: &FakeMemReader{TotalMemory: 1000 * 1024 * 1024},
+			expectKills: 0,
+		},
+		{
+			name: "single_process_under_limit",
+			processes: []MonitorProcess{
+				{Pid: 100, State: "R", User: "alice", Cmd: "sync"},
+			},
+			memLimits: &config.MemLimits{
+				Enabled: true,
+				ReCandidateCmds: regexp.MustCompile(".*"),
+				Groups: []config.MemLimitGroup{
+					{
+						Description: "test_group",
+						Users:       ".*",
+						ReUsers:     regexp.MustCompile(".*"),
+						CmdMaxPercentageInt: 10,
+					},
+				},
+			},
+			memReader: &FakeMemReader{
+				RSSByPid:    map[int]int64{100: 50 * 1024 * 1024},
+				TotalMemory: 1000 * 1024 * 1024, // 5% usage - under 10% limit
+			},
+			expectKills: 0,
+		},
+		{
+			name: "single_process_exceeds_cmd_percentage_limit",
+			processes: []MonitorProcess{
+				{Pid: 100, State: "R", User: "alice", Cmd: "sync"},
+			},
+			memLimits: &config.MemLimits{
+				Enabled: true,
+				ReCandidateCmds: regexp.MustCompile(".*"),
+				Groups: []config.MemLimitGroup{
+					{
+						Description: "test_group",
+						Users:       ".*",
+						ReUsers:     regexp.MustCompile(".*"),
+						CmdMaxPercentageInt: 10,
+					},
+				},
+			},
+			memReader: &FakeMemReader{
+				RSSByPid:    map[int]int64{100: 150 * 1024 * 1024},
+				TotalMemory: 1000 * 1024 * 1024, // 15% usage - exceeds 10% limit
+			},
+			expectKills: 1,
+			expectCmds:  map[string]bool{"sync": true},
+		},
+		{
+			name: "single_process_exceeds_cmd_value_limit",
+			processes: []MonitorProcess{
+				{Pid: 100, State: "R", User: "alice", Cmd: "dbdump"},
+			},
+			memLimits: &config.MemLimits{
+				Enabled: true,
+				ReCandidateCmds: regexp.MustCompile(".*"),
+				Groups: []config.MemLimitGroup{
+					{
+						Description: "test_group",
+						Users:       ".*",
+						ReUsers:     regexp.MustCompile(".*"),
+						CmdMaxValueInt: 100 * 1024 * 1024, // 100 MB limit
+					},
+				},
+			},
+			memReader: &FakeMemReader{
+				RSSByPid:    map[int]int64{100: 150 * 1024 * 1024}, // 150 MB usage
+				TotalMemory: 1000 * 1024 * 1024,
+			},
+			expectKills: 1,
+			expectCmds:  map[string]bool{"dbdump": true},
+		},
+		{
+			name: "multiple_processes_user_cumulative_limit",
+			processes: []MonitorProcess{
+				{Pid: 100, State: "R", User: "alice", Cmd: "sync"},
+				{Pid: 101, State: "R", User: "alice", Cmd: "edit"},
+				{Pid: 102, State: "R", User: "bob", Cmd: "sync"},
+			},
+			memLimits: &config.MemLimits{
+				Enabled: true,
+				ReCandidateCmds: regexp.MustCompile(".*"),
+				Groups: []config.MemLimitGroup{
+					{
+						Description: "test_group",
+						Users:       "alice",
+						ReUsers:     regexp.MustCompile("alice"),
+						UserCumulativeMaxPercentageInt: 15, // 15% limit for alice
+					},
+				},
+			},
+			memReader: &FakeMemReader{
+				RSSByPid: map[int]int64{
+					100: 80 * 1024 * 1024,  // alice: 80+90=170 MB (17%)
+					101: 90 * 1024 * 1024,
+					102: 50 * 1024 * 1024,  // bob: 50 MB (5%)
+				},
+				TotalMemory: 1000 * 1024 * 1024,
+			},
+			expectKills: 2, // Both alice's processes should be killed
+			expectUsers: map[string]bool{"alice": true},
+		},
+		{
+			name: "process_not_running",
+			processes: []MonitorProcess{
+				{Pid: 100, State: "S", User: "alice", Cmd: "sync"}, // Sleeping, not running
+			},
+			memLimits: &config.MemLimits{
+				Enabled: true,
+				ReCandidateCmds: regexp.MustCompile(".*"),
+				Groups: []config.MemLimitGroup{
+					{
+						Description: "test_group",
+						Users:       ".*",
+						ReUsers:     regexp.MustCompile(".*"),
+						CmdMaxPercentageInt: 1, // Very low limit
+					},
+				},
+			},
+			memReader: &FakeMemReader{
+				RSSByPid:    map[int]int64{100: 500 * 1024 * 1024},
+				TotalMemory: 1000 * 1024 * 1024,
+			},
+			expectKills: 0, // Should not kill sleeping processes
+		},
+		{
+			name: "candidate_cmd_filter",
+			processes: []MonitorProcess{
+				{Pid: 100, State: "R", User: "alice", Cmd: "sync"},
+				{Pid: 101, State: "R", User: "alice", Cmd: "edit"},
+			},
+			memLimits: &config.MemLimits{
+				Enabled: true,
+				CandidateCmds: "sync",          // Only sync
+				ReCandidateCmds: regexp.MustCompile("^sync$"),
+				Groups: []config.MemLimitGroup{
+					{
+						Description: "test_group",
+						Users:       ".*",
+						ReUsers:     regexp.MustCompile(".*"),
+						CmdMaxPercentageInt: 5, // 5% limit
+					},
+				},
+			},
+			memReader: &FakeMemReader{
+				RSSByPid: map[int]int64{
+					100: 150 * 1024 * 1024, // sync: 15% - exceeds limit
+					101: 150 * 1024 * 1024, // edit: 15% - but not a candidate
+				},
+				TotalMemory: 1000 * 1024 * 1024,
+			},
+			expectKills: 1, // Only sync should be killed
+			expectCmds:  map[string]bool{"sync": true},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			eval, err := evaluateMemLimits(tc.processes, tc.memLimits, tc.memReader, tlogger)
+			assert.NoError(t, err)
+			assert.NotNil(t, eval)
+
+			assert.Equal(t, tc.expectKills, len(eval.KillCandidates), "kill count mismatch")
+
+			if tc.expectCmds != nil {
+				for _, kill := range eval.KillCandidates {
+					assert.True(t, tc.expectCmds[kill.Cmd], "unexpected cmd killed: %s", kill.Cmd)
+				}
+			}
+
+			if tc.expectUsers != nil {
+				for _, kill := range eval.KillCandidates {
+					assert.True(t, tc.expectUsers[kill.User], "unexpected user killed: %s", kill.User)
+				}
+			}
+		})
+	}
+}
+
+// TestLinuxProcMemReader tests the real Linux /proc-based reader (if running on Linux)
+func TestLinuxProcMemReader(t *testing.T) {
+	initLogger()
+
+	// Skip on non-Linux systems
+	if runtime.GOOS != "linux" {
+		t.Skipf("Test only runs on Linux (GOOS=%s)", runtime.GOOS)
+		return
+	}
+
+	// Test with the current process
+	reader := &LinuxProcMemReader{}
+
+	// Get our own RSS
+	rss, err := reader.GetPIDRSSBytes(os.Getpid())
+	assert.NoError(t, err, "Should be able to read RSS")
+	assert.Greater(t, rss, int64(0), "RSS should be > 0")
+	assert.Less(t, rss, int64(10*1024*1024*1024), "RSS should be < 10GB for test process")
+
+	// Get total memory
+	total, err := reader.GetMemTotalBytes()
+	assert.NoError(t, err, "Should be able to read total memory")
+	assert.Greater(t, total, int64(0), "Total memory should be > 0")
+	assert.Less(t, rss, total, "Process RSS should be less than total memory")
+}
+
+// TestMonitorProcessesMemLimitsIntegration tests that monitorProcesses emits memory metrics when MemLimits configured
+func TestMonitorProcessesMemLimitsIntegration(t *testing.T) {
+	initLogger()
+
+	// Create config with MemLimits enabled
+	cfg := &config.Config{
+		MemLimits: &config.MemLimits{
+			Enabled: true,
+			CandidateCmds: "sync|edit",
+			ReCandidateCmds: regexp.MustCompile("sync|edit"),
+			Groups: []config.MemLimitGroup{
+				{
+					Description: "standard_group",
+					Users:       ".*",
+					ReUsers:     regexp.MustCompile(".*"),
+					CmdMaxPercentageInt: 10,
+				},
+			},
+		},
+	}
+
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(cfg, &env, tlogger)
+
+	// Mock memory reader
+	p4m.memReader = &FakeMemReader{
+		RSSByPid: map[int]int64{
+			1000: 50 * 1024 * 1024,  // sync: 5%
+			1001: 80 * 1024 * 1024,  // edit: 8%
+		},
+		TotalMemory: 1000 * 1024 * 1024,
+	}
+
+	// Simulate monitor show output with parsed processes
+	monitorOutput := []string{
+		"1000 R alice 00:00:05 sync",
+		"1001 R bob 00:00:10 edit",
+	}
+
+	// Parse monitor output
+	result := p4m.parseMonitorShow(monitorOutput)
+
+	// Call evaluateMemLimits
+	eval, err := evaluateMemLimits(result.processes, p4m.config.MemLimits, p4m.memReader, p4m.logger)
+	assert.NoError(t, err)
+	assert.NotNil(t, eval)
+
+	// Verify memory percentages are calculated
+	assert.Equal(t, 2, len(eval.MemoryPctByCmd), "should have 2 commands")
+	assert.Equal(t, 2, len(eval.MemoryPctByUser), "should have 2 users")
+
+	// Check that metrics are within expected range
+	syncPct := eval.MemoryPctByCmd["sync"]
+	editPct := eval.MemoryPctByCmd["edit"]
+	assert.Greater(t, syncPct, 4.0)
+	assert.Less(t, syncPct, 6.0)
+	assert.Greater(t, editPct, 7.0)
+	assert.Less(t, editPct, 9.0)
+
+	// Verify per-user metrics
+	alicePct := eval.MemoryPctByUser["alice"]
+	bobPct := eval.MemoryPctByUser["bob"]
+	assert.Greater(t, alicePct, 4.0)
+	assert.Less(t, alicePct, 6.0)
+	assert.Greater(t, bobPct, 7.0)
+	assert.Less(t, bobPct, 9.0)
+
+	// Verify no kill candidates (under limits)
+	assert.Equal(t, 0, len(eval.KillCandidates))
+}
+
+// TestMonitorProcessesMemLimitsWithKillCandidates tests that kill candidates are tracked
+func TestMonitorProcessesMemLimitsWithKillCandidates(t *testing.T) {
+	initLogger()
+
+	// Create config with strict MemLimits
+	cfg := &config.Config{
+		MemLimits: &config.MemLimits{
+			Enabled: true,
+			CandidateCmds: ".*",
+			ReCandidateCmds: regexp.MustCompile(".*"),
+			Groups: []config.MemLimitGroup{
+				{
+					Description: "strict_group",
+					Users:       ".*",
+					ReUsers:     regexp.MustCompile(".*"),
+					CmdMaxPercentageInt: 5, // 5% limit - strict
+				},
+			},
+		},
+	}
+
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(cfg, &env, tlogger)
+
+	// Mock memory reader with high memory usage
+	p4m.memReader = &FakeMemReader{
+		RSSByPid: map[int]int64{
+			1000: 100 * 1024 * 1024, // 10% - exceeds 5% limit
+			1001: 50 * 1024 * 1024,  // 5% - exactly at limit
+		},
+		TotalMemory: 1000 * 1024 * 1024,
+	}
+
+	// Simulate monitor show output
+	monitorOutput := []string{
+		"1000 R alice 00:00:05 sync",
+		"1001 R bob 00:00:10 edit",
+	}
+
+	// Parse and evaluate
+	result := p4m.parseMonitorShow(monitorOutput)
+	eval, err := evaluateMemLimits(result.processes, p4m.config.MemLimits, p4m.memReader, p4m.logger)
+	assert.NoError(t, err)
+	assert.NotNil(t, eval)
+
+	// Should have 1 kill candidate (sync from alice at 10%)
+	assert.Equal(t, 1, len(eval.KillCandidates))
+	assert.Equal(t, 1000, eval.KillCandidates[0].Pid)
+	assert.Equal(t, "alice", eval.KillCandidates[0].User)
+	assert.Equal(t, "sync", eval.KillCandidates[0].Cmd)
+	assert.Equal(t, "cmd_max_percentage", eval.KillCandidates[0].ReasonType)
+}
+
+// FakeTerminator is a mock implementation of ProcessTerminator for testing
+type FakeTerminator struct {
+	TerminatedPIDs []int         // PIDs that were terminated
+	ShouldFail     bool          // If true, return error for all terminate calls
+	DryRunMode     bool          // Track if operating in dry-run mode
+}
+
+func (f *FakeTerminator) TerminateProcess(pid int, user, cmd string) (bool, error) {
+	if f.ShouldFail {
+		return false, fmt.Errorf("simulated termination failure for PID %d", pid)
+	}
+	f.TerminatedPIDs = append(f.TerminatedPIDs, pid)
+	return true, nil
+}
+
+// TestTerminateMemLimitViolators tests the termination logic
+func TestTerminateMemLimitViolators(t *testing.T) {
+	initLogger()
+
+	cfg := &config.Config{
+		MemLimits: &config.MemLimits{
+			Enabled:       true,
+			EnforceKills:  true,
+			ReCandidateCmds: regexp.MustCompile(".*"),
+			Groups: []config.MemLimitGroup{
+				{
+					Description: "test_group",
+					Users:       ".*",
+					ReUsers:     regexp.MustCompile(".*"),
+					CmdMaxPercentageInt: 5,
+				},
+			},
+		},
+	}
+
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(cfg, &env, tlogger)
+
+	// Create evaluation with kill candidates
+	eval := &MemLimitEvaluation{
+		MemoryPctByCmd:  make(map[string]float64),
+		MemoryPctByUser: make(map[string]float64),
+		KillCandidates: []KillAction{
+			{Pid: 100, User: "alice", Cmd: "sync", RSSBytes: 100*1024*1024, MemPercentage: 10.0, ReasonType: "cmd_max_percentage", MatchedGroup: "test_group", ThresholdValue: "5%"},
+			{Pid: 101, User: "bob", Cmd: "edit", RSSBytes: 80*1024*1024, MemPercentage: 8.0, ReasonType: "cmd_max_percentage", MatchedGroup: "test_group", ThresholdValue: "5%"},
+		},
+	}
+
+	// Test with FakeTerminator
+	terminator := &FakeTerminator{}
+	killed := p4m.terminateMemLimitViolators(eval, terminator)
+
+	assert.Equal(t, 2, killed, "should have killed 2 processes")
+	assert.Equal(t, 2, p4m.memlimitKillCount, "kill counter should be incremented")
+	assert.Equal(t, []int{100, 101}, terminator.TerminatedPIDs, "correct PIDs should be terminated")
+}
+
+// TestTerminateMemLimitViolatorsWithFailure tests termination failure handling
+func TestTerminateMemLimitViolatorsWithFailure(t *testing.T) {
+	initLogger()
+
+	cfg := &config.Config{
+		MemLimits: &config.MemLimits{
+			Enabled:       true,
+			EnforceKills:  true,
+			ReCandidateCmds: regexp.MustCompile(".*"),
+			Groups: []config.MemLimitGroup{
+				{
+					Description: "test_group",
+					Users:       ".*",
+					ReUsers:     regexp.MustCompile(".*"),
+					CmdMaxPercentageInt: 5,
+				},
+			},
+		},
+	}
+
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(cfg, &env, tlogger)
+
+	// Create evaluation with kill candidates
+	eval := &MemLimitEvaluation{
+		MemoryPctByCmd:  make(map[string]float64),
+		MemoryPctByUser: make(map[string]float64),
+		KillCandidates: []KillAction{
+			{Pid: 100, User: "alice", Cmd: "sync", RSSBytes: 100*1024*1024, MemPercentage: 10.0, ReasonType: "cmd_max_percentage", MatchedGroup: "test_group", ThresholdValue: "5%"},
+			{Pid: 101, User: "bob", Cmd: "edit", RSSBytes: 80*1024*1024, MemPercentage: 8.0, ReasonType: "cmd_max_percentage", MatchedGroup: "test_group", ThresholdValue: "5%"},
+		},
+	}
+
+	// Test with failing FakeTerminator
+	terminator := &FakeTerminator{ShouldFail: true}
+	killed := p4m.terminateMemLimitViolators(eval, terminator)
+
+	assert.Equal(t, 0, killed, "should have killed 0 processes when terminator fails")
+	assert.Equal(t, 0, p4m.memlimitKillCount, "kill counter should remain 0 on failure")
+}
+
+// TestTerminateMemLimitViolatorsEmpty tests with no kill candidates
+func TestTerminateMemLimitViolatorsEmpty(t *testing.T) {
+	initLogger()
+
+	cfg := &config.Config{}
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(cfg, &env, tlogger)
+
+	eval := &MemLimitEvaluation{
+		MemoryPctByCmd:  make(map[string]float64),
+		MemoryPctByUser: make(map[string]float64),
+		KillCandidates:  []KillAction{},
+	}
+
+	terminator := &FakeTerminator{}
+	killed := p4m.terminateMemLimitViolators(eval, terminator)
+
+	assert.Equal(t, 0, killed, "should kill no processes when none are candidates")
+	assert.Equal(t, 0, len(terminator.TerminatedPIDs), "terminator should not be called")
+}
+
+// TestP4ProcessTerminatorDryRun tests dry-run mode
+func TestP4ProcessTerminatorDryRun(t *testing.T) {
+	initLogger()
+
+	cfg := &config.Config{}
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(cfg, &env, tlogger)
+	p4m.dryrun = true // Set dry-run mode
+
+	terminator := &P4ProcessTerminator{
+		p4m:    p4m,
+		logger: tlogger,
+	}
+
+	// In dry-run mode, should not fail and should not actually execute
+	success, err := terminator.TerminateProcess(999, "testuser", "testtcmd")
+	assert.NoError(t, err, "dry-run should not error")
+	assert.True(t, success, "dry-run should return success")
+}
+
+// TestMemLimitsIntegrationWithEnforcement tests full flow from evaluation to termination
+func TestMemLimitsIntegrationWithEnforcement(t *testing.T) {
+	initLogger()
+
+	cfg := &config.Config{
+		MemLimits: &config.MemLimits{
+			Enabled:         true,
+			EnforceKills:    true,
+			CandidateCmds:   ".*",
+			ReCandidateCmds: regexp.MustCompile(".*"),
+			Groups: []config.MemLimitGroup{
+				{
+					Description: "strict_group",
+					Users:       ".*",
+					ReUsers:     regexp.MustCompile(".*"),
+					CmdMaxPercentageInt: 5,
+				},
+			},
+		},
+	}
+
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(cfg, &env, tlogger)
+
+	// Replace terminator with fake for testing
+	fakeTerminator := &FakeTerminator{}
+	p4m.terminator = fakeTerminator
+
+	// Simulate monitor output with high memory usage
+	monitorOutput := []string{
+		"1000 R alice 00:00:05 sync",
+		"1001 R bob 00:00:10 edit",
+	}
+
+	// Parse monitor output
+	result := p4m.parseMonitorShow(monitorOutput)
+
+	// Mock memory reader with high usage
+	fakeMemReader := &FakeMemReader{
+		RSSByPid: map[int]int64{
+			1000: 100 * 1024 * 1024, // 10% - exceeds 5% limit
+			1001: 80 * 1024 * 1024,  // 8% - exceeds 5% limit
+		},
+		TotalMemory: 1000 * 1024 * 1024,
+	}
+	p4m.memReader = fakeMemReader
+
+	// Evaluate memory limits
+	eval, err := evaluateMemLimits(result.processes, p4m.config.MemLimits, p4m.memReader, p4m.logger)
+	assert.NoError(t, err)
+	assert.NotNil(t, eval)
+	assert.Equal(t, 2, len(eval.KillCandidates), "should have 2 kill candidates")
+
+	// Terminate violators
+	killed := p4m.terminateMemLimitViolators(eval, p4m.terminator)
+	assert.Equal(t, 2, killed, "should have killed 2 processes")
+	assert.Equal(t, 2, p4m.memlimitKillCount, "kill counter should be 2")
+	assert.Equal(t, []int{1000, 1001}, fakeTerminator.TerminatedPIDs, "correct PIDs terminated")
 }
