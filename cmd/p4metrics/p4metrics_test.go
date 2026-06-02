@@ -1055,9 +1055,10 @@ func TestEvaluateMemLimits(t *testing.T) {
 		processes    []MonitorProcess
 		memLimits    *config.MemLimits
 		memReader    MemReader
-		expectKills  int
-		expectCmds   map[string]bool
-		expectUsers  map[string]bool
+		expectKills     int
+		expectCmds      map[string]bool
+		expectUsers     map[string]bool
+		expectedKillPIDs []int
 	}
 
 	tests := []testCase{
@@ -1159,13 +1160,14 @@ func TestEvaluateMemLimits(t *testing.T) {
 		{
 			name: "multiple_processes_user_cumulative_limit",
 			processes: []MonitorProcess{
-				{Pid: 100, State: "R", User: "alice", Cmd: "sync"},
-				{Pid: 101, State: "R", User: "alice", Cmd: "edit"},
-				{Pid: 102, State: "R", User: "bob", Cmd: "sync"},
+				{Pid: 100, State: "R", User: "alice", TimeSeconds: 10, Cmd: "sync"},
+				{Pid: 101, State: "R", User: "alice", TimeSeconds: 100, Cmd: "edit"},
+				{Pid: 102, State: "R", User: "bob", TimeSeconds: 20, Cmd: "sync"},
 			},
 			memLimits: &config.MemLimits{
-				Enabled: true,
-				ReCandidateCmds: regexp.MustCompile(".*"),
+				Enabled:         true,
+				CandidateCmds:   "sync", // only read commands eligible to be killed
+				ReCandidateCmds: regexp.MustCompile("^sync$"),
 				Groups: []config.MemLimitGroup{
 					{
 						Description: "test_group",
@@ -1183,8 +1185,74 @@ func TestEvaluateMemLimits(t *testing.T) {
 				},
 				TotalMemory: 1000 * 1024 * 1024,
 			},
-			expectKills: 2, // Both alice's processes should be killed
-			expectUsers: map[string]bool{"alice": true},
+			expectKills:      1,
+			expectUsers:      map[string]bool{"alice": true},
+			expectedKillPIDs: []int{100},
+		},
+		{
+			name: "user_cumulative_longest_running_first_minimal_kills",
+			processes: []MonitorProcess{
+				{Pid: 200, State: "R", User: "alice", TimeSeconds: 300, Cmd: "sync"},
+				{Pid: 201, State: "R", User: "alice", TimeSeconds: 200, Cmd: "edit"},
+				{Pid: 202, State: "R", User: "alice", TimeSeconds: 100, Cmd: "submit"},
+			},
+			memLimits: &config.MemLimits{
+				Enabled:         true,
+				CandidateCmds:   "sync", // only read commands eligible to be killed
+				ReCandidateCmds: regexp.MustCompile("^sync$"),
+				Groups: []config.MemLimitGroup{
+					{
+						Description: "test_group",
+						Users:       "alice",
+						ReUsers:     regexp.MustCompile("alice"),
+						UserCumulativeMaxPercentageInt: 10,
+					},
+				},
+			},
+			memReader: &FakeMemReader{
+				RSSByPid: map[int]int64{
+					200: 30 * 1024 * 1024,
+					201: 40 * 1024 * 1024,
+					202: 60 * 1024 * 1024,
+				},
+				TotalMemory: 1000 * 1024 * 1024,
+			},
+			expectKills:      1,
+			expectUsers:      map[string]bool{"alice": true},
+			expectedKillPIDs: []int{200},
+		},
+		{
+			name: "user_cumulative_respects_individual_limit_kills",
+			processes: []MonitorProcess{
+				{Pid: 300, State: "R", User: "alice", TimeSeconds: 10, Cmd: "sync"},
+				{Pid: 301, State: "R", User: "alice", TimeSeconds: 300, Cmd: "edit"},
+				{Pid: 302, State: "R", User: "alice", TimeSeconds: 200, Cmd: "submit"},
+			},
+			memLimits: &config.MemLimits{
+				Enabled:         true,
+				CandidateCmds:   "sync", // only read commands eligible to be killed
+				ReCandidateCmds: regexp.MustCompile("^sync$"),
+				Groups: []config.MemLimitGroup{
+					{
+						Description: "test_group",
+						Users:       "alice",
+						ReUsers:     regexp.MustCompile("alice"),
+						CmdMaxPercentageInt:            8,
+						UserCumulativeMaxPercentageInt: 10,
+					},
+				},
+			},
+			memReader: &FakeMemReader{
+				RSSByPid: map[int]int64{
+					300: 90 * 1024 * 1024,
+					301: 40 * 1024 * 1024,
+					302: 30 * 1024 * 1024,
+				},
+				TotalMemory: 1000 * 1024 * 1024,
+			},
+			expectKills:      1,
+			expectUsers:      map[string]bool{"alice": true},
+			expectedKillPIDs: []int{300},
 		},
 		{
 			name: "process_not_running",
@@ -1258,6 +1326,14 @@ func TestEvaluateMemLimits(t *testing.T) {
 				for _, kill := range eval.KillCandidates {
 					assert.True(t, tc.expectUsers[kill.User], "unexpected user killed: %s", kill.User)
 				}
+			}
+
+			if tc.expectedKillPIDs != nil {
+				gotPIDs := make([]int, 0, len(eval.KillCandidates))
+				for _, kill := range eval.KillCandidates {
+					gotPIDs = append(gotPIDs, kill.Pid)
+				}
+				assert.Equal(t, tc.expectedKillPIDs, gotPIDs, "kill PID order mismatch")
 			}
 		})
 	}

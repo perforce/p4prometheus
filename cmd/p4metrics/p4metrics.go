@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -271,9 +272,9 @@ func evaluateMemLimits(
 	logger *logrus.Logger) (*MemLimitEvaluation, error) {
 
 	eval := &MemLimitEvaluation{
-		MemoryPctByCmd: make(map[string]float64),
+		MemoryPctByCmd:  make(map[string]float64),
 		MemoryPctByUser: make(map[string]float64),
-		KillCandidates: make([]KillAction, 0),
+		KillCandidates:  make([]KillAction, 0),
 	}
 
 	if memlimits == nil || memReader == nil {
@@ -285,9 +286,10 @@ func evaluateMemLimits(
 		logger.Debugf("Could not get total memory: %v", err)
 		return eval, nil
 	}
+	logger.Debugf("Total system memory: %s", humanizeBytes(memTotal))
 
 	// Build map of candidate running processes
-	pidRSS := make(map[int]int64)      // pid -> RSS bytes
+	pidRSS := make(map[int]int64)                  // pid -> RSS bytes
 	userProcs := make(map[string][]MonitorProcess) // user -> processes
 	cmdProcs := make(map[string][]MonitorProcess)  // cmd -> processes
 
@@ -296,22 +298,51 @@ func evaluateMemLimits(
 			continue // Only evaluate running and idle processes
 		}
 
-		// Check candidate_cmds filter
-		if memlimits.ReCandidateCmds != nil && !memlimits.ReCandidateCmds.MatchString(proc.Cmd) {
-			continue
-		}
-
 		// Get memory for this process
 		rss, err := memReader.GetPIDRSSBytes(proc.Pid)
 		if err != nil {
 			logger.Debugf("Could not get memory for PID %d: %v", proc.Pid, err)
 			continue
 		}
+		logger.Debugf("PID %d (%s from user %s) RSS: %s", proc.Pid, proc.Cmd, proc.User, humanizeBytes(rss))
 
 		pidRSS[proc.Pid] = rss
 		userProcs[proc.User] = append(userProcs[proc.User], proc)
 		cmdProcs[proc.Cmd] = append(cmdProcs[proc.Cmd], proc)
 	}
+
+	appendKillCandidate := func(action KillAction, killByPID map[int]struct{}) {
+		if _, exists := killByPID[action.Pid]; exists {
+			return
+		}
+		killByPID[action.Pid] = struct{}{}
+		eval.KillCandidates = append(eval.KillCandidates, action)
+	}
+
+	userExceedsCumulative := func(userTotal int64, grp *config.MemLimitGroup) bool {
+		if grp.UserCumulativeMaxPercentageInt > 0 {
+			userPct := float64(userTotal) * 100.0 / float64(memTotal)
+			if userPct > float64(grp.UserCumulativeMaxPercentageInt) {
+				return true
+			}
+		}
+		if grp.UserCumulativeMaxValueInt > 0 && userTotal > grp.UserCumulativeMaxValueInt {
+			return true
+		}
+		return false
+	}
+
+	cumulativeReason := func(userTotal int64, grp *config.MemLimitGroup) (string, string) {
+		if grp.UserCumulativeMaxPercentageInt > 0 {
+			userPct := float64(userTotal) * 100.0 / float64(memTotal)
+			if userPct > float64(grp.UserCumulativeMaxPercentageInt) {
+				return "user_cumulative_max_percentage", fmt.Sprintf("%d%%", grp.UserCumulativeMaxPercentageInt)
+			}
+		}
+		return "user_cumulative_max_value", humanizeBytes(grp.UserCumulativeMaxValueInt)
+	}
+
+	killByPID := make(map[int]struct{})
 
 	// Calculate per-command memory percentages
 	for cmd, procs := range cmdProcs {
@@ -370,7 +401,7 @@ func evaluateMemLimits(
 
 		// Check per-command thresholds
 		if matchedGroup.CmdMaxPercentageInt > 0 && pct > float64(matchedGroup.CmdMaxPercentageInt) {
-			eval.KillCandidates = append(eval.KillCandidates, KillAction{
+			appendKillCandidate(KillAction{
 				Pid:            proc.Pid,
 				User:           proc.User,
 				Cmd:            proc.Cmd,
@@ -379,12 +410,12 @@ func evaluateMemLimits(
 				ReasonType:     "cmd_max_percentage",
 				MatchedGroup:   matchedGroup.Description,
 				ThresholdValue: fmt.Sprintf("%d%%", matchedGroup.CmdMaxPercentageInt),
-			})
+			}, killByPID)
 			continue
 		}
 
 		if matchedGroup.CmdMaxValueInt > 0 && rss > matchedGroup.CmdMaxValueInt {
-			eval.KillCandidates = append(eval.KillCandidates, KillAction{
+			appendKillCandidate(KillAction{
 				Pid:            proc.Pid,
 				User:           proc.User,
 				Cmd:            proc.Cmd,
@@ -393,55 +424,96 @@ func evaluateMemLimits(
 				ReasonType:     "cmd_max_value",
 				MatchedGroup:   matchedGroup.Description,
 				ThresholdValue: humanizeBytes(matchedGroup.CmdMaxValueInt),
-			})
+			}, killByPID)
+			continue
+		}
+	}
+
+	// Check per-user cumulative thresholds.
+	// Kill as few commands as possible (longest-running first), taking into account
+	// processes already selected by individual command limits.
+	for user, procs := range userProcs {
+		if len(procs) == 0 {
 			continue
 		}
 
-		// Check per-user cumulative thresholds
-		if matchedGroup.UserCumulativeMaxPercentageInt > 0 {
-			userTotal := int64(0)
-			for _, uproc := range userProcs[proc.User] {
-				if rss, ok := pidRSS[uproc.Pid]; ok {
-					userTotal += rss
-				}
+		// Find matching group (first match wins) for this user
+		var matchedGroup *config.MemLimitGroup
+		for i := range memlimits.Groups {
+			if memlimits.Groups[i].ReUsers != nil && memlimits.Groups[i].ReUsers.MatchString(user) {
+				matchedGroup = &memlimits.Groups[i]
+				break
 			}
-			userPct := float64(userTotal) * 100.0 / float64(memTotal)
-			if userPct > float64(matchedGroup.UserCumulativeMaxPercentageInt) {
-				eval.KillCandidates = append(eval.KillCandidates, KillAction{
-					Pid:            proc.Pid,
-					User:           proc.User,
-					Cmd:            proc.Cmd,
-					RSSBytes:       rss,
-					MemPercentage:  userPct,
-					ReasonType:     "user_cumulative_max_percentage",
-					MatchedGroup:   matchedGroup.Description,
-					ThresholdValue: fmt.Sprintf("%d%%", matchedGroup.UserCumulativeMaxPercentageInt),
-				})
+		}
+		if matchedGroup == nil {
+			continue
+		}
+
+		if matchedGroup.UserCumulativeMaxPercentageInt <= 0 && matchedGroup.UserCumulativeMaxValueInt <= 0 {
+			continue
+		}
+
+		userTotal := int64(0)
+		remaining := make([]MonitorProcess, 0, len(procs))
+		for _, proc := range procs {
+			rss, ok := pidRSS[proc.Pid]
+			if !ok {
 				continue
+			}
+			userTotal += rss
+			if _, alreadySelected := killByPID[proc.Pid]; !alreadySelected {
+				// Only candidate cmds can be killed; non-candidates still count toward total
+				if memlimits.ReCandidateCmds == nil || memlimits.ReCandidateCmds.MatchString(proc.Cmd) {
+					remaining = append(remaining, proc)
+				}
+			} else {
+				userTotal -= rss
 			}
 		}
 
-		if matchedGroup.UserCumulativeMaxValueInt > 0 {
-			userTotal := int64(0)
-			for _, uproc := range userProcs[proc.User] {
-				if rss, ok := pidRSS[uproc.Pid]; ok {
-					userTotal += rss
-				}
+		if !userExceedsCumulative(userTotal, matchedGroup) {
+			continue
+		}
+
+		sort.SliceStable(remaining, func(i, j int) bool {
+			if remaining[i].TimeSeconds != remaining[j].TimeSeconds {
+				return remaining[i].TimeSeconds > remaining[j].TimeSeconds
 			}
-			if userTotal > matchedGroup.UserCumulativeMaxValueInt {
-				eval.KillCandidates = append(eval.KillCandidates, KillAction{
-					Pid:            proc.Pid,
-					User:           proc.User,
-					Cmd:            proc.Cmd,
-					RSSBytes:       rss,
-					MemPercentage:  pct,
-					ReasonType:     "user_cumulative_max_value",
-					MatchedGroup:   matchedGroup.Description,
-					ThresholdValue: humanizeBytes(matchedGroup.UserCumulativeMaxValueInt),
-				})
+			rssi := pidRSS[remaining[i].Pid]
+			rssj := pidRSS[remaining[j].Pid]
+			if rssi != rssj {
+				return rssi > rssj
+			}
+			return remaining[i].Pid < remaining[j].Pid
+		})
+
+		for _, proc := range remaining {
+			if !userExceedsCumulative(userTotal, matchedGroup) {
+				break
+			}
+
+			rss, ok := pidRSS[proc.Pid]
+			if !ok {
 				continue
 			}
+
+			reasonType, thresholdValue := cumulativeReason(userTotal, matchedGroup)
+			userPct := float64(userTotal) * 100.0 / float64(memTotal)
+
+			appendKillCandidate(KillAction{
+				Pid:            proc.Pid,
+				User:           proc.User,
+				Cmd:            proc.Cmd,
+				RSSBytes:       rss,
+				MemPercentage:  userPct,
+				ReasonType:     reasonType,
+				MatchedGroup:   matchedGroup.Description,
+				ThresholdValue: thresholdValue,
+			}, killByPID)
+
+			userTotal -= rss
 		}
+
 	}
 
 	// Log summary if kill candidates identified
@@ -549,9 +621,9 @@ type KillAction struct {
 
 // MemLimitEvaluation holds the results of evaluating memory limits
 type MemLimitEvaluation struct {
-	MemoryPctByCmd map[string]float64 // Command -> percentage
+	MemoryPctByCmd  map[string]float64 // Command -> percentage
 	MemoryPctByUser map[string]float64 // User -> percentage
-	KillCandidates []KillAction       // Processes to kill (if enabled)
+	KillCandidates  []KillAction       // Processes to kill (if enabled)
 }
 
 // ProcessTerminator defines the interface for terminating processes
@@ -638,8 +710,8 @@ type P4MonitorMetrics struct {
 	metricNames         map[string]int // Used when printing to avoid duplicate headers
 	metrics             []metricStruct
 	errTailer           *fswatcher.FileTailer
-	memReader           MemReader // Interface for reading process memory (Linux /proc)
-	memlimitKillCount   int       // Cumulative count of processes killed by memlimit enforcement
+	memReader           MemReader         // Interface for reading process memory (Linux /proc)
+	memlimitKillCount   int               // Cumulative count of processes killed by memlimit enforcement
 	terminator          ProcessTerminator // Interface for terminating processes
 }
 
