@@ -79,7 +79,7 @@ func CompressFileAsync(logger *logrus.Logger, inputPath, outputPath string) <-ch
 			return
 		}
 		result.OriginalSize = inputInfo.Size()
-		logger.Debugf("Compressing file: %s, size: %d bytes", inputPath, result.OriginalSize)
+		logger.Debugf("Compressing file: %s, size: %s", inputPath, humanizeBytes(result.OriginalSize))
 
 		outputFile, err := os.Create(outputPath)
 		if err != nil {
@@ -118,7 +118,7 @@ func CompressFileAsync(logger *logrus.Logger, inputPath, outputPath string) <-ch
 			return
 		}
 		result.CompressedSize = outputInfo.Size()
-		logger.Debugf("Compression completed: %s, size: %d bytes", outputPath, result.CompressedSize)
+		logger.Debugf("Compression completed: %s, size: %s", outputPath, humanizeBytes(result.CompressedSize))
 		resultChan <- result
 	}()
 
@@ -272,9 +272,11 @@ func evaluateMemLimits(
 	logger *logrus.Logger) (*MemLimitEvaluation, error) {
 
 	eval := &MemLimitEvaluation{
-		MemoryPctByCmd:  make(map[string]float64),
-		MemoryPctByUser: make(map[string]float64),
-		KillCandidates:  make([]KillAction, 0),
+		MemoryPctByCmd:     make(map[string]float64),
+		MemoryPctByUser:    make(map[string]float64),
+		ActiveMemoryByCmd:  make(map[string]int64),
+		ActiveMemoryByUser: make(map[string]int64),
+		KillCandidates:     make([]KillAction, 0),
 	}
 
 	if memlimits == nil || memReader == nil {
@@ -294,17 +296,19 @@ func evaluateMemLimits(
 	cmdProcs := make(map[string][]MonitorProcess)  // cmd -> processes
 
 	for _, proc := range processes {
-		if proc.State != "R" && proc.State != "I" {
-			continue // Only evaluate running and idle processes
-		}
-
-		// Get memory for this process
 		rss, err := memReader.GetPIDRSSBytes(proc.Pid)
 		if err != nil {
 			logger.Debugf("Could not get memory for PID %d: %v", proc.Pid, err)
 			continue
 		}
 		logger.Debugf("PID %d (%s from user %s) RSS: %s", proc.Pid, proc.Cmd, proc.User, humanizeBytes(rss))
+
+		eval.ActiveMemoryByCmd[proc.Cmd] += rss
+		eval.ActiveMemoryByUser[proc.User] += rss
+
+		if proc.State != "R" && proc.State != "I" {
+			continue // Memlimit evaluation only considers running/idle processes
+		}
 
 		pidRSS[proc.Pid] = rss
 		userProcs[proc.User] = append(userProcs[proc.User], proc)
@@ -520,8 +524,8 @@ func evaluateMemLimits(
 	if len(eval.KillCandidates) > 0 {
 		logger.Infof("Memory limit evaluation: %d kill candidates identified", len(eval.KillCandidates))
 		for _, action := range eval.KillCandidates {
-			logger.Debugf("Kill candidate: PID %d user=%s cmd=%s reason=%s threshold=%s usage=%d bytes (%.1f%%)",
-				action.Pid, action.User, action.Cmd, action.ReasonType, action.ThresholdValue, action.RSSBytes, action.MemPercentage)
+			logger.Debugf("Kill candidate: PID %d user=%s cmd=%s reason=%s threshold=%s usage=%s (%.1f%%)",
+				action.Pid, action.User, action.Cmd, action.ReasonType, action.ThresholdValue, humanizeBytes(action.RSSBytes), action.MemPercentage)
 		}
 	}
 
@@ -621,9 +625,11 @@ type KillAction struct {
 
 // MemLimitEvaluation holds the results of evaluating memory limits
 type MemLimitEvaluation struct {
-	MemoryPctByCmd  map[string]float64 // Command -> percentage
-	MemoryPctByUser map[string]float64 // User -> percentage
-	KillCandidates  []KillAction       // Processes to kill (if enabled)
+	MemoryPctByCmd     map[string]float64 // Command -> percentage
+	MemoryPctByUser    map[string]float64 // User -> percentage
+	ActiveMemoryByCmd  map[string]int64   // Command -> active memory bytes (all monitor states)
+	ActiveMemoryByUser map[string]int64   // User -> active memory bytes (all monitor states)
+	KillCandidates     []KillAction       // Processes to kill (if enabled)
 }
 
 // ProcessTerminator defines the interface for terminating processes
@@ -2143,6 +2149,22 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 		if p4m.config.MemLimits != nil && p4m.config.MemLimits.Enabled {
 			eval, err := evaluateMemLimits(result.processes, p4m.config.MemLimits, p4m.memReader, p4m.logger)
 			if err == nil && eval != nil {
+				for cmd, bytes := range eval.ActiveMemoryByCmd {
+					p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_active_memory_by_cmd",
+						help:   "Active memory in bytes used by monitor processes running cmd (all states)",
+						mtype:  "counter",
+						value:  fmt.Sprintf("%d", bytes),
+						labels: []labelStruct{{name: "cmd", value: cmd}}})
+				}
+
+				for user, bytes := range eval.ActiveMemoryByUser {
+					p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_active_memory_by_user",
+						help:   "Active memory in bytes used by monitor processes running as user (all states)",
+						mtype:  "counter",
+						value:  fmt.Sprintf("%d", bytes),
+						labels: []labelStruct{{name: "user", value: user}}})
+				}
+
 				// Emit per-command memory percentages
 				for cmd, pct := range eval.MemoryPctByCmd {
 					p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_memory_pct_by_cmd",

@@ -20,25 +20,25 @@ type MonitorGroup struct {
 
 // MemLimitGroup defines memory limits for a group of users
 type MemLimitGroup struct {
-	Description                    string         `yaml:"description"`                      // Name for this group - used for logging/debugging
-	Users                          string         `yaml:"users"`                             // Go regex pattern matching user names
-	ReUsers                        *regexp.Regexp `yaml:"-"`                                 // Compiled regex for users - not set from YAML
-	CmdMaxPercentage               string         `yaml:"cmd_max_percentage"`                // 0-99 (with optional % suffix), 0/blank means no limit
-	CmdMaxPercentageInt            int            `yaml:"-"`                                 // Parsed integer value
-	CmdMaxValue                    string         `yaml:"cmd_max_value"`                     // e.g. 10M, 1.5G; blank/0 means no limit
-	CmdMaxValueInt                 int64          `yaml:"-"`                                 // Parsed bytes value
-	UserCumulativeMaxPercentage    string         `yaml:"user_cumulative_max_percentage"`    // 0-99 (with optional % suffix), 0/blank means no limit
-	UserCumulativeMaxPercentageInt int            `yaml:"-"`                                 // Parsed integer value
-	UserCumulativeMaxValue         string         `yaml:"user_cumulative_max_value"`         // e.g. 10M, 1.5G; blank/0 means no limit
-	UserCumulativeMaxValueInt      int64          `yaml:"-"`                                 // Parsed bytes value
+	Description                    string         `yaml:"description"`                    // Name for this group - used for logging/debugging
+	Users                          string         `yaml:"users"`                          // Go regex pattern matching user names
+	ReUsers                        *regexp.Regexp `yaml:"-"`                              // Compiled regex for users - not set from YAML
+	CmdMaxPercentage               string         `yaml:"cmd_max_percentage"`             // 0-99 (with optional % suffix), 0/blank means no limit
+	CmdMaxPercentageInt            int            `yaml:"-"`                              // Parsed integer value
+	CmdMaxValue                    string         `yaml:"cmd_max_value"`                  // e.g. 10M, 1.5G; blank/0 means no limit
+	CmdMaxValueInt                 int64          `yaml:"-"`                              // Parsed bytes value
+	UserCumulativeMaxPercentage    string         `yaml:"user_cumulative_max_percentage"` // 0-99 (with optional % suffix), 0/blank means no limit
+	UserCumulativeMaxPercentageInt int            `yaml:"-"`                              // Parsed integer value
+	UserCumulativeMaxValue         string         `yaml:"user_cumulative_max_value"`      // e.g. 10M, 1.5G; blank/0 means no limit
+	UserCumulativeMaxValueInt      int64          `yaml:"-"`                              // Parsed bytes value
 }
 
 // MemLimits defines memory limit monitoring/enforcement configuration
 type MemLimits struct {
-	CandidateCmds   string         `yaml:"candidate_cmds"`  // Go regex pattern matching command names to consider
-	ReCandidateCmds *regexp.Regexp `yaml:"-"`               // Compiled regex - not set from YAML
-	Enabled         bool           `yaml:"enabled"`         // Whether to evaluate and report memory limits
-	EnforceKills    bool           `yaml:"enforce_kills"`   // Whether to actually terminate processes (requires enabled)
+	CandidateCmds   string          `yaml:"candidate_cmds"` // Go regex pattern matching command names to consider
+	ReCandidateCmds *regexp.Regexp  `yaml:"-"`              // Compiled regex - not set from YAML
+	Enabled         bool            `yaml:"enabled"`        // Whether to evaluate and report memory limits
+	EnforceKills    bool            `yaml:"enforce_kills"`  // Whether to actually terminate processes (requires enabled)
 	Groups          []MemLimitGroup `yaml:"groups"`         // Ordered list of user groups with limits
 }
 
@@ -223,6 +223,7 @@ monitor_groups:
 #   We default to reporting commands only.
 # enabled: true/false - whether to enable this memory monitoring functionality (if false will report the metrics but not take any action, 
 #   so you can monitor the metrics and adjust settings before enabling the termination functionality).
+# enforce_kills: true/false - whether to actually enforce kills when limits are exceeded (if false, will only report)
 # Groups:
 #   Each entry has:
 #     description: Name for this group of settings - used for logging and debugging, so should be unique and descriptive
@@ -239,6 +240,7 @@ monitor_groups:
 memlimits:
   candidate_cmds:  "sync|transmit|print|files|fstat|changes|changelists|integrated|interchanges|opened"
   enabled:         true
+  enforce_kills:   false
   groups:
   - description: "No limits for super and perforce users (as they hopefully know what they are doing!)"
     users: "super|perforce"

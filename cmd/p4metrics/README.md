@@ -9,6 +9,15 @@ Works fine on Windows!
 
 This replaces the (now deprecated) [monitor_metrics.sh](../../scripts/monitor_metrics.sh) script - which was hard to use on Windows, and lacked some functionality.
 
+# Release Notes
+
+## 2026-06-03
+
+- Added `p4_active_memory_by_cmd{cmd}` (gauge): active memory in bytes by command.
+- Added `p4_active_memory_by_user{user}` (gauge): active memory in bytes by user.
+- These active-memory metrics include all monitor states, including blocked commands (`B`).
+- Memory limit termination behavior is unchanged.
+
 # Usage
 
 ```

@@ -147,6 +147,7 @@ monitor_groups:
 #   We default to reporting commands only.
 # enabled: true/false - whether to enable this memory monitoring functionality (if false will report the metrics but not take any action, 
 #   so you can monitor the metrics and adjust settings before enabling the termination functionality).
+# enforce_kills: true/false - whether to actually enforce kills when limits are exceeded (if false, will only report)
 # Groups:
 #   Each entry has:
 #     description: Name for this group of settings - used for logging and debugging, so should be unique and descriptive
@@ -163,6 +164,7 @@ monitor_groups:
 memlimits:
   candidate_cmds:  "sync|transmit|print|files|fstat|changes|changelists|integrated|interchanges|opened"
   enabled:         true
+  enforce_kills:   false
   groups:
   - description: "No limits for super and perforce users (as they hopefully know what they are doing!)"
     users: "super|perforce"

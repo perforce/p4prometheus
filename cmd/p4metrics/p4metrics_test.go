@@ -1051,22 +1051,22 @@ func TestEvaluateMemLimits(t *testing.T) {
 	initLogger()
 
 	type testCase struct {
-		name         string
-		processes    []MonitorProcess
-		memLimits    *config.MemLimits
-		memReader    MemReader
-		expectKills     int
-		expectCmds      map[string]bool
-		expectUsers     map[string]bool
+		name             string
+		processes        []MonitorProcess
+		memLimits        *config.MemLimits
+		memReader        MemReader
+		expectKills      int
+		expectCmds       map[string]bool
+		expectUsers      map[string]bool
 		expectedKillPIDs []int
 	}
 
 	tests := []testCase{
 		{
-			name:      "no_memlimits_configured",
-			processes: []MonitorProcess{},
-			memLimits: nil,
-			memReader: &FakeMemReader{TotalMemory: 1000 * 1024 * 1024},
+			name:        "no_memlimits_configured",
+			processes:   []MonitorProcess{},
+			memLimits:   nil,
+			memReader:   &FakeMemReader{TotalMemory: 1000 * 1024 * 1024},
 			expectKills: 0,
 		},
 		{
@@ -1076,14 +1076,14 @@ func TestEvaluateMemLimits(t *testing.T) {
 				Enabled: true,
 				Groups: []config.MemLimitGroup{
 					{
-						Description: "test_group",
-						Users:       ".*",
-						ReUsers:     regexp.MustCompile(".*"),
+						Description:         "test_group",
+						Users:               ".*",
+						ReUsers:             regexp.MustCompile(".*"),
 						CmdMaxPercentageInt: 10,
 					},
 				},
 			},
-			memReader: &FakeMemReader{TotalMemory: 1000 * 1024 * 1024},
+			memReader:   &FakeMemReader{TotalMemory: 1000 * 1024 * 1024},
 			expectKills: 0,
 		},
 		{
@@ -1092,13 +1092,13 @@ func TestEvaluateMemLimits(t *testing.T) {
 				{Pid: 100, State: "R", User: "alice", Cmd: "sync"},
 			},
 			memLimits: &config.MemLimits{
-				Enabled: true,
+				Enabled:         true,
 				ReCandidateCmds: regexp.MustCompile(".*"),
 				Groups: []config.MemLimitGroup{
 					{
-						Description: "test_group",
-						Users:       ".*",
-						ReUsers:     regexp.MustCompile(".*"),
+						Description:         "test_group",
+						Users:               ".*",
+						ReUsers:             regexp.MustCompile(".*"),
 						CmdMaxPercentageInt: 10,
 					},
 				},
@@ -1115,13 +1115,13 @@ func TestEvaluateMemLimits(t *testing.T) {
 				{Pid: 100, State: "R", User: "alice", Cmd: "sync"},
 			},
 			memLimits: &config.MemLimits{
-				Enabled: true,
+				Enabled:         true,
 				ReCandidateCmds: regexp.MustCompile(".*"),
 				Groups: []config.MemLimitGroup{
 					{
-						Description: "test_group",
-						Users:       ".*",
-						ReUsers:     regexp.MustCompile(".*"),
+						Description:         "test_group",
+						Users:               ".*",
+						ReUsers:             regexp.MustCompile(".*"),
 						CmdMaxPercentageInt: 10,
 					},
 				},
@@ -1139,13 +1139,13 @@ func TestEvaluateMemLimits(t *testing.T) {
 				{Pid: 100, State: "R", User: "alice", Cmd: "dbdump"},
 			},
 			memLimits: &config.MemLimits{
-				Enabled: true,
+				Enabled:         true,
 				ReCandidateCmds: regexp.MustCompile(".*"),
 				Groups: []config.MemLimitGroup{
 					{
-						Description: "test_group",
-						Users:       ".*",
-						ReUsers:     regexp.MustCompile(".*"),
+						Description:    "test_group",
+						Users:          ".*",
+						ReUsers:        regexp.MustCompile(".*"),
 						CmdMaxValueInt: 100 * 1024 * 1024, // 100 MB limit
 					},
 				},
@@ -1170,18 +1170,18 @@ func TestEvaluateMemLimits(t *testing.T) {
 				ReCandidateCmds: regexp.MustCompile("^sync$"),
 				Groups: []config.MemLimitGroup{
 					{
-						Description: "test_group",
-						Users:       "alice",
-						ReUsers:     regexp.MustCompile("alice"),
+						Description:                    "test_group",
+						Users:                          "alice",
+						ReUsers:                        regexp.MustCompile("alice"),
 						UserCumulativeMaxPercentageInt: 15, // 15% limit for alice
 					},
 				},
 			},
 			memReader: &FakeMemReader{
 				RSSByPid: map[int]int64{
-					100: 80 * 1024 * 1024,  // alice: 80+90=170 MB (17%)
+					100: 80 * 1024 * 1024, // alice: 80+90=170 MB (17%)
 					101: 90 * 1024 * 1024,
-					102: 50 * 1024 * 1024,  // bob: 50 MB (5%)
+					102: 50 * 1024 * 1024, // bob: 50 MB (5%)
 				},
 				TotalMemory: 1000 * 1024 * 1024,
 			},
@@ -1202,9 +1202,9 @@ func TestEvaluateMemLimits(t *testing.T) {
 				ReCandidateCmds: regexp.MustCompile("^sync$"),
 				Groups: []config.MemLimitGroup{
 					{
-						Description: "test_group",
-						Users:       "alice",
-						ReUsers:     regexp.MustCompile("alice"),
+						Description:                    "test_group",
+						Users:                          "alice",
+						ReUsers:                        regexp.MustCompile("alice"),
 						UserCumulativeMaxPercentageInt: 10,
 					},
 				},
@@ -1234,9 +1234,9 @@ func TestEvaluateMemLimits(t *testing.T) {
 				ReCandidateCmds: regexp.MustCompile("^sync$"),
 				Groups: []config.MemLimitGroup{
 					{
-						Description: "test_group",
-						Users:       "alice",
-						ReUsers:     regexp.MustCompile("alice"),
+						Description:                    "test_group",
+						Users:                          "alice",
+						ReUsers:                        regexp.MustCompile("alice"),
 						CmdMaxPercentageInt:            8,
 						UserCumulativeMaxPercentageInt: 10,
 					},
@@ -1260,13 +1260,13 @@ func TestEvaluateMemLimits(t *testing.T) {
 				{Pid: 100, State: "S", User: "alice", Cmd: "sync"}, // Sleeping, not running
 			},
 			memLimits: &config.MemLimits{
-				Enabled: true,
+				Enabled:         true,
 				ReCandidateCmds: regexp.MustCompile(".*"),
 				Groups: []config.MemLimitGroup{
 					{
-						Description: "test_group",
-						Users:       ".*",
-						ReUsers:     regexp.MustCompile(".*"),
+						Description:         "test_group",
+						Users:               ".*",
+						ReUsers:             regexp.MustCompile(".*"),
 						CmdMaxPercentageInt: 1, // Very low limit
 					},
 				},
@@ -1284,14 +1284,14 @@ func TestEvaluateMemLimits(t *testing.T) {
 				{Pid: 101, State: "R", User: "alice", Cmd: "edit"},
 			},
 			memLimits: &config.MemLimits{
-				Enabled: true,
-				CandidateCmds: "sync",          // Only sync
+				Enabled:         true,
+				CandidateCmds:   "sync", // Only sync
 				ReCandidateCmds: regexp.MustCompile("^sync$"),
 				Groups: []config.MemLimitGroup{
 					{
-						Description: "test_group",
-						Users:       ".*",
-						ReUsers:     regexp.MustCompile(".*"),
+						Description:         "test_group",
+						Users:               ".*",
+						ReUsers:             regexp.MustCompile(".*"),
 						CmdMaxPercentageInt: 5, // 5% limit
 					},
 				},
@@ -1372,14 +1372,14 @@ func TestMonitorProcessesMemLimitsIntegration(t *testing.T) {
 	// Create config with MemLimits enabled
 	cfg := &config.Config{
 		MemLimits: &config.MemLimits{
-			Enabled: true,
-			CandidateCmds: "sync|edit",
+			Enabled:         true,
+			CandidateCmds:   "sync|edit",
 			ReCandidateCmds: regexp.MustCompile("sync|edit"),
 			Groups: []config.MemLimitGroup{
 				{
-					Description: "standard_group",
-					Users:       ".*",
-					ReUsers:     regexp.MustCompile(".*"),
+					Description:         "standard_group",
+					Users:               ".*",
+					ReUsers:             regexp.MustCompile(".*"),
 					CmdMaxPercentageInt: 10,
 				},
 			},
@@ -1392,8 +1392,9 @@ func TestMonitorProcessesMemLimitsIntegration(t *testing.T) {
 	// Mock memory reader
 	p4m.memReader = &FakeMemReader{
 		RSSByPid: map[int]int64{
-			1000: 50 * 1024 * 1024,  // sync: 5%
-			1001: 80 * 1024 * 1024,  // edit: 8%
+			1000: 50 * 1024 * 1024, // sync: 5%
+			1001: 80 * 1024 * 1024, // edit: 8%
+			1002: 30 * 1024 * 1024, // fstat (blocked): included in active memory only
 		},
 		TotalMemory: 1000 * 1024 * 1024,
 	}
@@ -1402,6 +1403,7 @@ func TestMonitorProcessesMemLimitsIntegration(t *testing.T) {
 	monitorOutput := []string{
 		"1000 R alice 00:00:05 sync",
 		"1001 R bob 00:00:10 edit",
+		"1002 B carol 00:00:20 fstat",
 	}
 
 	// Parse monitor output
@@ -1415,6 +1417,8 @@ func TestMonitorProcessesMemLimitsIntegration(t *testing.T) {
 	// Verify memory percentages are calculated
 	assert.Equal(t, 2, len(eval.MemoryPctByCmd), "should have 2 commands")
 	assert.Equal(t, 2, len(eval.MemoryPctByUser), "should have 2 users")
+	assert.Equal(t, 3, len(eval.ActiveMemoryByCmd), "should include blocked command for active memory")
+	assert.Equal(t, 3, len(eval.ActiveMemoryByUser), "should include blocked user for active memory")
 
 	// Check that metrics are within expected range
 	syncPct := eval.MemoryPctByCmd["sync"]
@@ -1432,6 +1436,14 @@ func TestMonitorProcessesMemLimitsIntegration(t *testing.T) {
 	assert.Greater(t, bobPct, 7.0)
 	assert.Less(t, bobPct, 9.0)
 
+	// Verify active memory maps include all states, including blocked
+	assert.Equal(t, int64(50*1024*1024), eval.ActiveMemoryByCmd["sync"])
+	assert.Equal(t, int64(80*1024*1024), eval.ActiveMemoryByCmd["edit"])
+	assert.Equal(t, int64(30*1024*1024), eval.ActiveMemoryByCmd["fstat"])
+	assert.Equal(t, int64(50*1024*1024), eval.ActiveMemoryByUser["alice"])
+	assert.Equal(t, int64(80*1024*1024), eval.ActiveMemoryByUser["bob"])
+	assert.Equal(t, int64(30*1024*1024), eval.ActiveMemoryByUser["carol"])
+
 	// Verify no kill candidates (under limits)
 	assert.Equal(t, 0, len(eval.KillCandidates))
 }
@@ -1443,14 +1455,14 @@ func TestMonitorProcessesMemLimitsWithKillCandidates(t *testing.T) {
 	// Create config with strict MemLimits
 	cfg := &config.Config{
 		MemLimits: &config.MemLimits{
-			Enabled: true,
-			CandidateCmds: ".*",
+			Enabled:         true,
+			CandidateCmds:   ".*",
 			ReCandidateCmds: regexp.MustCompile(".*"),
 			Groups: []config.MemLimitGroup{
 				{
-					Description: "strict_group",
-					Users:       ".*",
-					ReUsers:     regexp.MustCompile(".*"),
+					Description:         "strict_group",
+					Users:               ".*",
+					ReUsers:             regexp.MustCompile(".*"),
 					CmdMaxPercentageInt: 5, // 5% limit - strict
 				},
 			},
@@ -1491,9 +1503,9 @@ func TestMonitorProcessesMemLimitsWithKillCandidates(t *testing.T) {
 
 // FakeTerminator is a mock implementation of ProcessTerminator for testing
 type FakeTerminator struct {
-	TerminatedPIDs []int         // PIDs that were terminated
-	ShouldFail     bool          // If true, return error for all terminate calls
-	DryRunMode     bool          // Track if operating in dry-run mode
+	TerminatedPIDs []int // PIDs that were terminated
+	ShouldFail     bool  // If true, return error for all terminate calls
+	DryRunMode     bool  // Track if operating in dry-run mode
 }
 
 func (f *FakeTerminator) TerminateProcess(pid int, user, cmd string) (bool, error) {
@@ -1510,14 +1522,14 @@ func TestTerminateMemLimitViolators(t *testing.T) {
 
 	cfg := &config.Config{
 		MemLimits: &config.MemLimits{
-			Enabled:       true,
-			EnforceKills:  true,
+			Enabled:         true,
+			EnforceKills:    true,
 			ReCandidateCmds: regexp.MustCompile(".*"),
 			Groups: []config.MemLimitGroup{
 				{
-					Description: "test_group",
-					Users:       ".*",
-					ReUsers:     regexp.MustCompile(".*"),
+					Description:         "test_group",
+					Users:               ".*",
+					ReUsers:             regexp.MustCompile(".*"),
 					CmdMaxPercentageInt: 5,
 				},
 			},
@@ -1532,8 +1544,8 @@ func TestTerminateMemLimitViolators(t *testing.T) {
 		MemoryPctByCmd:  make(map[string]float64),
 		MemoryPctByUser: make(map[string]float64),
 		KillCandidates: []KillAction{
-			{Pid: 100, User: "alice", Cmd: "sync", RSSBytes: 100*1024*1024, MemPercentage: 10.0, ReasonType: "cmd_max_percentage", MatchedGroup: "test_group", ThresholdValue: "5%"},
-			{Pid: 101, User: "bob", Cmd: "edit", RSSBytes: 80*1024*1024, MemPercentage: 8.0, ReasonType: "cmd_max_percentage", MatchedGroup: "test_group", ThresholdValue: "5%"},
+			{Pid: 100, User: "alice", Cmd: "sync", RSSBytes: 100 * 1024 * 1024, MemPercentage: 10.0, ReasonType: "cmd_max_percentage", MatchedGroup: "test_group", ThresholdValue: "5%"},
+			{Pid: 101, User: "bob", Cmd: "edit", RSSBytes: 80 * 1024 * 1024, MemPercentage: 8.0, ReasonType: "cmd_max_percentage", MatchedGroup: "test_group", ThresholdValue: "5%"},
 		},
 	}
 
@@ -1552,14 +1564,14 @@ func TestTerminateMemLimitViolatorsWithFailure(t *testing.T) {
 
 	cfg := &config.Config{
 		MemLimits: &config.MemLimits{
-			Enabled:       true,
-			EnforceKills:  true,
+			Enabled:         true,
+			EnforceKills:    true,
 			ReCandidateCmds: regexp.MustCompile(".*"),
 			Groups: []config.MemLimitGroup{
 				{
-					Description: "test_group",
-					Users:       ".*",
-					ReUsers:     regexp.MustCompile(".*"),
+					Description:         "test_group",
+					Users:               ".*",
+					ReUsers:             regexp.MustCompile(".*"),
 					CmdMaxPercentageInt: 5,
 				},
 			},
@@ -1574,8 +1586,8 @@ func TestTerminateMemLimitViolatorsWithFailure(t *testing.T) {
 		MemoryPctByCmd:  make(map[string]float64),
 		MemoryPctByUser: make(map[string]float64),
 		KillCandidates: []KillAction{
-			{Pid: 100, User: "alice", Cmd: "sync", RSSBytes: 100*1024*1024, MemPercentage: 10.0, ReasonType: "cmd_max_percentage", MatchedGroup: "test_group", ThresholdValue: "5%"},
-			{Pid: 101, User: "bob", Cmd: "edit", RSSBytes: 80*1024*1024, MemPercentage: 8.0, ReasonType: "cmd_max_percentage", MatchedGroup: "test_group", ThresholdValue: "5%"},
+			{Pid: 100, User: "alice", Cmd: "sync", RSSBytes: 100 * 1024 * 1024, MemPercentage: 10.0, ReasonType: "cmd_max_percentage", MatchedGroup: "test_group", ThresholdValue: "5%"},
+			{Pid: 101, User: "bob", Cmd: "edit", RSSBytes: 80 * 1024 * 1024, MemPercentage: 8.0, ReasonType: "cmd_max_percentage", MatchedGroup: "test_group", ThresholdValue: "5%"},
 		},
 	}
 
@@ -1640,9 +1652,9 @@ func TestMemLimitsIntegrationWithEnforcement(t *testing.T) {
 			ReCandidateCmds: regexp.MustCompile(".*"),
 			Groups: []config.MemLimitGroup{
 				{
-					Description: "strict_group",
-					Users:       ".*",
-					ReUsers:     regexp.MustCompile(".*"),
+					Description:         "strict_group",
+					Users:               ".*",
+					ReUsers:             regexp.MustCompile(".*"),
 					CmdMaxPercentageInt: 5,
 				},
 			},
