@@ -189,7 +189,7 @@ p4_sync_files_updated{serverid="myserverid"} 0
 p4_cmd_mem_mb{serverid="myserverid"} 0
 p4_cmd_mem_peak_mb{serverid="myserverid"} 0
 p4_cmds_paused_cumulative{serverid="myserverid"} 0.000
-p4_cmds_paused_errors{serverid="myserverid"} 0
+p4_cmds_fatal_errors{serverid="myserverid"} 0
 p4_cmds_paused_max{serverid="myserverid"} 0
 p4_cmds_paused{serverid="myserverid"} 0
 p4_cmds_running_max{serverid="myserverid"} 0
@@ -246,8 +246,9 @@ p4_pause_rate_cpu{serverid="myserverid"} 0
 p4_pause_rate_mem{serverid="myserverid"} 0
 p4_pause_state_cpu{serverid="myserverid"} 0
 p4_pause_state_mem{serverid="myserverid"} 0
-p4_prom_build_info{serverid="myserverid",goversion="go1.24.2",revision="testrevision",version="test"} 1
+p4_prom_build_info{serverid="myserverid",goversion="go1.26.4",revision="testrevision",version="test"} 1
 p4_prom_memory{serverid="myserverid"} 8283400
+p4_resource_terminations{serverid="myserverid"} 0
 p4_prom_svr_events_processed{serverid="myserverid"} 0`, -1)
 	compareOutput(t, baseExpected, output)
 
@@ -272,7 +273,7 @@ p4_cmd_mem_mb;serverid=myserverid 0 1441207389
 p4_cmd_mem_peak_mb;serverid=myserverid 0 1441207389
 p4_cmds_paused;serverid=myserverid 0 1441207389
 p4_cmds_paused_cumulative;serverid=myserverid 0.000 1441207389
-p4_cmds_paused_errors;serverid=myserverid 0 1441207389
+p4_cmds_fatal_errors;serverid=myserverid 0 1441207389
 p4_cmds_paused_max;serverid=myserverid 0 1441207389
 p4_cmds_running;serverid=myserverid 1 1441207389
 p4_cmds_running_max;serverid=myserverid 0 1441207389
@@ -328,8 +329,9 @@ p4_pause_rate_cpu;serverid=myserverid 0 1441207389
 p4_pause_rate_mem;serverid=myserverid 0 1441207389
 p4_pause_state_cpu;serverid=myserverid 0 1441207389
 p4_pause_state_mem;serverid=myserverid 0 1441207389
-p4_prom_build_info;serverid=myserverid;goversion=go1.24.2;revision=testrevision;version=test 1 1441207389
+p4_prom_build_info;serverid=myserverid;goversion=go1.26.4;revision=testrevision;version=test 1 1441207389
 p4_prom_memory;serverid=myserverid 9405704 1441207389
+p4_resource_terminations;serverid=myserverid 0 1441207389
 p4_prom_svr_events_processed;serverid=myserverid 0 1441207389`, -1)
 	compareOutput(t, baseExpectedHistorical, output)
 
