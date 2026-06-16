@@ -54,9 +54,10 @@ type Config struct {
 	UpdateInterval       time.Duration `yaml:"update_interval"`
 	LongUpdateInterval   time.Duration `yaml:"long_update_interval"`
 	MonitorSwarm         bool          `yaml:"monitor_swarm"`
-	SwarmURL             string        `yaml:"swarm_url"`    // Swarm URL - if the value returned by p4 property -l does not work (VPN etc)
-	SwarmSecure          bool          `yaml:"swarm_secure"` // Wehther to validate the Swarm HTTPS certificate
-	CmdsByUser           bool          `yaml:"cmds_by_user"`
+	SwarmURL             string        `yaml:"swarm_url"`           // Swarm URL - if the value returned by p4 property -l does not work (VPN etc)
+	SwarmSecure          bool          `yaml:"swarm_secure"`        // Whether to validate the Swarm HTTPS certificate
+	CmdsByUser           bool          `yaml:"cmds_by_user"`        // Whether to output metric p4_monitor_by_user
+	MemoryByUser         bool          `yaml:"memory_by_user"`      // Whether to output metric p4_active_memory_by_user
 	MaxJournalSize       string        `yaml:"max_journal_size"`    // Maximum size of journal file to monitor, e.g. 100M, 0 means no limit
 	MaxJournalPercent    string        `yaml:"max_journal_percent"` // Maximum size of journal as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
 	MaxLogSize           string        `yaml:"max_log_size"`        // Maximum size of journal file to monitor, e.g. 100M, 0 means no limit
@@ -126,11 +127,11 @@ p4dbin:     p4d
 update_interval:    1m
 
 # ----------------------
-# cmds_by_user: true/false - Whether to output metrics p4_monitor_by_user
-# Normally this should be set to true as the metrics are useful.
+# cmds_by_user: true/false - Whether to output metric p4_monitor_by_user
+# Normally this should be set to true as the metric is useful.
 # If you have a p4d instance with hundreds/thousands of users you may find the number
 # of metrics labels is too great (one per distinct user), so set this to false.
-# Or set it to false if any personal information concerns
+# Or set it to false if any personal information concerns. See also memory_by_user below for similar considerations.
 cmds_by_user:   true
 
 # ----------------------
@@ -215,6 +216,14 @@ monitor_groups:
     label:    other
 
 # ----------------------
+# memory_by_user: true/false - Whether to output metric p4_active_memory_by_user
+# Normally this should be set to true as the metric is useful.
+# If you have a p4d instance with hundreds/thousands of users you may find the number
+# of metrics labels is too great (one per distinct user), so set this to false.
+# Or set it to false if any personal information concerns
+memory_by_user:   true
+
+# ----------------------
 # memlimits: Optional (but recommended) way to define which users and commands to monitor for memory limits 
 #   (useful for inadvertently high memory usage). Some users run commands on inappropriate paths such as the entire repository,
 #   or a huge depot. Commands which exceed these settings have 'p4 monitor terminate' run on them, which will ask the command to terminate.
@@ -232,7 +241,7 @@ monitor_groups:
 #     cmd_max_value:                  Units are M/G (powers of 1024), e.g. 10M, 1.5G etc, if blank or 0 then no limit
 #     user_cumulative_max_percentage: For all commands for a user, 0-99, where 0 means no limit
 #     user_cumulative_max_value:      Units are M/G (powers of 1024), e.g. 10M, 1.5G etc, if blank or 0 then no limit
-# The order of the groups is important - the first match wins, so more specific patterns should come first (e.g. admin users should be first, 
+# THE ORDER OF THE GROUPS IS IMPORTANT - the first match wins, so more specific patterns should come first (e.g. admin users should be first, 
 # with no limits, and then (optionally) a group for build users with higher limits, followed by a catch-all for other users with limits).
 # Note that only Running commands (state 'R') and Idle ('I') are counted for these groups, not Background ('B'), 
 # since Background commands are things like replication and resource monitoring
@@ -242,8 +251,8 @@ memlimits:
   enabled:         true
   enforce_kills:   false
   groups:
-  - description: "No limits for super and perforce users (as they hopefully know what they are doing!)"
-    users: "super|perforce"
+  - description: "No limits for super users (as they hopefully know what they are doing!)"
+    users: "super|perforce|p4admin"
     cmd_max_percentage:             
     cmd_max_value:                  
     user_cumulative_max_percentage: 

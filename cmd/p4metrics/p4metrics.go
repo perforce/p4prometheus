@@ -522,9 +522,9 @@ func evaluateMemLimits(
 
 	// Log summary if kill candidates identified
 	if len(eval.KillCandidates) > 0 {
-		logger.Infof("Memory limit evaluation: %d kill candidates identified", len(eval.KillCandidates))
+		logger.Infof("Memlimit evaluation: %d kill candidates identified", len(eval.KillCandidates))
 		for _, action := range eval.KillCandidates {
-			logger.Debugf("Kill candidate: PID %d user=%s cmd=%s reason=%s threshold=%s usage=%s (%.1f%%)",
+			logger.Debugf("Memlimit kill candidate: PID %d user=%s cmd=%s reason=%s threshold=%s usage=%s (%.1f%%)",
 				action.Pid, action.User, action.Cmd, action.ReasonType, action.ThresholdValue, humanizeBytes(action.RSSBytes), action.MemPercentage)
 		}
 	}
@@ -548,15 +548,15 @@ func (p4m *P4MonitorMetrics) terminateMemLimitViolators(eval *MemLimitEvaluation
 		if success {
 			killed++
 			p4m.memlimitKillCount++
-			p4m.logger.Infof("Process terminated: PID %d user=%s cmd=%s reason=%s usage=%.1f%%",
+			p4m.logger.Infof("Memlimit process terminated: PID %d user=%s cmd=%s reason=%s usage=%.1f%%",
 				action.Pid, action.User, action.Cmd, action.ReasonType, action.MemPercentage)
 		} else {
-			p4m.logger.Warnf("Failed to kill PID %d (%s from %s): %v", action.Pid, action.Cmd, action.User, err)
+			p4m.logger.Warnf("Memlimit failed to kill PID %d (%s from %s): %v", action.Pid, action.Cmd, action.User, err)
 		}
 	}
 
 	if killed > 0 {
-		p4m.logger.Infof("Terminated %d processes due to memory limits (total: %d)", killed, p4m.memlimitKillCount)
+		p4m.logger.Infof("Memlimit terminated %d processes due to memory limits (total: %d)", killed, p4m.memlimitKillCount)
 	}
 
 	return killed
@@ -2157,12 +2157,14 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 						labels: []labelStruct{{name: "cmd", value: cmd}}})
 				}
 
-				for user, bytes := range eval.ActiveMemoryByUser {
-					p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_active_memory_by_user",
-						help:   "Active memory in bytes used by monitor processes running as user (all states)",
-						mtype:  "gauge",
-						value:  fmt.Sprintf("%d", bytes),
-						labels: []labelStruct{{name: "user", value: user}}})
+				if p4m.config.MemoryByUser {
+					for user, bytes := range eval.ActiveMemoryByUser {
+						p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_active_memory_by_user",
+							help:   "Active memory in bytes used by monitor processes running as user (all states)",
+							mtype:  "gauge",
+							value:  fmt.Sprintf("%d", bytes),
+							labels: []labelStruct{{name: "user", value: user}}})
+					}
 				}
 
 				// Emit kill candidates metric
@@ -2173,10 +2175,10 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 
 				// Terminate violating processes if configured and not in dry-run
 				if p4m.config.MemLimits.EnforceKills && len(eval.KillCandidates) > 0 {
-					p4m.logger.Infof("Enforcing memory limits: terminating %d violating processes", len(eval.KillCandidates))
+					p4m.logger.Infof("Memlimit enforcing limits: terminating %d violating processes", len(eval.KillCandidates))
 					p4m.terminateMemLimitViolators(eval, p4m.terminator)
 				} else if len(eval.KillCandidates) > 0 {
-					p4m.logger.Debugf("Memory limit violations detected (%d processes) but enforcement disabled (enforce_kills: false)", len(eval.KillCandidates))
+					p4m.logger.Infof("Memlimit violations detected (%d processes) but enforcement disabled (enforce_kills: false)", len(eval.KillCandidates))
 				}
 
 				// Emit kill count metric
@@ -3171,7 +3173,8 @@ func main() {
 	)
 
 	kingpin.Version(version.Print("p4metrics"))
-	kingpin.HelpFlag.Short('h')
+	kingpin.CommandLine.VersionFlag.Short('V')
+	kingpin.CommandLine.HelpFlag.Short('h')
 	kingpin.Parse()
 
 	if *sampleConfig {
