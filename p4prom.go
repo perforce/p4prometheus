@@ -20,7 +20,7 @@ import (
 	"github.com/rcowham/go-libtail/tailer/fswatcher"
 	"github.com/rcowham/go-libtail/tailer/glob"
 
-	"gopkg.in/alecthomas/kingpin.v2"
+	"github.com/rcowham/kingpin"
 
 	"github.com/sirupsen/logrus"
 )

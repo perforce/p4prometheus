@@ -32,8 +32,8 @@ import (
 
 	"github.com/bitfield/script"
 	"github.com/perforce/p4prometheus/version"
+	"github.com/rcowham/kingpin"
 	"github.com/sirupsen/logrus"
-	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 // GO standard reference value/format: Mon Jan 2 15:04:05 -0700 MST 2006
@@ -2152,7 +2152,7 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 				for cmd, bytes := range eval.ActiveMemoryByCmd {
 					p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_active_memory_by_cmd",
 						help:   "Active memory in bytes used by monitor processes running cmd (all states)",
-						mtype:  "counter",
+						mtype:  "gauge",
 						value:  fmt.Sprintf("%d", bytes),
 						labels: []labelStruct{{name: "cmd", value: cmd}}})
 				}
@@ -2160,26 +2160,8 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 				for user, bytes := range eval.ActiveMemoryByUser {
 					p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_active_memory_by_user",
 						help:   "Active memory in bytes used by monitor processes running as user (all states)",
-						mtype:  "counter",
+						mtype:  "gauge",
 						value:  fmt.Sprintf("%d", bytes),
-						labels: []labelStruct{{name: "user", value: user}}})
-				}
-
-				// Emit per-command memory percentages
-				for cmd, pct := range eval.MemoryPctByCmd {
-					p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_memory_pct_by_cmd",
-						help:   "Memory percentage used by processes running cmd",
-						mtype:  "gauge",
-						value:  fmt.Sprintf("%.2f", pct),
-						labels: []labelStruct{{name: "cmd", value: cmd}}})
-				}
-
-				// Emit per-user memory percentages
-				for user, pct := range eval.MemoryPctByUser {
-					p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_memory_pct_by_user",
-						help:   "Memory percentage used by processes running as user",
-						mtype:  "gauge",
-						value:  fmt.Sprintf("%.2f", pct),
 						labels: []labelStruct{{name: "user", value: user}}})
 				}
 
