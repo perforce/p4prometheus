@@ -143,6 +143,8 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 
 | Metric Name | Labels | Description |
 | ----------- | ------ | ----------- |
+| p4_active_memory_by_cmd | cmd | Active memory in bytes used by monitor processes running each command (all states, Linux only) |
+| p4_active_memory_by_user | user | Active memory in bytes used by monitor processes running as each user (all states, Linux only) |
 | p4_auth_ssl_cert_expires |  | Epoch seconds when Helix Auth Service SSL cert expires |
 | p4_auth_version | version | The version of the Helix Auth Service (unknown means <= 2022.1) |
 | p4_change_counter |  | P4D change counter - monitor normal activity for submits etc |
@@ -162,6 +164,8 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_log_size | | Size of P4LOG in bytes |
 | p4_logs_file_count| | Count of files in SDP logs directory (not created for non-SDP) |
 | p4_logs_rotated | | Count of rotations of P4LOG by p4metrics |
+| p4_memlimit_kill_candidates |  | Current count of processes exceeding configured memory thresholds (Linux only) |
+| p4_memlimit_kills_total |  | Cumulative count of processes terminated by memory limit enforcement (Linux only) |
 | p4_monitor_by_cmd | cmd | P4 running processes - counted by cmd |
 | p4_monitor_by_state | state | P4 running processes - counted by state (see 'p4 monitor show' status field) |
 | p4_monitor_by_user | user | P4 running processes - counted by user |
