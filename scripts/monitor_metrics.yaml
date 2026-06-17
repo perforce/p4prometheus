@@ -15,6 +15,13 @@ notifications:
   # Must be writable by the user running monitor_metrics.py.
   state_file: "/tmp/monitor_metrics.notify.state"
 
+  # Optional text shown as the first line after the title in chat notifications.
+  # Example: "Investigate lock contention immediately"
+  notification_text: ""
+
+  # Optional URL used to render an "Open Runbook" button in Slack notifications.
+  runbook_url: ""
+
   # Maximum lines for Slack/Teams chat payloads (summary + blocking tree).
   # Set to 0 for no line limit.
   max_lines: 40

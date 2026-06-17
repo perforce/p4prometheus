@@ -37,7 +37,7 @@ function usage
  
    echo "USAGE for monitor_wrapper.sh:
  
-monitor_wrapper.sh [<instance> | -nosdp] [-p <port>] | [-u <user>] | [-m <metrics_dir>] [-L <log_file>]
+monitor_wrapper.sh [<instance> | -nosdp] [-p <port>] | [-u <user>] | [-m <metrics_dir>] [-L <log_file>] [-c <config_file>]
 
    or
 
@@ -46,7 +46,8 @@ monitor_wrapper.sh -h
 E.g.
 
 monitor_wrapper.sh 1
-monitor_wrapper.sh -nosdp -p server:1666 -u p4admin -m /var/metrics -L /var/metrics/monitor_metrics.log
+monitor_wrapper.sh 1 -c /p4/common/config/monitor_metrics.yaml
+monitor_wrapper.sh -nosdp -p server:1666 -u p4admin -m /var/metrics -L /var/metrics/monitor_metrics.log -c /etc/p4/monitor_metrics.yaml
 
 "
 }
@@ -56,6 +57,7 @@ monitor_wrapper.sh -nosdp -p server:1666 -u p4admin -m /var/metrics -L /var/metr
 declare -i shiftArgs=0
 declare -i UseSDP=1
 declare logfile=""
+declare configfile=""
 
 set +u
 while [[ $# -gt 0 ]]; do
@@ -66,6 +68,7 @@ while [[ $# -gt 0 ]]; do
         (-u) User=$2; shiftArgs=1;;
         (-m) metrics_root=$2; shiftArgs=1;;
         (-L) logfile=$2; shiftArgs=1;;
+        (-c) configfile=$2; shiftArgs=1;;
         (-nosdp) UseSDP=0;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
@@ -103,9 +106,15 @@ else
     [[ -z "$logfile" ]] && logfile="$metrics_root/monitor_metrics.log"
 fi
 
+# Build optional arguments
+declare config_arg=""
+[[ -n "$configfile" ]] && config_arg="-c $configfile"
+
 # Adjust to your script location if required
 if [[ $UseSDP -eq 1 ]]; then
-    "$SCRIPT_DIR"/monitor_metrics.py  -i "$SDP_INSTANCE" -m "$metrics_root"
+    # shellcheck disable=SC2086
+    "$SCRIPT_DIR"/monitor_metrics.py -i "$SDP_INSTANCE" -m "$metrics_root" $config_arg
 else
-    "$SCRIPT_DIR"/monitor_metrics.py -m "$metrics_root" -p "$p4port" -u "$p4user" -L "$logfile"
+    # shellcheck disable=SC2086
+    "$SCRIPT_DIR"/monitor_metrics.py -m "$metrics_root" -p "$p4port" -u "$p4user" -L "$logfile" $config_arg
 fi

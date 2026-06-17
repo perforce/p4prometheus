@@ -340,12 +340,16 @@ Description=P4prometheus
 Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
 Wants=network-online.target
 After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 User=$OSUSER
 Group=$OSGROUP
 Type=simple
 ExecStart=${local_bin_dir}/p4prometheus --config=$p4prom_config_file
+Restart=on-failure
+RestartSec=10s
 
 [Install]
 WantedBy=multi-user.target
@@ -500,12 +504,16 @@ Description=P4metrics - part of P4prometheus
 Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
 Wants=network-online.target
 After=network-online.target p4d_${SDP_INSTANCE}.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 User=$OSUSER
 Group=$OSGROUP
 Type=simple
 ExecStart=${local_bin_dir}/${progname} --config=${p4metrics_config_file}
+Restart=on-failure
+RestartSec=10s
 
 [Install]
 WantedBy=multi-user.target
@@ -582,9 +590,16 @@ notifications:
   # File used to persist the last-notification timestamp.
   state_file: "/tmp/monitor_metrics.notify.state"
 
-    # Maximum lines for Slack/Teams chat payloads (summary + blocking tree).
-    # Set to 0 for no line limit.
-    max_lines: 80
+  # Optional text shown as the first line after the title in chat notifications.
+  # Example: "Investigate lock contention immediately"
+  notification_text: ""
+
+  # Optional URL used to render an "Open Runbook" button in Slack notifications.
+  runbook_url: ""
+
+  # Maximum lines for Slack/Teams chat payloads (summary + blocking tree).
+  # Set to 0 for no line limit.
+  max_lines: 80
 
   # -------------------------------------------------------------------------
   # Slack - Incoming Webhook

@@ -168,6 +168,7 @@ fi
 
 p4prom_config_file="$p4prom_config_dir/p4prometheus.yaml"
 p4metrics_config_file="$p4prom_config_dir/p4metrics.yaml"
+monitor_metrics_config_file="$p4prom_config_dir/monitor_metrics.yaml"
 
 [[ -f "$p4prom_config_file" ]] || bail "Config file '$p4prom_config_file' does not exist - please run install_p4prom.sh instead of this script!"
 
@@ -178,6 +179,54 @@ download_and_untar () {
     msg "downloading and extracting $url"
     wget -q "$url"
     tar zxvf "$fname"
+}
+
+write_p4prometheus_service_file() {
+    local service_file=$1
+    cat << EOF > "$service_file"
+[Unit]
+Description=P4prometheus
+Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+User=$OSUSER
+Group=$OSGROUP
+Type=simple
+ExecStart=${local_bin_dir}/p4prometheus --config=$p4prom_config_file
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+write_p4metrics_service_file() {
+    local service_file=$1
+    cat << EOF > "$service_file"
+[Unit]
+Description=P4metrics - part of P4prometheus
+Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
+Wants=network-online.target
+After=network-online.target p4d_${SDP_INSTANCE}.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+User=$OSUSER
+Group=$OSGROUP
+Type=simple
+ExecStart=${local_bin_dir}/p4metrics --config=${p4metrics_config_file}
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
+EOF
 }
 
 update_node_exporter () {
@@ -253,6 +302,14 @@ update_p4prometheus () {
     service_file="/etc/systemd/system/${service_name}.service"
     curr_ver=$($progname --version 2>&1 | grep "$progname, version " | awk '{print $3}')
     if [[ "$curr_ver" == "v$VER_P4PROMETHEUS" ]]; then
+        if [[ -f "$service_file" ]]; then
+            msg "Updating existing service file for $service_name"
+            write_p4prometheus_service_file "$service_file"
+            systemctl daemon-reload
+            systemctl enable ${service_name}
+            systemctl restart ${service_name}
+            systemctl status ${service_name} --no-pager
+        fi
         msg "Current version $curr_ver of $progname is up-to-date"
         return
     fi
@@ -276,22 +333,7 @@ update_p4prometheus () {
     fi
 
     msg "Creating service file for $service_name"
-    cat << EOF > $service_file
-[Unit]
-Description=P4prometheus
-Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-User=$OSUSER
-Group=$OSGROUP
-Type=simple
-ExecStart=${local_bin_dir}/${progname} --config=$p4prom_config_file
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    write_p4prometheus_service_file "$service_file"
 
     systemctl daemon-reload
     systemctl enable ${service_name}
@@ -306,6 +348,14 @@ update_p4metrics () {
     service_file="/etc/systemd/system/${service_name}.service"
     curr_ver=$($progname --version 2>&1 | grep "$progname, version " | awk '{print $3}')
     if [[ "$curr_ver" == "v$VER_P4PROMETHEUS" ]]; then
+        if [[ -f "$service_file" ]]; then
+            msg "Updating existing service file for $service_name"
+            write_p4metrics_service_file "$service_file"
+            systemctl daemon-reload
+            systemctl enable "${service_name}"
+            systemctl restart "${service_name}"
+            systemctl status "${service_name}" --no-pager
+        fi
         msg "Current version $curr_ver of $progname is up-to-date"
         return
     fi
@@ -490,22 +540,7 @@ EOF
     service_name="${progname}"
     service_file="/etc/systemd/system/${service_name}.service"
     msg "Creating service file for ${service_name}"
-    cat << EOF > "${service_file}"
-[Unit]
-Description=P4metrics - part of P4prometheus
-Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
-Wants=network-online.target
-After=network-online.target p4d_${SDP_INSTANCE}.service
-
-[Service]
-User=$OSUSER
-Group=$OSGROUP
-Type=simple
-ExecStart=${local_bin_dir}/${progname} --config=${p4metrics_config_file}
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    write_p4metrics_service_file "$service_file"
 
     chmod 644 "${service_file}"
     systemctl daemon-reload
@@ -529,6 +564,30 @@ EOF
     if [ "$CHANGES_MADE" = true ]; then # Load up new crontab
         crontab -u "$OSUSER" "$TEMP_FILE"
     fi
+}
+
+update_monitor_locks_service() {
+    local service_name="monitor_locks"
+    local service_file="/etc/systemd/system/${service_name}.service"
+    if [[ ! -f "$service_file" ]]; then
+        return
+    fi
+
+    if ! grep -qE '^[[:space:]]*ExecStart=.*monitor_wrapper\.sh' "$service_file"; then
+        return
+    fi
+
+    if grep -qE '^[[:space:]]*ExecStart=.*monitor_wrapper\.sh.*[[:space:]]-c[[:space:]]' "$service_file"; then
+        msg "monitor_locks service already has a monitor_metrics config argument"
+        return
+    fi
+
+    msg "Updating monitor_locks service to include monitor_metrics config argument"
+    sed -i "/^[[:space:]]*ExecStart=.*monitor_wrapper\\.sh/ s|$| -c ${monitor_metrics_config_file}|" "$service_file"
+    systemctl daemon-reload
+    systemctl restart ${service_name}.timer 2>/dev/null || true
+    systemctl restart ${service_name}.service 2>/dev/null || true
+    systemctl status ${service_name}.timer --no-pager 2>/dev/null || true
 }
 
 install_vmagent () {
@@ -723,6 +782,7 @@ EOF
 update_node_exporter
 update_p4prometheus
 update_p4metrics
+update_monitor_locks_service
 if [[ $InstallVMAgent -eq 1 ]]; then
     install_vmagent
 fi

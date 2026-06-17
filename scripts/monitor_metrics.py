@@ -122,6 +122,8 @@ class Notifier:
         self.cooldown = int(config.get("cooldown_seconds", 300))
         self.state_file = config.get("state_file", "/tmp/monitor_metrics.notify.state")
         self.max_lines = int(config.get("max_lines", 80))
+        self.runbook_url = str(config.get("runbook_url", "")).strip()
+        self.notification_text = str(config.get("notification_text", "")).strip()
 
     def _is_cooled_down(self):
         """Returns True if enough time has passed since the last notification."""
@@ -184,7 +186,7 @@ class Notifier:
                 elif channel == "slack":
                     max_lines = int(cfg.get("max_lines", self.max_lines))
                     chat_message = self._format_chat_message(
-                        blocked_count, blocking_tree, max_lines, teams_style=False)
+                        blocked_count, blocking_tree, max_lines, teams_style=False, include_intro=False)
                     method(chat_message, cfg)
                 elif channel == "teams":
                     max_lines = int(cfg.get("max_lines", self.max_lines))
@@ -202,10 +204,15 @@ class Notifier:
     # Channel implementations
     # ------------------------------------------------------------------
 
-    def _format_chat_message(self, blocked_count, blocking_tree, max_lines, teams_style=False):
+    def _format_chat_message(self, blocked_count, blocking_tree, max_lines, teams_style=False, include_intro=True):
         """Format blocking tree only and optionally prune chat output."""
-        lines = ["Blocking threshold exceeded - total commands showing as blocked: {}".format(blocked_count),
-                 "Blocking tree:"]
+        lines = []
+        if include_intro and self.notification_text:
+            lines.append(self.notification_text)
+        lines.extend([
+            "Blocking threshold exceeded - total commands showing as blocked: {}".format(blocked_count),
+            "Blocking tree:",
+        ])
         if blocking_tree:
             tree_lines = json.dumps(blocking_tree, indent=2, sort_keys=True).splitlines()
             if teams_style:
@@ -242,24 +249,48 @@ class Notifier:
             self.logger.warning("Slack webhook_url not configured")
             return
         message = self._truncate_slack_text(message)
+        runbook_url = str(cfg.get("runbook_url", "")).strip() or self.runbook_url
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": "P4 Lock Alert"
+                }
+            }
+        ]
+        if self.notification_text:
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": self.notification_text
+                }
+            })
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "```\n{}\n```".format(message)
+            }
+        })
+        if runbook_url:
+            blocks.append({
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Open Runbook"
+                        },
+                        "url": runbook_url
+                    }
+                ]
+            })
         body = json.dumps({
             "text": "P4 Lock Alert",
-            "blocks": [
-                {
-                    "type": "header",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "P4 Lock Alert"
-                    }
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "```\n{}\n```".format(message)
-                    }
-                }
-            ]
+            "blocks": blocks
         }).encode("utf-8")
         req = urllib.request.Request(
             webhook_url, data=body,
@@ -303,6 +334,11 @@ class Notifier:
         if not webhook_url:
             self.logger.warning("Teams webhook_url not configured")
             return
+        runbook_url = str(cfg.get("runbook_url", "")).strip() or self.runbook_url
+        text = message.replace("\n", "<br>")
+        if runbook_url:
+            # Fallback for clients that don't render potentialAction buttons.
+            text += "<br><br>[Open Runbook]({})".format(runbook_url)
         # MS Teams Incoming Webhook uses the legacy MessageCard schema
         card = {
             "@type": "MessageCard",
@@ -310,8 +346,19 @@ class Notifier:
             "summary": "P4 Lock Alert",
             "themeColor": "FF0000",
             "title": "P4 Lock Alert",
-            "text": message.replace("\n", "<br>"),
+            "text": text,
         }
+        if runbook_url:
+            card["potentialAction"] = [{
+                "@type": "OpenUri",
+                "name": "Open Runbook",
+                "targets": [
+                    {"os": "default", "uri": runbook_url},
+                    {"os": "windows", "uri": runbook_url},
+                    {"os": "iOS", "uri": runbook_url},
+                    {"os": "android", "uri": runbook_url},
+                ],
+            }]
         body = json.dumps(card).encode("utf-8")
         req = urllib.request.Request(
             webhook_url, data=body,
