@@ -247,7 +247,7 @@ memory_by_user:   true
 # since Background commands are things like replication and resource monitoring
 # Example:
 memlimits:
-  candidate_cmds:  "sync|transmit|print|files|fstat|changes|changelists|integrated|interchanges|opened"
+	candidate_cmds:  "annotate|changes|changelists|describe|filelog|files|fstat|integrated|interchanges|istat|opened|print|sync|transmit"
   enabled:         true
   enforce_kills:   false
   groups:
@@ -259,9 +259,9 @@ memlimits:
     user_cumulative_max_value:      
   - description: "Default limits for all other users"
     users: ".*"
-    cmd_max_percentage:             30%
+    cmd_max_percentage:             50%
     cmd_max_value:                  
-    user_cumulative_max_percentage: 50%
+    user_cumulative_max_percentage: 70%
     user_cumulative_max_value:      
 
 `
