@@ -32,6 +32,17 @@ import re
 import subprocess
 import datetime
 import json
+import time
+import urllib.request
+import urllib.error
+import smtplib
+from email.mime.text import MIMEText
+
+try:
+    import yaml
+    HAS_YAML = True
+except ImportError:
+    HAS_YAML = False
 
 python3 = (sys.version_info[0] >= 3)
 
@@ -66,6 +77,8 @@ class Blocker:
     """Blocking pid"""
 
     def __init__(self, pid, user, cmd, elapsed, table) -> None:
+        if not table or table == "unknown":
+            table = "tblUnknown"
         self.pid = pid
         self.user = user
         self.cmd = cmd
@@ -90,6 +103,248 @@ class MonitorMetrics:
         self.msgs = []
         self.blockingCommands = {}
         self.monitorCommands = {}
+
+
+class Notifier:
+    """Sends notifications when blocked commands exceed a configured threshold.
+
+    Supports Slack webhooks, email (SMTP), MS Teams webhooks, and a generic
+    shell script.  A cooldown mechanism prevents notification floods.
+
+    Configuration is loaded from the ``notifications`` section of the YAML
+    config file passed via ``--config``.
+    """
+
+    def __init__(self, config, logger):
+        self.config = config
+        self.logger = logger
+        self.min_blocked = int(config.get("min_blocked_commands", 5))
+        self.cooldown = int(config.get("cooldown_seconds", 300))
+        self.state_file = config.get("state_file", "/tmp/monitor_metrics.notify.state")
+        self.max_lines = int(config.get("max_lines", 80))
+
+    def _is_cooled_down(self):
+        """Returns True if enough time has passed since the last notification."""
+        try:
+            with open(self.state_file, "r") as f:
+                last_time = float(f.read().strip())
+            return (time.time() - last_time) >= self.cooldown
+        except (OSError, ValueError):
+            return True
+
+    def _record_notification(self):
+        try:
+            with open(self.state_file, "w") as f:
+                f.write(str(time.time()))
+        except OSError as e:
+            self.logger.warning("Could not write notification state file: %s", e)
+
+    def maybe_notify(self, blocked_count, blines, detail_msgs, blocking_tree=None, force=False):
+        """Send notifications if threshold is exceeded and cooldown has passed.
+
+        Args:
+            blocked_count (int): Number of currently blocked commands.
+            blines (list[str]): Summary lines from findBlockers().
+            detail_msgs (list[str]): Per-lock detail messages from metrics.msgs.
+            blocking_tree (dict|None): Blocking tree with metadata.
+            force (bool): If True, bypass threshold and cooldown checks (for testing).
+        """
+        if not force and blocked_count < self.min_blocked:
+            self.logger.debug(
+                "Blocked commands %d below threshold %d, skipping notification",
+                blocked_count, self.min_blocked)
+            return
+        if not force and not self._is_cooled_down():
+            self.logger.debug("Notification cooldown active, skipping")
+            return
+        if force:
+            self.logger.info("Notification forced (--notify-test): threshold/cooldown bypassed")
+
+        message = "\n".join(blines)
+        if blocking_tree:
+            message += "\n\nBlocking tree:\n" + json.dumps(blocking_tree, indent=2, sort_keys=True)
+        payload = {
+            "blocked_count": blocked_count,
+            "blockers": blines,
+            "details": detail_msgs,
+            "blocking_tree": blocking_tree or {},
+        }
+
+        sent = False
+        for channel, method in (
+            ("slack", self._send_slack),
+            ("email", self._send_email),
+            ("teams", self._send_teams),
+            ("script", self._send_script),
+        ):
+            cfg = self.config.get(channel, {})
+            if cfg and cfg.get("enabled"):
+                if channel == "script":
+                    method(payload, cfg)
+                elif channel == "slack":
+                    max_lines = int(cfg.get("max_lines", self.max_lines))
+                    chat_message = self._format_chat_message(
+                        blocked_count, blocking_tree, max_lines, teams_style=False)
+                    method(chat_message, cfg)
+                elif channel == "teams":
+                    max_lines = int(cfg.get("max_lines", self.max_lines))
+                    chat_message = self._format_chat_message(
+                        blocked_count, blocking_tree, max_lines, teams_style=True)
+                    method(chat_message, cfg)
+                else:
+                    method(message, cfg)
+                sent = True
+
+        if sent:
+            self._record_notification()
+
+    # ------------------------------------------------------------------
+    # Channel implementations
+    # ------------------------------------------------------------------
+
+    def _format_chat_message(self, blocked_count, blocking_tree, max_lines, teams_style=False):
+        """Format blocking tree only and optionally prune chat output."""
+        lines = ["Blocking threshold exceeded - total commands showing as blocked: {}".format(blocked_count),
+                 "Blocking tree:"]
+        if blocking_tree:
+            tree_lines = json.dumps(blocking_tree, indent=2, sort_keys=True).splitlines()
+            if teams_style:
+                tree_lines = [self._teams_indent_line(x) for x in tree_lines]
+            lines.extend(tree_lines)
+        else:
+            lines.append("(no blocking tree data)")
+
+        if max_lines > 0 and len(lines) > max_lines:
+            omitted = len(lines) - max_lines
+            keep = max(max_lines - 1, 1)
+            lines = lines[:keep]
+            lines.append("... truncated {} lines (set notifications.max_lines to adjust)".format(omitted))
+
+        return "\n".join(lines)
+
+    def _teams_indent_line(self, line):
+        """Teams can flatten whitespace; render indentation using leading dots."""
+        stripped = line.lstrip(" ")
+        leading = len(line) - len(stripped)
+        if leading <= 0:
+            return line
+        return ("." * leading) + stripped
+
+    def _truncate_slack_text(self, text, limit=2900):
+        """Slack section text limit is 3000 chars; keep some headroom."""
+        if len(text) <= limit:
+            return text
+        return text[: limit - 40] + "\n... truncated for Slack length limit"
+
+    def _send_slack(self, message, cfg):
+        webhook_url = cfg.get("webhook_url", "")
+        if not webhook_url:
+            self.logger.warning("Slack webhook_url not configured")
+            return
+        message = self._truncate_slack_text(message)
+        body = json.dumps({
+            "text": "P4 Lock Alert",
+            "blocks": [
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "P4 Lock Alert"
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "```\n{}\n```".format(message)
+                    }
+                }
+            ]
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            webhook_url, data=body,
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                self.logger.info("Slack notification sent (HTTP %d)", resp.status)
+        except Exception as e:
+            self.logger.warning("Slack notification failed: %s", e)
+
+    def _send_email(self, message, cfg):
+        smtp_host = cfg.get("smtp_host", "localhost")
+        smtp_port = int(cfg.get("smtp_port", 25))
+        use_tls = cfg.get("use_tls", False)
+        username = cfg.get("username", "")
+        password = cfg.get("password", "")
+        from_addr = cfg.get("from_addr", "p4monitor@localhost")
+        to_addrs = cfg.get("to_addrs", [])
+        subject = cfg.get("subject", "P4 Lock Alert")
+        if not to_addrs:
+            self.logger.warning("Email to_addrs not configured")
+            return
+        msg = MIMEText(message)
+        msg["Subject"] = subject
+        msg["From"] = from_addr
+        msg["To"] = ", ".join(to_addrs)
+        try:
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
+            if use_tls:
+                server.starttls()
+            if username:
+                server.login(username, password)
+            server.sendmail(from_addr, to_addrs, msg.as_string())
+            server.quit()
+            self.logger.info("Email notification sent to %s", to_addrs)
+        except Exception as e:
+            self.logger.warning("Email notification failed: %s", e)
+
+    def _send_teams(self, message, cfg):
+        webhook_url = cfg.get("webhook_url", "")
+        if not webhook_url:
+            self.logger.warning("Teams webhook_url not configured")
+            return
+        # MS Teams Incoming Webhook uses the legacy MessageCard schema
+        card = {
+            "@type": "MessageCard",
+            "@context": "https://schema.org/extensions",
+            "summary": "P4 Lock Alert",
+            "themeColor": "FF0000",
+            "title": "P4 Lock Alert",
+            "text": message.replace("\n", "<br>"),
+        }
+        body = json.dumps(card).encode("utf-8")
+        req = urllib.request.Request(
+            webhook_url, data=body,
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                self.logger.info("Teams notification sent (HTTP %d)", resp.status)
+        except Exception as e:
+            self.logger.warning("Teams notification failed: %s", e)
+
+    def _send_script(self, payload, cfg):
+        command = cfg.get("command", "")
+        if not command:
+            self.logger.warning("Notification script command not configured")
+            return
+        # The script receives the payload as JSON on stdin and should exit 0 on success.
+        try:
+            proc = subprocess.Popen(
+                command, shell=True,
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                universal_newlines=True)
+            stdout, stderr = proc.communicate(input=json.dumps(payload), timeout=30)
+            if proc.returncode != 0:
+                self.logger.warning(
+                    "Notification script failed (rc=%d): %s", proc.returncode, stderr)
+            else:
+                self.logger.info("Notification script executed successfully")
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            self.logger.warning("Notification script timed out")
+        except Exception as e:
+            self.logger.warning("Notification script error: %s", e)
+
 
 def build_blocking_tree(logger, blockingCommands):
     """
@@ -147,6 +402,7 @@ def build_blocking_tree(logger, blockingCommands):
             blocking_tree.update(create_subtree(pid, [pid]))
     return blocking_tree
 
+
 def count_blocking(blocking_tree):
     """
     Recursively traverse the blocking tree and count descendants up to 9 levels.
@@ -194,6 +450,7 @@ def count_blocking(blocking_tree):
             blockingCounts[root_pid] = level_counts
     return blockingCounts
 
+
 def tree_with_metadata(tree, blockingCommands, monitorCommands, blockingCounts):
     """
     Add metadata to each PID in the tree.
@@ -215,15 +472,15 @@ def tree_with_metadata(tree, blockingCommands, monitorCommands, blockingCounts):
         args = ""
         if p:
             args = p.args
-            if len(args) > 10:
-                args = f"{args[:10]}..."
+            if len(args) > 20:
+                args = f"{args[:20]}..."
         b = blockingCommands.get(pid, {})
         if b:
-            new_key = f"{pid} {b.table}{blocking}, {b.cmd} {args}"
+            new_key = f"{pid} {b.user} {b.table}{blocking}, {b.cmd} {args}"
         else:
             p = monitorCommands.get(pid, {})
             if p:
-                new_key = f"{pid} {p.cmd} {args}"
+                new_key = f"{pid} {p.user} {p.cmd} {args}"
         # If the subtree is empty, just add the new key with empty dict or recurse
         if not subtree:
             result[new_key] = {}
@@ -244,6 +501,7 @@ class P4Monitor(object):
             self.sdpinst_label = 'sdpinst="%s"' % self.options.sdp_instance
             with open("/p4/%s/root/server.id" % self.options.sdp_instance, "r") as f:
                 self.serverid_label = 'serverid="%s"' % f.read().rstrip()
+        self.notifier = self._load_notifier()
 
     def parse_args(self, doc, args):
         """Common parsing and setting up of args"""
@@ -271,9 +529,14 @@ class P4Monitor(object):
         parser.add_argument('-p', '--p4port', default=None,
                             help="Perforce server port. Default: $P4PORT")
         parser.add_argument('-u', '--p4user', default=None, help="Perforce user. Default: $P4USER")
+        parser.add_argument('-c', '--config', default=None,
+                            help="YAML config file for notifications and other options.")
         parser.add_argument('-L', '--log', default=default_log_file, help="Default: " + default_log_file)
         parser.add_argument('-i', '--sdp-instance', help="SDP instance")
         parser.add_argument('-t', '--test-file', help="Test file (section of log file from monitor_metrics.py)")
+        parser.add_argument('--notify-test', action='store_true', default=False,
+                            help="Force a notification when used with --test-file, bypassing threshold and cooldown. "
+                                 "Useful for verifying Slack/email/Teams/script config.")
         parser.add_argument('-m', '--metrics-root', default=metrics_root, help="Metrics directory to use. Default: " + metrics_root)
         parser.add_argument('-v', '--verbosity',
                             nargs='?',
@@ -294,6 +557,25 @@ class P4Monitor(object):
         ch.setLevel(logging.INFO)
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
+
+    def _load_notifier(self):
+        """Load notification config from the YAML file specified by --config, if any."""
+        cfg_path = getattr(self.options, "config", None)
+        if not cfg_path:
+            return None
+        if not HAS_YAML:
+            self.logger.warning("pyyaml not installed; cannot load config file %s", cfg_path)
+            return None
+        try:
+            with open(cfg_path, "r") as f:
+                full_cfg = yaml.safe_load(f)
+            notif_cfg = (full_cfg or {}).get("notifications", {})
+            if notif_cfg:
+                self.logger.info("Loaded notification config from %s", cfg_path)
+                return Notifier(notif_cfg, self.logger)
+        except Exception as e:
+            self.logger.warning("Could not load config file %s: %s", cfg_path, e)
+        return None
 
     def run_cmd(self, cmd, get_output=True, timeout=5, stop_on_error=True):
         "Run cmd logging input and output"
@@ -544,7 +826,7 @@ class P4Monitor(object):
         self.blocking_tree = build_blocking_tree(self.logger, metrics.blockingCommands)
         blockingCounts = count_blocking(self.blocking_tree)
         verbose_tree = tree_with_metadata(self.blocking_tree, metrics.blockingCommands, metrics.monitorCommands, blockingCounts)
-        self.logger.debug("Blocking tree:\npid, [table,] cmd, args\n" + json.dumps(verbose_tree, indent=4))
+        self.logger.debug("Blocking tree:\npid, user [table,] cmd, args\n" + json.dumps(verbose_tree, indent=4))
         lblockers.sort(key=lambda x: x.elapsed, reverse=True)  # Oldest first
         for b in lblockers:
             if not b.pid in blockingCounts:
@@ -554,7 +836,7 @@ class P4Monitor(object):
             blines.append("blocking cmd: elapsed %s, pid %s, user %s, cmd %s, blocking directly/indirectly: %s, total %d" % (
                 b.elapsed, b.pid, b.user, b.cmd, blocking_str, bcount))
         blines.append("blocking totals: %d" % (metrics.blockedCommands))
-        return blines
+        return blines, verbose_tree
 
     def parseTestFile(self):
         # Parses test file and outputs result
@@ -595,6 +877,8 @@ class P4Monitor(object):
                         locklines = line[ind:].replace("'", '"')
                         locklines = locklines.replace(" None", " null")
                         stage = 2
+                    if not isJSON and line == "":
+                        stage = 2
                     continue
                 if stage == 2 and line.endswith("Output:"):
                     stage = 3
@@ -602,27 +886,28 @@ class P4Monitor(object):
                     continue
                 if stage == 3:
                     if line == "":
-                        if isJSON:
-                            metrics = self.findLocks("\n".join(locklines), "\n".join(monlines))
-                        else:
-                            metrics = self.findLocks(locklines, "\n".join(monlines))
-                        self.writeLog(self.formatLog(metrics))
-                        blines = self.findBlockers(metrics)
-                        self.writeLog([timestamp + x for x in blines])
-                        self.writeMetrics(self.formatMetrics(metrics))
+                        self.process_entry(locklines, monlines, timestamp, isJSON)
                         locklines = []
                         monlines = []
                         stage = 0
                     else:
                         monlines.append(line)
         if monlines or locklines:
-            if isJSON:
-                metrics = self.findLocks("\n".join(locklines), "\n".join(monlines))
-            else:
-                metrics = self.findLocks(locklines, "\n".join(monlines))
-            self.writeLog(self.formatLog(metrics))
-            self.findBlockers(metrics)
-            self.writeMetrics(self.formatMetrics(metrics))
+            self.process_entry(locklines, monlines, timestamp, isJSON)
+
+    def process_entry(self, locklines, monlines, timestamp, isJSON):
+        if isJSON:
+            metrics = self.findLocks("\n".join(locklines), "\n".join(monlines))
+        else:
+            metrics = self.findLocks(locklines, "\n".join(monlines))
+        self.writeLog(self.formatLog(metrics))
+        blines, verbose_tree = self.findBlockers(metrics)
+        self.writeLog([timestamp + x for x in blines])
+        self.writeMetrics(self.formatMetrics(metrics))
+        if self.notifier:
+            force = getattr(self.options, 'notify_test', False)
+            self.notifier.maybe_notify(metrics.blockedCommands, blines, metrics.msgs,
+                                       blocking_tree=verbose_tree, force=force)
 
     def run(self):
         """Runs script"""
@@ -650,9 +935,12 @@ class P4Monitor(object):
         metrics = self.findLocks(lockdata, mondata)
         self.writeLog(self.formatLog(metrics))
         timestamp = self.now.strftime("%Y-%m-%d %H:%M:%S ")
-        blines = self.findBlockers(metrics)
+        blines, verbose_tree = self.findBlockers(metrics)
         self.writeLog([timestamp + x for x in blines])
         self.writeMetrics(self.formatMetrics(metrics))
+        if self.notifier:
+            self.notifier.maybe_notify(metrics.blockedCommands, blines, metrics.msgs,
+                                       blocking_tree=verbose_tree)
 
 
 if __name__ == '__main__':

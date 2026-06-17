@@ -171,6 +171,7 @@ fi
 
 p4prom_config_file="$p4prom_config_dir/p4prometheus.yaml"
 p4metrics_config_file="$p4prom_config_dir/p4metrics.yaml"
+monitor_metrics_config_file="$p4prom_config_dir/monitor_metrics.yaml"
 
 download_and_untar () {
     fname=$1
@@ -559,6 +560,81 @@ install_monitor_locks () {
         fi
     done
 
+    # Create default monitor_metrics.yaml if it doesn't already exist
+    if [[ ! -f "$monitor_metrics_config_file" ]]; then
+        msg "Creating default notification config: $monitor_metrics_config_file"
+        cat << 'YMLEOF' > "$monitor_metrics_config_file"
+# monitor_metrics.yaml - configuration for monitor_metrics.py
+#
+# Passed to monitor_wrapper.sh via the -c flag.
+# Requires pyyaml on the Python path: pip3 install pyyaml
+#
+# Notifications are sent when the number of blocked commands reaches
+# min_blocked_commands and the cooldown period has elapsed.
+
+notifications:
+  # Minimum blocked commands before any notification fires.
+  min_blocked_commands: 5
+
+  # Seconds between repeat notifications (flood prevention).
+  cooldown_seconds: 300
+
+  # File used to persist the last-notification timestamp.
+  state_file: "/tmp/monitor_metrics.notify.state"
+
+    # Maximum lines for Slack/Teams chat payloads (summary + blocking tree).
+    # Set to 0 for no line limit.
+    max_lines: 80
+
+  # -------------------------------------------------------------------------
+  # Slack - Incoming Webhook
+  # -------------------------------------------------------------------------
+  slack:
+    enabled: false
+    webhook_url: "<slack/webhook/url>"
+    # Optional override of notifications.max_lines for Slack only.
+    # max_lines: 80
+
+  # -------------------------------------------------------------------------
+  # Email - SMTP
+  # -------------------------------------------------------------------------
+  email:
+    enabled: false
+    smtp_host: "localhost"
+    smtp_port: 25
+    use_tls: false
+    username: ""
+    password: ""
+    from_addr: "p4monitor@example.com"
+    to_addrs:
+      - "admin@example.com"
+    subject: "P4 Lock Alert"
+
+  # -------------------------------------------------------------------------
+  # Microsoft Teams - Incoming Webhook connector
+  # -------------------------------------------------------------------------
+  teams:
+    enabled: false
+    webhook_url: "<outlook/webhook/url>"
+    # Optional override of notifications.max_lines for Teams only.
+    # max_lines: 80
+
+  # -------------------------------------------------------------------------
+  # Generic script
+  # The script receives a JSON object on stdin:
+    #   { "blocked_count": N, "blockers": [...], "details": [...], "blocking_tree": {...} }
+  # Exit 0 to indicate success.
+  # -------------------------------------------------------------------------
+  script:
+    enabled: false
+    command: "/usr/local/bin/p4_lock_notify.sh"
+YMLEOF
+        chown "$OSUSER:$OSGROUP" "$monitor_metrics_config_file"
+        chmod 640 "$monitor_metrics_config_file"
+    else
+        msg "Skipping creation of $monitor_metrics_config_file (already exists)"
+    fi
+
     service_name="monitor_locks"
     service_file="/etc/systemd/system/${service_name}.service"
     msg "Creating service file for ${service_name}"
@@ -575,7 +651,7 @@ After=network-online.target
 [Service]
 User=$OSUSER
 Type=oneshot
-ExecStart=${abs_bin_dir}/monitor_wrapper.sh ${service_args}
+ExecStart=${abs_bin_dir}/monitor_wrapper.sh ${service_args} -c ${monitor_metrics_config_file}
 
 [Install]
 WantedBy=multi-user.target

@@ -1,0 +1,74 @@
+# monitor_metrics.yaml - configuration for monitor_metrics.py
+#
+# Pass this file to the script with: monitor_metrics.py --config monitor_metrics.yaml
+#
+# Requires pyyaml: pip install pyyaml
+
+notifications:
+  # Minimum number of blocked commands before any notification is sent.
+  min_blocked_commands: 5
+
+  # Seconds to wait between repeat notifications (avoids flooding).
+  cooldown_seconds: 300
+
+  # File used to track the timestamp of the last notification.
+  # Must be writable by the user running monitor_metrics.py.
+  state_file: "/tmp/monitor_metrics.notify.state"
+
+  # Maximum lines for Slack/Teams chat payloads (summary + blocking tree).
+  # Set to 0 for no line limit.
+  max_lines: 40
+
+  # ---------------------------------------------------------------------------
+  # Slack - post to an Incoming Webhook URL
+  # ---------------------------------------------------------------------------
+  slack:
+    enabled: false
+    # Create a webhook at https://api.slack.com/messaging/webhooks
+    webhook_url: "https://<some>/<webhook>/<url>"
+    # Optional override of notifications.max_lines for Slack only.
+    # max_lines: 40
+
+  # ---------------------------------------------------------------------------
+  # Email - send via SMTP
+  # ---------------------------------------------------------------------------
+  email:
+    enabled: false
+    smtp_host: "localhost"
+    smtp_port: 25
+    # Set use_tls: true to use STARTTLS (recommended for port 587)
+    use_tls: false
+    # Leave username/password empty for unauthenticated relay
+    username: ""
+    password: ""
+    from_addr: "p4monitor@example.com"
+    to_addrs:
+      - "admin@example.com"
+    subject: "P4 Lock Alert"
+
+  # ---------------------------------------------------------------------------
+  # Microsoft Teams - post to an Incoming Webhook connector
+  # ---------------------------------------------------------------------------
+  teams:
+    enabled: false
+    # Create a webhook in Teams: Channel > Connectors > Incoming Webhook
+    webhook_url: "https://<some>/<webhook>/<url>"
+    # Optional override of notifications.max_lines for Teams only.
+    # max_lines: 40
+
+  # ---------------------------------------------------------------------------
+  # Generic script - called with JSON payload on stdin
+  #
+  # The script receives a JSON object with these fields:
+  #   {
+  #     "blocked_count": <int>,
+  #     "blockers":  [ <summary line>, ... ],
+  #     "details":   [ <per-lock detail line>, ... ],
+  #     "blocking_tree": <dict>
+  #   }
+  #
+  # Exit 0 to indicate success.  Any other exit code is logged as a warning.
+  # ---------------------------------------------------------------------------
+  script:
+    enabled: false
+    command: "/usr/local/bin/p4_lock_notify.sh"
