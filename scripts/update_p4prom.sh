@@ -22,7 +22,7 @@ vmagent_config_dir="/var/vmagent"
 
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.10.6"
+VER_P4PROMETHEUS="0.11.0"
 VER_VICTORIA_METRICS="1.131.0"
 
 # Default to amd but allow arm architecture
@@ -535,6 +535,63 @@ monitor_groups:
 EOF
     fi
 
+    # Now add section for memory_by_user and memlimits if not present - these are used to control how memory
+    # is monitored and whether to terminate commands which exceed limits. See comments in config file for details.
+    if ! grep -qE '^[[:space:]]*#?[[:space:]]*memory_by_user:' "$p4metrics_config_file"; then
+        cat << EOF >> "$p4metrics_config_file"
+
+# ----------------------
+# memory_by_user: true/false - Whether to output metric p4_active_memory_by_user
+# Normally this should be set to true as the metric is useful.
+# If you have a p4d instance with hundreds/thousands of users you may find the number
+# of metrics labels is too great (one per distinct user), so set this to false.
+# Or set it to false if any personal information concerns
+memory_by_user:   true
+
+# ----------------------
+# memlimits: Optional (but recommended) way to define which users and commands to monitor for memory limits 
+#   (useful for inadvertently high memory usage). Some users run commands on inappropriate paths such as the entire repository,
+#   or a huge depot. Commands which exceed these settings have 'p4 monitor terminate' run on them, which will ask the command to terminate.
+#   This is related to the MaxMemory setting for p4 groups but has some more flexibility for cumulative limits across multiple commands for a user.
+# candidate_cmds: A Go regex pattern matching command names to be considered for memory monitoring - e.g. "sync|transmit|print|fstat|files|changes"
+#   We default to reporting commands only.
+# enabled: true/false - whether to enable this memory monitoring functionality (if false will report the metrics but not take any action, 
+#   so you can monitor the metrics and adjust settings before enabling the termination functionality).
+# enforce_kills: true/false - whether to actually enforce kills when limits are exceeded (if false, will only report)
+# Groups:
+#   Each entry has:
+#     description: Name for this group of settings - used for logging and debugging, so should be unique and descriptive
+#     users:       Go regex pattern matching user names
+#     cmd_max_percentage:             0-99, where 0 means no limit
+#     cmd_max_value:                  Units are M/G (powers of 1024), e.g. 10M, 1.5G etc, if blank or 0 then no limit
+#     user_cumulative_max_percentage: For all commands for a user, 0-99, where 0 means no limit
+#     user_cumulative_max_value:      Units are M/G (powers of 1024), e.g. 10M, 1.5G etc, if blank or 0 then no limit
+# THE ORDER OF THE GROUPS IS IMPORTANT - the first match wins, so more specific patterns should come first (e.g. admin users should be first, 
+# with no limits, and then (optionally) a group for build users with higher limits, followed by a catch-all for other users with limits).
+# Note that only Running commands (state 'R') and Idle ('I') are counted for these groups, not Background ('B'), 
+# since Background commands are things like replication and resource monitoring
+# Example:
+memlimits:
+	candidate_cmds:  "annotate|changes|changelists|describe|filelog|files|fstat|integrated|interchanges|istat|opened|print|sync|transmit"
+  enabled:         true
+  enforce_kills:   false
+  groups:
+  - description: "No limits for super users (as they hopefully know what they are doing!)"
+    users: "super|perforce|p4admin"
+    cmd_max_percentage:             
+    cmd_max_value:                  
+    user_cumulative_max_percentage: 
+    user_cumulative_max_value:      
+  - description: "Default limits for all other users"
+    users: ".*"
+    cmd_max_percentage:             40%
+    cmd_max_value:                  
+    user_cumulative_max_percentage: 60%
+    user_cumulative_max_value:      
+
+EOF
+    fi
+
     chown "$OSUSER:$OSGROUP" "$p4metrics_config_file"
 
     service_name="${progname}"
@@ -627,7 +684,17 @@ install_vmagent () {
     # Create vmagent configuration files by parsing .push_metrics.cfg
     create_vmagent_configs
 
-    cat << EOF > /etc/systemd/system/vmagent.service
+    write_vmagent_service_file /etc/systemd/system/vmagent.service
+
+    systemctl daemon-reload
+    systemctl enable vmagent
+    # Don't start service yet - prompt user to do so at the end after verifying config files created!
+
+}
+
+write_vmagent_service_file() {
+    local service_file=$1
+    cat << EOF > "$service_file"
 [Unit]
 Description=Victoria Metrics Agent
 Wants=network-online.target
@@ -640,6 +707,7 @@ Type=simple
 WorkingDirectory=${vmagent_config_dir}
 EnvironmentFile=${vmagent_config_dir}/vmagent.env
 ExecStart=/usr/local/bin/vmagent-prod \
+  -memory.allowedPercent=20 \
   -promscrape.config=vmagent.yml \
   -remoteWrite.basicAuth.username=\${VM_CUSTOMER} \
   -remoteWrite.basicAuth.passwordFile=.vmpassword \
@@ -649,11 +717,23 @@ ExecStart=/usr/local/bin/vmagent-prod \
 [Install]
 WantedBy=multi-user.target
 EOF
+}
 
+update_vmagent_service_if_present() {
+    local service_name="vmagent"
+    local service_file="/etc/systemd/system/${service_name}.service"
+    if [[ ! -f "$service_file" ]]; then
+        return
+    fi
+
+    msg "Updating existing vmagent service file"
+    write_vmagent_service_file "$service_file"
     systemctl daemon-reload
-    systemctl enable vmagent
-    # Don't start service yet - prompt user to do so at the end after verifying config files created!
-
+    systemctl enable "$service_name"
+    if systemctl is-active --quiet "$service_name"; then
+        systemctl restart "$service_name"
+        systemctl status "$service_name" --no-pager
+    fi
 }
 
 create_vmagent_configs() {
@@ -783,6 +863,7 @@ update_node_exporter
 update_p4prometheus
 update_p4metrics
 update_monitor_locks_service
+update_vmagent_service_if_present
 if [[ $InstallVMAgent -eq 1 ]]; then
     install_vmagent
 fi

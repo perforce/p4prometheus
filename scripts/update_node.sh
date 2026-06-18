@@ -218,7 +218,22 @@ install_vmagent () {
         fi
     done
 
-    cat << EOF > /etc/systemd/system/vmagent.service
+    write_vmagent_service_file /etc/systemd/system/vmagent.service
+
+    # Create vmagent configuration files by parsing .push_metrics.cfg
+    create_vmagent_configs
+    
+    # Remove push_metrics cron job if it exists
+    remove_push_metrics_cron
+    
+    systemctl daemon-reload
+    systemctl enable vmagent
+    # Don't start service yet - prompt user to do so at the end after verifying config files created!
+}
+
+write_vmagent_service_file() {
+    local service_file=$1
+    cat << EOF > "$service_file"
 [Unit]
 Description=Victoria Metrics Agent
 Wants=network-online.target
@@ -230,6 +245,7 @@ Type=simple
 WorkingDirectory=$vmagent_config_dir
 EnvironmentFile=$vmagent_config_dir/vmagent.env
 ExecStart=/usr/local/bin/vmagent-prod \
+    -memory.allowedPercent=20 \
   -promscrape.config=vmagent.yml \
   -remoteWrite.basicAuth.username=\${VM_CUSTOMER} \
   -remoteWrite.basicAuth.passwordFile=.vmpassword \
@@ -239,16 +255,23 @@ ExecStart=/usr/local/bin/vmagent-prod \
 [Install]
 WantedBy=multi-user.target
 EOF
+}
 
-    # Create vmagent configuration files by parsing .push_metrics.cfg
-    create_vmagent_configs
-    
-    # Remove push_metrics cron job if it exists
-    remove_push_metrics_cron
-    
+update_vmagent_service_if_present() {
+    local service_name="vmagent"
+    local service_file="/etc/systemd/system/${service_name}.service"
+    if [[ ! -f "$service_file" ]]; then
+        return
+    fi
+
+    msg "Updating existing vmagent service file"
+    write_vmagent_service_file "$service_file"
     systemctl daemon-reload
-    systemctl enable vmagent
-    # Don't start service yet - prompt user to do so at the end after verifying config files created!
+    systemctl enable "$service_name"
+    if systemctl is-active --quiet "$service_name"; then
+        systemctl restart "$service_name"
+        systemctl status "$service_name" --no-pager
+    fi
 }
 
 create_vmagent_configs() {
@@ -376,6 +399,7 @@ remove_push_metrics_cron() {
 
 # Main execution
 update_node_exporter
+update_vmagent_service_if_present
 
 if [[ $InstallVMAgent -eq 1 ]]; then
     install_vmagent
