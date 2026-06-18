@@ -111,6 +111,11 @@ declare config_arg=""
 [[ -n "$configfile" ]] && config_arg="-c $configfile"
 
 # Adjust to your script location if required
+# Use venv if you want to run in a virtual environment, otherwise just run the script directly.
+# Reccommended to use a virtual environment to avoid dependency issues with other Python packages
+# and use Astral's uv to manage python and dependencies. See https://astral.sh/docs/uv/ for more information.
+# This script imports "pyyaml"
+[[ -f "$SCRIPT_DIR/.venv/bin/activate" ]] && source "$SCRIPT_DIR/.venv/bin/activate"
 if [[ $UseSDP -eq 1 ]]; then
     # shellcheck disable=SC2086
     "$SCRIPT_DIR"/monitor_metrics.py -i "$SDP_INSTANCE" -m "$metrics_root" $config_arg
