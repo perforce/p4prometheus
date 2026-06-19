@@ -182,6 +182,37 @@ download_and_untar () {
     tar zxvf "$fname"
 }
 
+bootstrap_monitor_python_env () {
+    target_dir=$1
+    venv_dir="${target_dir}/.venv"
+    bootstrap_cmd=""
+
+    if [[ -d "$venv_dir" ]]; then
+        return
+    fi
+
+    msg "No .venv found in ${target_dir}; installing uv and Python dependencies as ${OSUSER}"
+    bootstrap_cmd=$(cat <<'EOF'
+set -e
+cd "__TARGET_DIR__"
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v uv >/dev/null 2>&1; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+uv python install
+uv venv .venv
+source .venv/bin/activate
+uv pip install pyyaml
+EOF
+)
+    bootstrap_cmd=${bootstrap_cmd/__TARGET_DIR__/$target_dir}
+
+    if ! sudo -u "$OSUSER" /bin/bash -lc "$bootstrap_cmd"; then
+        msg "Warning: Failed to bootstrap uv/.venv dependencies for ${OSUSER} in ${target_dir}"
+    fi
+}
+
 install_node_exporter () {
 
     userid="node_exporter"
@@ -567,6 +598,8 @@ install_monitor_locks () {
             restorecon -vF "$abs_bin_dir/$scriptname"
         fi
     done
+
+    bootstrap_monitor_python_env "$bin_dir"
 
     # Create default monitor_metrics.yaml if it doesn't already exist
     if [[ ! -f "$monitor_metrics_config_file" ]]; then
