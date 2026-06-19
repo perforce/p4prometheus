@@ -169,7 +169,7 @@ memory_by_user:   true
 # as typically you want to monitor the runtime of active commands (and some IDLE commands can be long running and skew the metrics).
 # Example:
 memlimits:
-	candidate_cmds:  "annotate|changes|changelists|describe|filelog|files|fstat|integrated|interchanges|istat|opened|print|sync|transmit"
+  candidate_cmds:  "annotate|changes|changelists|describe|filelog|files|fstat|integrated|interchanges|istat|opened|print|sync|transmit"
   enabled:         true
   enforce_kills:   false
   groups:
