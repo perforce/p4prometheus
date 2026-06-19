@@ -173,8 +173,8 @@ memlimits:
   enabled:         true
   enforce_kills:   false
   groups:
-  - description: "No limits for super users (as they hopefully know what they are doing!)"
-    users: "super|perforce|p4admin"
+  - description: "No limits for service or super users (as they hopefully know what they are doing!)"
+    users: "super|perforce|p4admin|svc_.*"
     cmd_max_percentage:             
     cmd_max_value:                  
     user_cumulative_max_percentage: 
