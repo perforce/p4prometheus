@@ -34,6 +34,21 @@ arch="amd64"
 function msg () { echo -e "$*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
+get_dir_owner() {
+    local dir=$1
+    # GNU stat (Linux)
+    if stat -c '%U' "$dir" >/dev/null 2>&1; then
+        stat -c '%U' "$dir"
+        return 0
+    fi
+    # BSD stat (macOS)
+    if stat -f '%Su' "$dir" >/dev/null 2>&1; then
+        stat -f '%Su' "$dir"
+        return 0
+    fi
+    return 1
+}
+
 function check_service_exists() {
     local service=$1
     systemctl list-unit-files | grep -q "^${service}.service" && return 0 || return 1
@@ -141,15 +156,12 @@ if [[ $UseSDP -eq 1 ]]; then
         exit 1
     fi
 
-    # Find OSGROUP for ownership permissions - group of /p4 dir itself
-    # shellcheck disable=SC2010
-    OSGROUP=$(ls -al /p4/ | grep -E '\.$' | head -1 | awk '{print $4}')
-
     # Load SDP controlled shell environment.
     # shellcheck disable=SC1091
     source /p4/common/bin/p4_vars "$SDP_INSTANCE" ||\
     { echo -e "\\nError: Failed to load SDP environment.\\n"; exit 1; }
 
+    OSGROUP=$(id -gn "$OSUSER")
     p4="$P4BIN -u $P4USER -p $P4PORT"
     $p4 info -s || bail "Can't connect to P4PORT: $P4PORT"
     p4prom_config_dir="/p4/common/config"
@@ -346,36 +358,31 @@ update_p4metrics () {
     service_name="p4metrics"
     progname="p4metrics"
     service_file="/etc/systemd/system/${service_name}.service"
+    up_to_date="false"
     curr_ver=$($progname --version 2>&1 | grep "$progname, version " | awk '{print $3}')
     if [[ "$curr_ver" == "v$VER_P4PROMETHEUS" ]]; then
-        if [[ -f "$service_file" ]]; then
-            msg "Updating existing service file for $service_name"
-            write_p4metrics_service_file "$service_file"
-            systemctl daemon-reload
-            systemctl enable "${service_name}"
-            systemctl restart "${service_name}"
-            systemctl status "${service_name}" --no-pager
-        fi
         msg "Current version $curr_ver of $progname is up-to-date"
-        return
+        up_to_date="true"
     fi
 
-    systemctl stop $service_name
+    if [[ "$up_to_date" != "true" ]]; then
+        systemctl stop $service_name
 
-    PVER="$VER_P4PROMETHEUS"
-    fname="${progname}.linux-${arch}.gz"
-    url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
-    msg "downloading and extracting $url"
-    wget -q "$url"
+        PVER="$VER_P4PROMETHEUS"
+        fname="${progname}.linux-${arch}.gz"
+        url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
+        msg "downloading and extracting $url"
+        wget -q "$url"
 
-    gunzip "$fname"
-    chmod +x "${progname}.linux-${arch}"
-    mv "${progname}.linux-${arch}" "${local_bin_dir}/${progname}"
+        gunzip "$fname"
+        chmod +x "${progname}.linux-${arch}"
+        mv "${progname}.linux-${arch}" "${local_bin_dir}/${progname}"
 
-    if [[ $SELinuxEnabled -eq 1 ]]; then
-        bin_file="${local_bin_dir}/${progname}"
-        semanage fcontext -a -t bin_t "$bin_file"
-        restorecon -vF "$bin_file"
+        if [[ $SELinuxEnabled -eq 1 ]]; then
+            bin_file="${local_bin_dir}/${progname}"
+            semanage fcontext -a -t bin_t "$bin_file"
+            restorecon -vF "$bin_file"
+        fi
     fi
 
     mkdir -p "$p4prom_config_dir" "$p4prom_bin_dir"
@@ -572,7 +579,7 @@ memory_by_user:   true
 # since Background commands are things like replication and resource monitoring
 # Example:
 memlimits:
-	candidate_cmds:  "annotate|changes|changelists|describe|filelog|files|fstat|integrated|interchanges|istat|opened|print|sync|transmit"
+  candidate_cmds:  "annotate|changes|changelists|describe|filelog|files|fstat|integrated|interchanges|istat|opened|print|sync|transmit"
   enabled:         true
   enforce_kills:   false
   groups:
@@ -626,6 +633,10 @@ EOF
 update_monitor_locks_service() {
     local service_name="monitor_locks"
     local service_file="/etc/systemd/system/${service_name}.service"
+    local updates_dir="/p4/common/site/bin"
+    local venv_dir="${updates_dir}/.venv"
+    local updates_script="${updates_dir}/check_for_updates.sh"
+    local bootstrap_cmd=""
     if [[ ! -f "$service_file" ]]; then
         return
     fi
@@ -636,15 +647,119 @@ update_monitor_locks_service() {
 
     if grep -qE '^[[:space:]]*ExecStart=.*monitor_wrapper\.sh.*[[:space:]]-c[[:space:]]' "$service_file"; then
         msg "monitor_locks service already has a monitor_metrics config argument"
+    else
+        msg "Updating monitor_locks service to include monitor_metrics config argument"
+        sed -i "/^[[:space:]]*ExecStart=.*monitor_wrapper\\.sh/ s|$| -c ${monitor_metrics_config_file}|" "$service_file"
+        systemctl daemon-reload
+        systemctl restart ${service_name}.timer 2>/dev/null || true
+        systemctl restart ${service_name}.service 2>/dev/null || true
+        systemctl status ${service_name}.timer --no-pager 2>/dev/null || true
+    fi
+
+    if [[ -z "${OSUSER:-}" ]]; then
+        msg "Warning: OSUSER is not set, skipping ${updates_script}"
         return
     fi
 
-    msg "Updating monitor_locks service to include monitor_metrics config argument"
-    sed -i "/^[[:space:]]*ExecStart=.*monitor_wrapper\\.sh/ s|$| -c ${monitor_metrics_config_file}|" "$service_file"
-    systemctl daemon-reload
-    systemctl restart ${service_name}.timer 2>/dev/null || true
-    systemctl restart ${service_name}.service 2>/dev/null || true
-    systemctl status ${service_name}.timer --no-pager 2>/dev/null || true
+    if [[ ! -d "$venv_dir" ]]; then
+        msg "No .venv found in ${updates_dir}; installing uv and Python dependencies as ${OSUSER}"
+        bootstrap_cmd=$(cat <<'EOF'
+set -e
+cd /p4/common/site/bin
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v uv >/dev/null 2>&1; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+uv python install
+uv venv .venv
+source .venv/bin/activate
+uv pip install pyyaml
+EOF
+)
+        if ! sudo -u "$OSUSER" /bin/bash -lc "$bootstrap_cmd"; then
+            msg "Warning: Failed to bootstrap uv/.venv dependencies for ${OSUSER}"
+        fi
+    fi
+
+    if [[ ! -x "$updates_script" ]]; then
+        msg "Warning: ${updates_script} not found or not executable, skipping update check"
+        return
+    fi
+
+    msg "Running check_for_updates.sh as ${OSUSER}"
+    if ! sudo -u "$OSUSER" /bin/bash -lc 'cd /p4/common/site/bin && ./check_for_updates.sh'; then
+        msg "Warning: check_for_updates.sh failed for user ${OSUSER}"
+    fi
+}
+
+ensure_monitor_metrics_config_exists() {
+    if [[ -f "$monitor_metrics_config_file" ]]; then
+        return
+    fi
+
+    msg "Creating default monitor_metrics config: $monitor_metrics_config_file"
+    cat << 'EOF' > "$monitor_metrics_config_file"
+# monitor_metrics.yaml - configuration for monitor_metrics.py
+#
+# Pass this file via monitor_wrapper.sh -c <config_file>
+# Requires pyyaml: pip install pyyaml
+
+notifications:
+    # Minimum number of blocked commands before any notification is sent.
+    min_blocked_commands: 5
+
+    # Seconds to wait between repeat notifications (avoids flooding).
+    cooldown_seconds: 300
+
+    # File used to track the timestamp of the last notification.
+    # Must be writable by the user running monitor_metrics.py.
+    state_file: "/tmp/monitor_metrics.notify.state"
+
+    # Optional text shown as the first line after the title in chat notifications.
+    notification_text: ""
+
+    # Optional URL used to render an "Open Runbook" button.
+    runbook_url: ""
+
+    # Maximum lines for Slack/Teams chat payloads (summary + blocking tree).
+    # Set to 0 for no line limit.
+    max_lines: 40
+
+    slack:
+        enabled: false
+        webhook_url: "https://<some>/<webhook>/<url>"
+        # Optional overrides:
+        # max_lines: 40
+        # runbook_url: ""
+
+    email:
+        enabled: false
+        smtp_host: "localhost"
+        smtp_port: 25
+        use_tls: false
+        username: ""
+        password: ""
+        from_addr: "p4monitor@example.com"
+        to_addrs:
+            - "admin@example.com"
+        subject: "P4 Lock Alert"
+
+    teams:
+        enabled: false
+        webhook_url: "https://<some>/<webhook>/<url>"
+        # Optional overrides:
+        # max_lines: 40
+        # runbook_url: ""
+
+    # Generic script called with JSON payload on stdin.
+    script:
+        enabled: false
+        command: "/usr/local/bin/p4_lock_notify.sh"
+EOF
+
+    chown "$OSUSER:$OSGROUP" "$monitor_metrics_config_file"
+    chmod 640 "$monitor_metrics_config_file"
 }
 
 install_vmagent () {
@@ -862,6 +977,7 @@ EOF
 update_node_exporter
 update_p4prometheus
 update_p4metrics
+ensure_monitor_metrics_config_exists
 update_monitor_locks_service
 update_vmagent_service_if_present
 if [[ $InstallVMAgent -eq 1 ]]; then
@@ -889,5 +1005,15 @@ if [[ $NewP4MetricsConfig -eq 1 ]]; then
 Please edit this file to set any required parameters and consider re-starting the p4metrics service.
 
     sudo systemctl restart p4metrics
+"
+fi
+
+if [[ -f "$p4metrics_config_file" ]] || [[ -f "$monitor_metrics_config_file" ]]; then
+        echo "
+Manual review required:
+
+If p4metrics/monitor_metrics were installed or updated, please manually review and update these files as needed:
+    - $p4metrics_config_file
+    - $monitor_metrics_config_file
 "
 fi
