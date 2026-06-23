@@ -522,6 +522,85 @@ max_log_size:
 # If the log file is larger than this percentage value it will be rotated and compressed (using rename + gzip)
 max_log_percent: 		30
 
+# ----------------------
+# monitor_ignore: Monitor commmands to ignore - e.g. long running background tasks
+# Values are a Go regex pattern - e.g. "admin resource-monitor|ldapsync"
+monitor_ignore: "admin resource-monitor|ldapsync"
+
+# ----------------------
+# monitor_groups: Optional (but recommended) grouping of commands for monitor entries (useful for spotting slow commands).
+# Each entry has:
+#   commands: a Go regex pattern matching command names
+#   label: a name for this group of commands - used as a label value in the p4_monitor_commands metric, so should be a valid label value (see reLabelName in config.go for details)
+# These values are ignored if monitor_ignore matches (first match wins), 
+# and then the command is checked against the patterns in order, with the first match winning (so more specific patterns should come first).
+# Note that only Running commands (state 'R') are counted for these groups, not Background ('B') or Idle ('I'), 
+# as typically you want to monitor the runtime of active commands (and some IDLE commands can be long running and skew the metrics).
+# Example:
+# monitor_groups:
+# - commands: "^rmt.*"
+#   label:    rmt
+# - commands: "sync|transmit"
+#   label: sync_transmit
+# - commands: ".*"
+#   label:    other
+monitor_groups:
+  - commands: "^rmt.*"
+    label:    rmt
+  - commands: "sync|transmit"
+    label:    sync_transmit
+  - commands: ".*"
+    label:    other
+
+# ----------------------
+# memory_by_user: true/false - Whether to output metric p4_active_memory_by_user
+# Normally this should be set to true as the metric is useful.
+# If you have a p4d instance with hundreds/thousands of users you may find the number
+# of metrics labels is too great (one per distinct user), so set this to false.
+# Or set it to false if any personal information concerns
+memory_by_user:   true
+
+# ----------------------
+# memlimits: Optional (but recommended) way to define which users and commands to monitor for memory limits 
+#   (useful for inadvertently high memory usage). Some users run commands on inappropriate paths such as the entire repository,
+#   or a huge depot. Commands which exceed these settings have 'p4 monitor terminate' run on them, which will ask the command to terminate.
+#   This is related to the MaxMemory setting for p4 groups but has some more flexibility for cumulative limits across multiple commands for a user.
+# candidate_cmds: A Go regex pattern matching command names to be considered for memory monitoring - e.g. "sync|transmit|print|fstat|files|changes"
+#   We default to reporting commands only.
+# enabled: true/false - whether to enable this memory monitoring functionality (if false will report the metrics but not take any action, 
+#   so you can monitor the metrics and adjust settings before enabling the termination functionality).
+# enforce_kills: true/false - whether to actually enforce kills when limits are exceeded (if false, will only report)
+# Groups:
+#   Each entry has:
+#     description: Name for this group of settings - used for logging and debugging, so should be unique and descriptive
+#     users:       Go regex pattern matching user names
+#     cmd_max_percentage:             0-99, where 0 means no limit
+#     cmd_max_value:                  Units are M/G (powers of 1024), e.g. 10M, 1.5G etc, if blank or 0 then no limit
+#     user_cumulative_max_percentage: For all commands for a user, 0-99, where 0 means no limit
+#     user_cumulative_max_value:      Units are M/G (powers of 1024), e.g. 10M, 1.5G etc, if blank or 0 then no limit
+# THE ORDER OF THE GROUPS IS IMPORTANT - the first match wins, so more specific patterns should come first (e.g. admin users should be first, 
+# with no limits, and then (optionally) a group for build users with higher limits, followed by a catch-all for other users with limits).
+# Note that only Running commands (state 'R') and Idle ('I') are counted for these groups, not Background ('B'), 
+# since Background commands are things like replication and resource monitoring
+# Example:
+memlimits:
+  candidate_cmds:  "annotate|changes|changelists|describe|diff|diff2|filelog|files|fstat|grep|integrated|interchanges|istat|opened|print|sync|transmit|IDLE"
+  enabled:         true
+  enforce_kills:   false
+  groups:
+  - description: "No limits for super users (as they hopefully know what they are doing!)"
+    users: "super|perforce|p4admin"
+    cmd_max_percentage:             
+    cmd_max_value:                  
+    user_cumulative_max_percentage: 
+    user_cumulative_max_value:      
+  - description: "Default limits for all other users"
+    users: ".*"
+    cmd_max_percentage:             40%
+    cmd_max_value:                  
+    user_cumulative_max_percentage: 60%
+    user_cumulative_max_value:      
+
 EOF
 
     chown "$OSUSER:$OSGROUP" "$p4metrics_config_file"

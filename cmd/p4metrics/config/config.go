@@ -247,7 +247,7 @@ memory_by_user:   true
 # since Background commands are things like replication and resource monitoring
 # Example:
 memlimits:
-  candidate_cmds:  "annotate|changes|changelists|describe|diff|diff2|filelog|files|fstat|integrated|interchanges|istat|opened|print|sync|transmit|IDLE"
+  candidate_cmds:  "annotate|changes|changelists|describe|diff|diff2|filelog|files|fstat|grep|integrated|interchanges|istat|opened|print|sync|transmit|IDLE"
   enabled:         true
   enforce_kills:   false
   groups:
