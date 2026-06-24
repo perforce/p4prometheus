@@ -37,6 +37,7 @@ import urllib.request
 import urllib.error
 import smtplib
 from email.mime.text import MIMEText
+from xmlrpc import server
 
 try:
     import yaml
@@ -141,7 +142,8 @@ class Notifier:
         except OSError as e:
             self.logger.warning("Could not write notification state file: %s", e)
 
-    def maybe_notify(self, blocked_count, blines, detail_msgs, blocking_tree=None, force=False):
+    def maybe_notify(self, blocked_count, blines, detail_msgs, blocking_tree=None, force=False,
+                     server_info_lines=None):
         """Send notifications if threshold is exceeded and cooldown has passed.
 
         Args:
@@ -162,7 +164,11 @@ class Notifier:
         if force:
             self.logger.info("Notification forced (--notify-test): threshold/cooldown bypassed")
 
-        message = "\n".join(blines)
+        message_lines = []
+        if server_info_lines:
+            message_lines.extend(server_info_lines)
+        message_lines.extend(blines)
+        message = "\n".join(message_lines)
         if blocking_tree:
             message += "\n\nBlocking tree:\n" + json.dumps(blocking_tree, indent=2, sort_keys=True)
         payload = {
@@ -170,6 +176,7 @@ class Notifier:
             "blockers": blines,
             "details": detail_msgs,
             "blocking_tree": blocking_tree or {},
+            "server_info": server_info_lines or [],
         }
 
         sent = False
@@ -186,12 +193,14 @@ class Notifier:
                 elif channel == "slack":
                     max_lines = int(cfg.get("max_lines", self.max_lines))
                     chat_message = self._format_chat_message(
-                        blocked_count, blocking_tree, max_lines, teams_style=False, include_intro=False)
+                        blocked_count, blocking_tree, max_lines, teams_style=False, include_intro=False,
+                        server_info_lines=server_info_lines)
                     method(chat_message, cfg)
                 elif channel == "teams":
                     max_lines = int(cfg.get("max_lines", self.max_lines))
                     chat_message = self._format_chat_message(
-                        blocked_count, blocking_tree, max_lines, teams_style=True)
+                        blocked_count, blocking_tree, max_lines, teams_style=True,
+                        server_info_lines=server_info_lines)
                     method(chat_message, cfg)
                 else:
                     method(message, cfg)
@@ -204,9 +213,12 @@ class Notifier:
     # Channel implementations
     # ------------------------------------------------------------------
 
-    def _format_chat_message(self, blocked_count, blocking_tree, max_lines, teams_style=False, include_intro=True):
+    def _format_chat_message(self, blocked_count, blocking_tree, max_lines, teams_style=False,
+                             include_intro=True, server_info_lines=None):
         """Format blocking tree only and optionally prune chat output."""
         lines = []
+        if server_info_lines:
+            lines.extend(server_info_lines)
         if include_intro and self.notification_text:
             lines.append(self.notification_text)
         lines.extend([
@@ -544,11 +556,29 @@ class P4Monitor(object):
         self.now = datetime.datetime.now()
         self.sdpinst_label = ""
         self.serverid_label = ""
+        self.server_info_lines = []
         if self.options.sdp_instance:
             self.sdpinst_label = 'sdpinst="%s"' % self.options.sdp_instance
             with open("/p4/%s/root/server.id" % self.options.sdp_instance, "r") as f:
                 self.serverid_label = 'serverid="%s"' % f.read().rstrip()
         self.notifier = self._load_notifier()
+
+    def extract_server_info_lines(self, infodata):
+        """Extract key server identity lines from `p4 info -s` output."""
+        serverid = ""
+        services = ""
+        for raw_line in infodata.splitlines():
+            line = raw_line.strip()
+            if line.startswith("ServerID:"):
+                serverid = line
+            elif line.startswith("Server services:"):
+                services = line
+        result = []
+        if serverid:
+            result.append(serverid)
+        if services:
+            result.append(services)
+        return result
 
     def parse_args(self, doc, args):
         """Common parsing and setting up of args"""
@@ -954,7 +984,8 @@ class P4Monitor(object):
         if self.notifier:
             force = getattr(self.options, 'notify_test', False)
             self.notifier.maybe_notify(metrics.blockedCommands, blines, metrics.msgs,
-                                       blocking_tree=verbose_tree, force=force)
+                                       blocking_tree=verbose_tree, force=force,
+                                       server_info_lines=self.server_info_lines)
 
     def run(self):
         """Runs script"""
@@ -978,6 +1009,8 @@ class P4Monitor(object):
                 lockcmd = lockcmd.replace("sudo ", "")
                 lockdata = self.run_cmd(lockcmd)
             lockdata = self.parseTextLockInfo(lockdata)
+        infodata = self.run_cmd('{0} info -s'.format(p4cmd))
+        self.server_info_lines = self.extract_server_info_lines(infodata)
         mondata = self.run_cmd('{0} -F "%id% %runstate% %user% %elapsed% %function% %args%" monitor show -al'.format(p4cmd))
         metrics = self.findLocks(lockdata, mondata)
         self.writeLog(self.formatLog(metrics))
@@ -987,7 +1020,8 @@ class P4Monitor(object):
         self.writeMetrics(self.formatMetrics(metrics))
         if self.notifier:
             self.notifier.maybe_notify(metrics.blockedCommands, blines, metrics.msgs,
-                                       blocking_tree=verbose_tree)
+                                       blocking_tree=verbose_tree,
+                                       server_info_lines=self.server_info_lines)
 
 
 if __name__ == '__main__':

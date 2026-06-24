@@ -8,11 +8,12 @@ import sys
 import unittest
 import os
 import json
+import logging
 
 curr_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(curr_dir))
 
-from monitor_metrics import P4Monitor
+from monitor_metrics import P4Monitor, Notifier
 
 # os.environ["LOGS"] = "."
 # LOGGER_NAME = "testMonitorMetrics"
@@ -231,9 +232,9 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
                          metrics.msgs[0])
         self.assertEqual(r"pid 920, user jteam, cmd sync, table db.sendq, blocked by pid 921, user jteam, cmd sync, args ...",
                          metrics.msgs[1])
-        self.assertEqual(r"pid 921, user jteam, cmd sync, table meta, blocked by pid 900, user jteam, cmd sync, args ...",
+        self.assertEqual(r"pid 921, user jteam, cmd sync, table metaLock, blocked by pid 900, user jteam, cmd sync, args ...",
                          metrics.msgs[2])
-        blines = obj.findBlockers(metrics)
+        blines, _ = obj.findBlockers(metrics)
         print(json.dumps(obj.blocking_tree, indent=4))
         self.assertEqual(3, len(blines))
         self.assertEqual("Blocking commands by oldest, with count", blines[0])
@@ -251,7 +252,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         obj = P4Monitor()
         metrics = obj.findLocks(lockdata, mondata)
         self.assertEqual(2, len(metrics.msgs))
-        blines = obj.findBlockers(metrics)
+        blines, _ = obj.findBlockers(metrics)
         # Pretty print the blocking tree
         print(json.dumps(obj.blocking_tree, indent=4))
         self.assertEqual(4, len(blines))
@@ -276,7 +277,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         obj = P4Monitor()
         metrics = obj.findLocks(lockdata, mondata)
         self.assertEqual(3, len(metrics.msgs))
-        blines = obj.findBlockers(metrics)
+        blines, _ = obj.findBlockers(metrics)
         print(json.dumps(obj.blocking_tree, indent=4))
         self.assertEqual(3, len(blines))
         self.assertEqual("Blocking commands by oldest, with count", blines[0])
@@ -331,6 +332,36 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         lines.sort()
         self.maxDiff = None
         self.assertEqual(exp_lines, lines)
+
+    def testExtractServerInfoLines(self):
+        """Extract ServerID and Server services from p4 info output."""
+        obj = P4Monitor()
+        infodata = """User name: perforce
+Client name: my-client
+ServerID: p4d_edge_CL1
+Server services: edge-server
+Server root: /p4/1/root
+"""
+        self.assertEqual(
+            ["ServerID: p4d_edge_CL1", "Server services: edge-server"],
+            obj.extract_server_info_lines(infodata)
+        )
+
+    def testNotificationIncludesServerInfoFirst(self):
+        """Notification text should start with server identity lines."""
+        notifier = Notifier({}, logging.getLogger("test_monitor_metrics"))
+        message = notifier._format_chat_message(
+            blocked_count=2,
+            blocking_tree={"123": {}},
+            max_lines=0,
+            teams_style=False,
+            include_intro=False,
+            server_info_lines=["ServerID: p4d_edge_CL1", "Server services: edge-server"],
+        )
+        lines = message.splitlines()
+        self.assertEqual("ServerID: p4d_edge_CL1", lines[0])
+        self.assertEqual("Server services: edge-server", lines[1])
+        self.assertIn("Blocking threshold exceeded - total commands showing as blocked: 2", message)
 
 if __name__ == '__main__':
     unittest.main()
