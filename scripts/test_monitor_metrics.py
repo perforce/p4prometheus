@@ -9,6 +9,7 @@ import unittest
 import os
 import json
 import logging
+import tempfile
 
 curr_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(curr_dir))
@@ -362,6 +363,44 @@ Server root: /p4/1/root
         self.assertEqual("ServerID: p4d_edge_CL1", lines[0])
         self.assertEqual("Server services: edge-server", lines[1])
         self.assertIn("Blocking threshold exceeded - total commands showing as blocked: 2", message)
+
+    def testNotifierSkipsDuplicateNotification(self):
+        """Notifier should not resend exactly the same notification content."""
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            state_file = tmp.name
+        self.addCleanup(lambda: os.path.exists(state_file) and os.remove(state_file))
+
+        cfg = {
+            "min_blocked_commands": 1,
+            "cooldown_seconds": 0,
+            "state_file": state_file,
+            "script": {"enabled": True, "command": "dummy"},
+        }
+        notifier = Notifier(cfg, logging.getLogger("test_monitor_metrics"))
+        sent_payloads = []
+
+        def fake_send_script(payload, channel_cfg):
+            sent_payloads.append((payload, channel_cfg))
+
+        notifier._send_script = fake_send_script
+
+        kwargs = {
+            "blocked_count": 2,
+            "blines": ["blocking totals: 2"],
+            "detail_msgs": ["detail1"],
+            "blocking_tree": {"123 user cmd": {}},
+            "server_info_lines": ["ServerID: p4d_edge_CL1", "Server services: edge-server"],
+        }
+
+        notifier.maybe_notify(**kwargs)
+        notifier.maybe_notify(**kwargs)
+        self.assertEqual(1, len(sent_payloads))
+
+        # Change payload: should send again.
+        kwargs["blocked_count"] = 3
+        kwargs["blines"] = ["blocking totals: 3"]
+        notifier.maybe_notify(**kwargs)
+        self.assertEqual(2, len(sent_payloads))
 
 if __name__ == '__main__':
     unittest.main()

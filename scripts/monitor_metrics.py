@@ -32,6 +32,7 @@ import re
 import subprocess
 import datetime
 import json
+import hashlib
 import time
 import urllib.request
 import urllib.error
@@ -126,21 +127,57 @@ class Notifier:
         self.runbook_url = str(config.get("runbook_url", "")).strip()
         self.notification_text = str(config.get("notification_text", "")).strip()
 
-    def _is_cooled_down(self):
-        """Returns True if enough time has passed since the last notification."""
+    def _load_state(self):
+        """Load notification state; supports legacy timestamp-only files."""
+        state = {"last_time": None, "last_signature": ""}
         try:
             with open(self.state_file, "r") as f:
-                last_time = float(f.read().strip())
-            return (time.time() - last_time) >= self.cooldown
-        except (OSError, ValueError):
-            return True
+                raw = f.read().strip()
+            if not raw:
+                return state
+            try:
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    state["last_time"] = float(data.get("last_time", 0) or 0)
+                    state["last_signature"] = str(data.get("last_signature", "") or "")
+                    return state
+            except ValueError:
+                pass
+            # Backward compatibility with old format: plain float timestamp.
+            state["last_time"] = float(raw)
+            return state
+        except (OSError, ValueError, TypeError):
+            return state
 
-    def _record_notification(self):
+    def _save_state(self, last_time, last_signature):
         try:
             with open(self.state_file, "w") as f:
-                f.write(str(time.time()))
+                json.dump({"last_time": float(last_time), "last_signature": last_signature}, f)
         except OSError as e:
             self.logger.warning("Could not write notification state file: %s", e)
+
+    def _payload_signature(self, blocked_count, blines, detail_msgs, blocking_tree, server_info_lines):
+        payload_for_sig = {
+            "blocked_count": blocked_count,
+            "blockers": blines,
+            "details": detail_msgs,
+            "blocking_tree": blocking_tree or {},
+            "server_info": server_info_lines or [],
+        }
+        text = json.dumps(payload_for_sig, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    def _is_cooled_down(self, state=None):
+        """Returns True if enough time has passed since the last notification."""
+        if state is None:
+            state = self._load_state()
+        last_time = state.get("last_time")
+        if not last_time:
+            return True
+        return (time.time() - float(last_time)) >= self.cooldown
+
+    def _record_notification(self, signature):
+        self._save_state(time.time(), signature)
 
     def maybe_notify(self, blocked_count, blines, detail_msgs, blocking_tree=None, force=False,
                      server_info_lines=None):
@@ -153,16 +190,23 @@ class Notifier:
             blocking_tree (dict|None): Blocking tree with metadata.
             force (bool): If True, bypass threshold and cooldown checks (for testing).
         """
+        state = self._load_state()
         if not force and blocked_count < self.min_blocked:
             self.logger.debug(
                 "Blocked commands %d below threshold %d, skipping notification",
                 blocked_count, self.min_blocked)
             return
-        if not force and not self._is_cooled_down():
+        if not force and not self._is_cooled_down(state):
             self.logger.debug("Notification cooldown active, skipping")
             return
         if force:
             self.logger.info("Notification forced (--notify-test): threshold/cooldown bypassed")
+
+        signature = self._payload_signature(
+            blocked_count, blines, detail_msgs, blocking_tree, server_info_lines)
+        if not force and signature == state.get("last_signature", ""):
+            self.logger.info("Notification duplicate detected, skipping")
+            return
 
         message_lines = []
         if server_info_lines:
@@ -207,7 +251,7 @@ class Notifier:
                 sent = True
 
         if sent:
-            self._record_notification()
+            self._record_notification(signature)
 
     # ------------------------------------------------------------------
     # Channel implementations
