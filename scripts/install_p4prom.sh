@@ -27,10 +27,13 @@ VER_P4PROMETHEUS="0.11.0"
 arch="amd64"
 [[ $(uname -p) == 'aarch64' ]] && arch="arm64"
 
-# ============================================================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMMON_LIB="${SCRIPT_DIR}/p4prom_common.sh"
+[[ -f "$COMMON_LIB" ]] || { echo "Error: Missing common library $COMMON_LIB"; exit 1; }
+# shellcheck source=p4prom_common.sh
+source "$COMMON_LIB"
 
-function msg () { echo -e "$*"; }
-function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
+# ============================================================
 
 function usage
 {
@@ -173,46 +176,6 @@ p4prom_config_file="$p4prom_config_dir/p4prometheus.yaml"
 p4metrics_config_file="$p4prom_config_dir/p4metrics.yaml"
 monitor_metrics_config_file="$p4prom_config_dir/monitor_metrics.yaml"
 
-download_and_untar () {
-    fname=$1
-    url=$2
-    [[ -f "$fname" ]] && rm -f "$fname"
-    msg "downloading and extracting $url"
-    wget -q "$url"
-    tar zxvf "$fname"
-}
-
-bootstrap_monitor_python_env () {
-    target_dir=$1
-    venv_dir="${target_dir}/.venv"
-    bootstrap_cmd=""
-
-    if [[ -d "$venv_dir" ]]; then
-        return
-    fi
-
-    msg "No .venv found in ${target_dir}; installing uv and Python dependencies as ${OSUSER}"
-    bootstrap_cmd=$(cat <<'EOF'
-set -e
-cd "__TARGET_DIR__"
-export PATH="$HOME/.local/bin:$PATH"
-if ! command -v uv >/dev/null 2>&1; then
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.local/bin:$PATH"
-fi
-uv python install
-uv venv .venv
-source .venv/bin/activate
-uv pip install pyyaml
-EOF
-)
-    bootstrap_cmd=${bootstrap_cmd/__TARGET_DIR__/$target_dir}
-
-    if ! sudo -u "$OSUSER" /bin/bash -lc "$bootstrap_cmd"; then
-        msg "Warning: Failed to bootstrap uv/.venv dependencies for ${OSUSER} in ${target_dir}"
-    fi
-}
-
 install_node_exporter () {
 
     userid="node_exporter"
@@ -250,29 +213,8 @@ install_node_exporter () {
     service_name="node_exporter"
     service_file="/etc/systemd/system/${service_name}.service"
     msg "Creating service file for ${service_name}"
-    cat << EOF > "${service_file}"
-[Unit]
-Description=Node Exporter
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-User=$userid
-Group=$userid
-Type=simple
-ExecStart=${local_bin_dir}/node_exporter --collector.systemd \
-  --collector.systemd.unit-include=(p4.*|node_exporter).service \
-  --collector.textfile.directory=$metrics_root
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    chmod 644 "${service_file}"
-    sudo systemctl daemon-reload
-    sudo systemctl enable "${service_name}"
-    sudo systemctl start "${service_name}"
-    sudo systemctl status "${service_name}" --no-pager
+    write_node_exporter_service_file "${service_file}" "$userid"
+    systemd_enable_and_restart "${service_file}" "${service_name}"
 }
 
 install_p4prometheus () {
@@ -365,32 +307,8 @@ EOF
     service_name="p4prometheus"
     service_file="/etc/systemd/system/${service_name}.service"
     msg "Creating service file for ${service_name}"
-    cat << EOF > "${service_file}"
-[Unit]
-Description=P4prometheus
-Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
-Wants=network-online.target
-After=network-online.target
-StartLimitIntervalSec=300
-StartLimitBurst=5
-
-[Service]
-User=$OSUSER
-Group=$OSGROUP
-Type=simple
-ExecStart=${local_bin_dir}/p4prometheus --config=$p4prom_config_file
-Restart=on-failure
-RestartSec=10s
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    chmod 644 "${service_file}"
-    systemctl daemon-reload
-    systemctl enable "${service_name}"
-    systemctl start "${service_name}"
-    systemctl status "${service_name}" --no-pager
+    write_p4prometheus_service_file "${service_file}"
+    systemd_enable_and_restart "${service_file}" "${service_name}"
 
 }
 
@@ -608,32 +526,8 @@ EOF
     service_name="${progname}"
     service_file="/etc/systemd/system/${service_name}.service"
     msg "Creating service file for ${service_name}"
-    cat << EOF > "${service_file}"
-[Unit]
-Description=P4metrics - part of P4prometheus
-Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
-Wants=network-online.target
-After=network-online.target p4d_${SDP_INSTANCE}.service
-StartLimitIntervalSec=300
-StartLimitBurst=5
-
-[Service]
-User=$OSUSER
-Group=$OSGROUP
-Type=simple
-ExecStart=${local_bin_dir}/${progname} --config=${p4metrics_config_file}
-Restart=on-failure
-RestartSec=10s
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    chmod 644 "${service_file}"
-    systemctl daemon-reload
-    systemctl enable "${service_name}"
-    systemctl start "${service_name}"
-    systemctl status "${service_name}" --no-pager
+    write_p4metrics_service_file "${service_file}"
+    systemd_enable_and_restart "${service_file}" "${service_name}"
 
     # Update the crontab of the specified user - to comment out entries relating to previous installs of monitoring
     # These are replaced by the systemd timers or p4metrics service.
@@ -681,86 +575,7 @@ install_monitor_locks () {
     bootstrap_monitor_python_env "$bin_dir"
 
     # Create default monitor_metrics.yaml if it doesn't already exist
-    if [[ ! -f "$monitor_metrics_config_file" ]]; then
-        msg "Creating default notification config: $monitor_metrics_config_file"
-        cat << 'YMLEOF' > "$monitor_metrics_config_file"
-# monitor_metrics.yaml - configuration for monitor_metrics.py
-#
-# Passed to monitor_wrapper.sh via the -c flag.
-# Requires pyyaml on the Python path: pip3 install pyyaml
-#
-# Notifications are sent when the number of blocked commands reaches
-# min_blocked_commands and the cooldown period has elapsed.
-
-notifications:
-  # Minimum blocked commands before any notification fires.
-  min_blocked_commands: 5
-
-  # Seconds between repeat notifications (flood prevention).
-  cooldown_seconds: 300
-
-  # File used to persist the last-notification timestamp.
-  state_file: "/tmp/monitor_metrics.notify.state"
-
-  # Optional text shown as the first line after the title in chat notifications.
-  # Example: "Investigate lock contention immediately"
-  notification_text: ""
-
-  # Optional URL used to render an "Open Runbook" button in Slack notifications.
-  runbook_url: ""
-
-  # Maximum lines for Slack/Teams chat payloads (summary + blocking tree).
-  # Set to 0 for no line limit.
-  max_lines: 80
-
-  # -------------------------------------------------------------------------
-  # Slack - Incoming Webhook
-  # -------------------------------------------------------------------------
-  slack:
-    enabled: false
-    webhook_url: "<slack/webhook/url>"
-    # Optional override of notifications.max_lines for Slack only.
-    # max_lines: 80
-
-  # -------------------------------------------------------------------------
-  # Email - SMTP
-  # -------------------------------------------------------------------------
-  email:
-    enabled: false
-    smtp_host: "localhost"
-    smtp_port: 25
-    use_tls: false
-    username: ""
-    password: ""
-    from_addr: "p4monitor@example.com"
-    to_addrs:
-      - "admin@example.com"
-    subject: "P4 Lock Alert"
-
-  # -------------------------------------------------------------------------
-  # Microsoft Teams - Incoming Webhook connector
-  # -------------------------------------------------------------------------
-  teams:
-    enabled: false
-    webhook_url: "<outlook/webhook/url>"
-    # Optional override of notifications.max_lines for Teams only.
-    # max_lines: 80
-
-  # -------------------------------------------------------------------------
-  # Generic script
-  # The script receives a JSON object on stdin:
-    #   { "blocked_count": N, "blockers": [...], "details": [...], "blocking_tree": {...} }
-  # Exit 0 to indicate success.
-  # -------------------------------------------------------------------------
-  script:
-    enabled: false
-    command: "/usr/local/bin/p4_lock_notify.sh"
-YMLEOF
-        chown "$OSUSER:$OSGROUP" "$monitor_metrics_config_file"
-        chmod 640 "$monitor_metrics_config_file"
-    else
-        msg "Skipping creation of $monitor_metrics_config_file (already exists)"
-    fi
+    ensure_monitor_metrics_config_exists
 
     service_name="monitor_locks"
     service_file="/etc/systemd/system/${service_name}.service"
