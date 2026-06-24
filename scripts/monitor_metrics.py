@@ -572,18 +572,23 @@ def tree_with_metadata(tree, blockingCommands, monitorCommands, blockingCounts):
             bcount = sum(blockingCounts[pid])
             blocking = f" (blocks direct/indirect {'/'.join(map(str, blockingCounts[pid]))}: total {bcount})"
         p = monitorCommands.get(pid, {})
+        elapsed = "unknown"
+        if p and p.elapsed:
+            elapsed = p.elapsed
         args = ""
         if p:
-            args = p.args
+            args = p.args or ""
             if len(args) > 20:
                 args = f"{args[:20]}..."
         b = blockingCommands.get(pid, {})
         if b:
-            new_key = f"{pid} {b.user} {b.table}{blocking}, {b.cmd} {args}"
+            if elapsed == "unknown" and b.elapsed:
+                elapsed = b.elapsed
+            new_key = f"{pid} {b.user} {b.table}{blocking}, elapsed {elapsed}, {b.cmd} {args}"
         else:
             p = monitorCommands.get(pid, {})
             if p:
-                new_key = f"{pid} {p.user} {p.cmd} {args}"
+                new_key = f"{pid} {p.user}, elapsed {elapsed}, {p.cmd} {args}"
         # If the subtree is empty, just add the new key with empty dict or recurse
         if not subtree:
             result[new_key] = {}
