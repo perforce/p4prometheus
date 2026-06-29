@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"net/url"
 	"os"
 	"sort"
@@ -55,6 +57,30 @@ type report struct {
 	SeverityExamples map[string]string `json:"severity_examples"`
 }
 
+type triageConfig struct {
+	Model         string
+	URL           string
+	Timeout       time.Duration
+	Temperature   float64
+	TopSignatures int
+	TopSpikes     int
+	SevereSamples int
+	MaxFindings   int
+}
+
+type ollamaGenerateRequest struct {
+	Model   string                 `json:"model"`
+	Prompt  string                 `json:"prompt"`
+	Format  string                 `json:"format,omitempty"`
+	Stream  bool                   `json:"stream"`
+	Options map[string]interface{} `json:"options,omitempty"`
+}
+
+type ollamaGenerateResponse struct {
+	Response string `json:"response"`
+	Error    string `json:"error"`
+}
+
 const analyzerVersion = "0.1.0"
 
 func main() {
@@ -67,6 +93,16 @@ func main() {
 		newMinCount    int
 		jsonOut        bool
 		severeLimit    int
+
+		triageModel         string
+		triageURL           string
+		triageOut           string
+		triageTimeout       time.Duration
+		triageTemperature   float64
+		triageTopSignatures int
+		triageTopSpikes     int
+		triageSevereSamples int
+		triageMaxFindings   int
 	)
 
 	flag.StringVar(&filePath, "file", "", "Path to structured p4 errors CSV file")
@@ -77,10 +113,25 @@ func main() {
 	flag.IntVar(&newMinCount, "new-min-count", 5, "Minimum count to mark a signature as new")
 	flag.BoolVar(&jsonOut, "json", false, "Output report as JSON")
 	flag.IntVar(&severeLimit, "severe-limit", 50, "Maximum number of severe events to include in output")
+
+	flag.StringVar(&triageModel, "triage-ollama-model", "", "Optional local Ollama model to run triage, for example deepseek-coder:6.7b")
+	flag.StringVar(&triageURL, "triage-ollama-url", "http://localhost:11434/api/generate", "Ollama generate endpoint")
+	flag.StringVar(&triageOut, "triage-out", "", "Optional file path to write triage JSON envelope")
+	flag.DurationVar(&triageTimeout, "triage-timeout", 90*time.Second, "Timeout for Ollama triage call")
+	flag.Float64Var(&triageTemperature, "triage-temperature", 0.1, "Temperature for triage model")
+	flag.IntVar(&triageTopSignatures, "triage-top-signatures", 12, "How many top signatures to include in triage input")
+	flag.IntVar(&triageTopSpikes, "triage-top-spikes", 20, "How many spikes to include in triage input")
+	flag.IntVar(&triageSevereSamples, "triage-severe-samples", 20, "How many severe events to include in triage input")
+	flag.IntVar(&triageMaxFindings, "triage-max-findings", 5, "Maximum findings requested from triage model")
 	flag.Parse()
 
 	if filePath == "" {
 		fmt.Fprintln(os.Stderr, "missing required -file")
+		os.Exit(2)
+	}
+
+	if triageOut != "" && strings.TrimSpace(triageModel) == "" {
+		fmt.Fprintln(os.Stderr, "-triage-out requires -triage-ollama-model")
 		os.Exit(2)
 	}
 
@@ -90,14 +141,59 @@ func main() {
 		os.Exit(1)
 	}
 
+	var triageResult interface{}
+	var triageCompact map[string]interface{}
+	if strings.TrimSpace(triageModel) != "" {
+		cfg := triageConfig{
+			Model:         triageModel,
+			URL:           triageURL,
+			Timeout:       triageTimeout,
+			Temperature:   triageTemperature,
+			TopSignatures: triageTopSignatures,
+			TopSpikes:     triageTopSpikes,
+			SevereSamples: triageSevereSamples,
+			MaxFindings:   triageMaxFindings,
+		}
+
+		triageCompact = buildTriageCompact(rep, cfg)
+		triageResult, err = runLocalTriage(cfg, triageCompact)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "triage failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		if triageOut != "" {
+			err = writeTriageEnvelope(triageOut, filePath, cfg, triageCompact, triageResult)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed writing triage output: %v\n", err)
+				os.Exit(1)
+			}
+		}
+	}
+
 	if jsonOut {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		_ = enc.Encode(rep)
+		if triageResult == nil {
+			_ = enc.Encode(rep)
+		} else {
+			_ = enc.Encode(map[string]interface{}{
+				"report":               rep,
+				"triage_model":         triageModel,
+				"triage_generated_utc": time.Now().UTC().Format(time.RFC3339),
+				"compact_input":        triageCompact,
+				"triage":               triageResult,
+			})
+		}
 		return
 	}
 
 	printTextReport(rep)
+
+	if triageResult != nil {
+		fmt.Println("\nLocal LLM triage:")
+		printJSONBlock(triageResult)
+	}
 }
 
 func analyzeFile(filePath string, topN int, bucket time.Duration, minSpikeCount int, zThreshold float64, newMinCount int, severeLimit int) (*report, error) {
@@ -502,4 +598,199 @@ func sortedStringMap(m map[string]string) [][2]string {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i][0] < out[j][0] })
 	return out
+}
+
+func buildTriageCompact(rep *report, cfg triageConfig) map[string]interface{} {
+	severeSample := make([]map[string]interface{}, 0)
+	for i, ev := range rep.SevereEvents {
+		if i >= cfg.SevereSamples {
+			break
+		}
+		severeSample = append(severeSample, map[string]interface{}{
+			"time":      ev.Time.Format(time.RFC3339),
+			"level":     ev.Level,
+			"severity":  ev.Severity,
+			"subsystem": ev.Subsystem,
+			"error_id":  ev.ErrorID,
+			"user":      ev.User,
+			"command":   ev.Command,
+			"message":   ev.Message,
+		})
+	}
+
+	spikes := rep.Spikes
+	if len(spikes) > cfg.TopSpikes {
+		spikes = spikes[:cfg.TopSpikes]
+	}
+
+	newSigs := rep.NewSignatures
+	if len(newSigs) > 20 {
+		newSigs = newSigs[:20]
+	}
+
+	return map[string]interface{}{
+		"file_path":            rep.FilePath,
+		"window_start":         rep.WindowStart.Format(time.RFC3339),
+		"window_end":           rep.WindowEnd.Format(time.RFC3339),
+		"total_records":        rep.TotalRecords,
+		"parse_errors":         rep.ParseErrors,
+		"bucket_duration":      rep.BucketDuration,
+		"by_level":             rep.ByLevel,
+		"top_signatures":       topPairObjects(rep.TopSignatures, cfg.TopSignatures),
+		"top_users":            topPairObjects(rep.TopUsers, 10),
+		"top_commands":         topPairObjects(rep.TopCommands, 10),
+		"new_signatures":       newSigs,
+		"spikes":               spikes,
+		"severity_examples":    rep.SeverityExamples,
+		"severe_events_sample": severeSample,
+	}
+}
+
+func topPairObjects(in [][2]string, limit int) []map[string]interface{} {
+	if limit > len(in) {
+		limit = len(in)
+	}
+	out := make([]map[string]interface{}, 0, limit)
+	for i := 0; i < limit; i++ {
+		count, err := strconv.Atoi(in[i][1])
+		if err != nil {
+			out = append(out, map[string]interface{}{"key": in[i][0], "count": in[i][1]})
+			continue
+		}
+		out = append(out, map[string]interface{}{"key": in[i][0], "count": count})
+	}
+	return out
+}
+
+func buildTriagePrompt(compact map[string]interface{}, maxFindings int) (string, error) {
+	instructions := map[string]interface{}{
+		"role": "You are an SRE anomaly triage assistant for Perforce structured errors.",
+		"constraints": []string{
+			"Use only provided evidence.",
+			"Do not invent missing telemetry.",
+			"Return valid JSON only.",
+			fmt.Sprintf("Return at most %d findings.", maxFindings),
+		},
+		"risk_ranking": []string{
+			"Prioritize sustained spikes, fatal or critical error patterns, and broad blast radius.",
+			"Downgrade low-volume or weakly evidenced findings.",
+		},
+		"output_schema": map[string]interface{}{
+			"ranked_findings": []map[string]interface{}{
+				{
+					"anomaly_id":          "string",
+					"probable_cause":      "string",
+					"confidence_0_to_1":   0.0,
+					"evidence_points":     []string{"string"},
+					"impact_scope":        "string",
+					"immediate_actions":   []string{"string"},
+					"false_positive_risk": "low|medium|high",
+				},
+			},
+		},
+	}
+
+	instJSON, err := json.MarshalIndent(instructions, "", "  ")
+	if err != nil {
+		return "", err
+	}
+
+	compactJSON, err := json.MarshalIndent(compact, "", "  ")
+	if err != nil {
+		return "", err
+	}
+
+	var b strings.Builder
+	b.WriteString("SYSTEM_AND_TASK:\n")
+	b.Write(instJSON)
+	b.WriteString("\n\nINPUT_ANOMALY_PACKET:\n")
+	b.Write(compactJSON)
+	b.WriteString("\n\nRespond with JSON only.")
+	return b.String(), nil
+}
+
+func runLocalTriage(cfg triageConfig, compact map[string]interface{}) (interface{}, error) {
+	prompt, err := buildTriagePrompt(compact, cfg.MaxFindings)
+	if err != nil {
+		return nil, err
+	}
+
+	reqBody := ollamaGenerateRequest{
+		Model:  cfg.Model,
+		Prompt: prompt,
+		Format: "json",
+		Stream: false,
+		Options: map[string]interface{}{
+			"temperature": cfg.Temperature,
+		},
+	}
+
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	httpReq, err := http.NewRequest(http.MethodPost, cfg.URL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: cfg.Timeout}
+	httpResp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
+		body, _ := io.ReadAll(httpResp.Body)
+		return nil, fmt.Errorf("ollama HTTP %d: %s", httpResp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	body, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var modelResp ollamaGenerateResponse
+	if err := json.Unmarshal(body, &modelResp); err != nil {
+		return nil, fmt.Errorf("invalid ollama response: %w", err)
+	}
+	if strings.TrimSpace(modelResp.Error) != "" {
+		return nil, fmt.Errorf("ollama error: %s", modelResp.Error)
+	}
+	if strings.TrimSpace(modelResp.Response) == "" {
+		return nil, fmt.Errorf("ollama returned empty response")
+	}
+
+	var triage interface{}
+	if err := json.Unmarshal([]byte(modelResp.Response), &triage); err != nil {
+		return nil, fmt.Errorf("model output was not valid JSON: %w", err)
+	}
+
+	return triage, nil
+}
+
+func writeTriageEnvelope(path, reportPath string, cfg triageConfig, compact map[string]interface{}, triage interface{}) error {
+	env := map[string]interface{}{
+		"source_report":    reportPath,
+		"model":            cfg.Model,
+		"ollama_url":       cfg.URL,
+		"generated_at_utc": time.Now().UTC().Format(time.RFC3339),
+		"compact_input":    compact,
+		"triage":           triage,
+	}
+
+	b, err := json.MarshalIndent(env, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(b, '\n'), 0o644)
+}
+
+func printJSONBlock(v interface{}) {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(v)
 }
