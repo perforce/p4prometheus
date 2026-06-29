@@ -31,9 +31,27 @@ arch="amd64"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMON_LIB="${SCRIPT_DIR}/p4prom_common.sh"
-[[ -f "$COMMON_LIB" ]] || { echo "Error: Missing common library $COMMON_LIB"; exit 1; }
+if [[ ! -f "$COMMON_LIB" ]]; then
+    COMMON_LIB_URL="https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/p4prom_common.sh"
+    echo "Common library missing: $COMMON_LIB"
+    echo "Attempting download from $COMMON_LIB_URL"
+    if command -v wget >/dev/null 2>&1; then
+        wget -q -O "$COMMON_LIB" "$COMMON_LIB_URL" || {
+            echo "Error: Failed to download common library with wget"
+            exit 1
+        }
+    elif command -v curl >/dev/null 2>&1; then
+        curl -fsSL -o "$COMMON_LIB" "$COMMON_LIB_URL" || {
+            echo "Error: Failed to download common library with curl"
+            exit 1
+        }
+    else
+        echo "Error: Missing common library and neither wget nor curl is available"
+        exit 1
+    fi
+fi
 # shellcheck source=p4prom_common.sh
-source "$COMMON_LIB"
+source "$COMMON_LIB" || { echo "Error: Failed to source common library $COMMON_LIB"; exit 1; }
 
 # ============================================================
 
