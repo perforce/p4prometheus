@@ -50,7 +50,6 @@
 # p4_cmd_user_detail_cumulative_seconds
 
 - section: Disk Space (_UPDATE_FOR_YOUR_SITE_ - check mountpoints)
-- row: 1
 - title: Free Space Alert - filesys.*.min
   target:
   - expr: node_filesystem_free_bytes{mountpoint="/hxmetadata"} - on (customer, instance) p4_filesys_min{filesys="P4ROOT"}
@@ -72,7 +71,6 @@
   yformat: percent
 
 - section: Monitor Tracking
-- row: 1
 - title: Monitor Processes (by cmd)
   target:
   - expr: p4_monitor_by_cmd{sdpinst="$sdpinst",serverid="$serverid"}
@@ -86,7 +84,6 @@
   - expr: sum(p4_monitor_by_user{sdpinst="$sdpinst",serverid="$serverid"})
     legend: all
 
-- row: 1
 - title: p4d process count
   target:
   - expr: p4_process_count
@@ -94,7 +91,6 @@
   target:
   - expr: p4_rtv_svr_sessions_active
 
-- row: 1
 - title: $serverid Time for last SDP checkpoint
   target:
   - expr: p4_sdp_checkpoint_duration{sdpinst="$sdpinst",serverid="$serverid"}
@@ -111,15 +107,10 @@
   yformat: s
 
 - row: 1
-- title: All P4 Cmds Count (rate/10min)
-  target:
-  - expr: rate(p4_completed_cmds_per_day{sdpinst="$sdpinst",serverid="$serverid"}[10m])
-  - expr: sum(rate(p4_cmd_counter{sdpinst="$sdpinst",serverid="$serverid"}[10m]))
 - title: p4d log lines read (rate/min)
   target:
   - expr: rate(p4_prom_log_lines_read{sdpinst="$sdpinst",serverid="$serverid"}[1m])
 
-- row: 1
 - title: p4prometheus cmds pending
   target:
   - expr: p4_prom_cmds_pending{sdpinst="$sdpinst",serverid="$serverid"}
@@ -127,7 +118,6 @@
   target:
   - expr: rate(p4_prom_cmds_processed{sdpinst="$sdpinst",serverid="$serverid"}[1m])
 
-- row: 1
 - title: p4prometheus CPU system (rate/min)
   target:
   - expr: rate(p4_prom_cpu_system{sdpinst="$sdpinst",serverid="$serverid"}[1m])
@@ -135,13 +125,11 @@
   target:
   - expr: rate(p4_prom_cpu_user{sdpinst="$sdpinst",serverid="$serverid"}[1m])
 
-- row: 1
 - title: Error Count rates by subsystem/id
   target:
-  - expr: rate(p4_error_count{sdpinst="$sdpinst",serverid="$serverid",subsystem!~"[0-9].*"}[1m])
+  - expr: rate(p4_errors_count{sdpinst="$sdpinst",serverid="$serverid",subsystem!~"[0-9].*"}[1m])
     legend: subsys {{subsystem}}, level {{level}}, id {{error_id}}
 
-- row: 1
 - title: P4 cmds by program - count (rate/10min)
   target:
   - expr: rate(p4_cmd_program_counter{sdpinst="$sdpinst",serverid="$serverid"}[10m])
@@ -152,7 +140,6 @@
     legend: "{{program}}"
 
 - section: Replication
-- row: 1
 - title: Replica Journal number (from servers -J on master)
   target:
   - expr: p4_replica_curr_jnl{sdpinst="$sdpinst",serverid="$serverid"}
@@ -162,16 +149,6 @@
   - expr: p4_replica_curr_pos{sdpinst="$sdpinst",serverid="$serverid"}
     legend: "{{servername}}"
 
-# This is replaced by the metrics below - because this requires subtracting with named instances
-# - row: 1
-# - title: Replica Lag for SAMPLE_REPLICA from SAMPLE_MASTER (_UPDATE_FOR_YOUR_SITE_)
-#   target:
-#   - expr: >-
-#       p4_replica_curr_pos{sdpinst="$sdpinst",instance="SOME_MASTER_INSTANCE",servername="SAMPLE_MASTER"} -
-#       ignoring (serverid, servername)
-#       p4_replica_curr_pos{sdpinst="$sdpinst",instance="SOME_REPLICA_INSTANCE",servername="SAMPLE_REPLICA"}
-
-- row: 1
 - title: Pull replica journals behind
   target:
   - expr: p4_pull_replica_journals_behind{sdpinst="$sdpinst"}
@@ -180,18 +157,17 @@
   - expr: p4_pull_replica_lag{sdpinst="$sdpinst"}
   yformat: decbytes
 
-- row: 1
-- title: Pull queue size on replica
+- title: Librarian pull queue size on replica
   target:
-  - expr: p4_pull_queue{sdpinst="$sdpinst"}
-- title: rtv_repl_behind_bytes
+  - expr: p4_pull_queue_count{sdpinst="$sdpinst"}
+- title: p4_rtv_repl_behind_bytes
   target:
   - expr: p4_rtv_rpl_behind_bytes{instance="$sdpinst"}
 
 - row: 1
-- title: Pull queue errors
+- title: Librarian pull queue errors
   target:
-  - expr: p4_pull_errors{sdpinst="$sdpinst",serverid="$serverid"}
+  - expr: p4_pull_error_count{sdpinst="$sdpinst",serverid="$serverid"}
 - title: Replication errors
   target:
   - expr: p4_pull_replication_error{sdpinst="$sdpinst",serverid="$serverid"}
@@ -225,7 +201,6 @@
     yformat: decbytes
 
 - section: Cmd Count and Duration
-- row: 1
 - title: Cmds duration (rate/min)
   target:
   - expr: rate(p4_cmd_cumulative_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m])
@@ -235,7 +210,6 @@
   - expr: sum without (instance, job)(rate(p4_cmd_counter{sdpinst="$sdpinst",serverid="$serverid"}[1m]))
     legend: "{{cmd}}"
 
-- row: 1
 - title: Cmds CPU System (rate/min)
   target:
   - expr: rate(p4_cmd_cpu_system_cumulative_seconds{sdpinst="$sdpinst",serverid="$serverid"}[1m])
@@ -357,12 +331,14 @@
 
 - section: Capacity and Health
 - row: 1
-- title: License time remaining (days)
+- title: License time remaining
   target:
-  - expr: p4_license_time_remaining{sdpinst="$sdpinst",serverid="$serverid"} / (24 * 60 * 60)
-- title: SSL cert time remaining (days)
+  - expr: p4_license_time_remaining{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: s
+- title: SSL cert time remaining
   target:
-  - expr: (p4_ssl_cert_expires{sdpinst="$sdpinst",serverid="$serverid"} - time()) / (24 * 60 * 60)
+  - expr: (p4_ssl_cert_expires{sdpinst="$sdpinst",serverid="$serverid"} - time())
+  yformat: s
 
 - row: 1
 - title: p4prometheus memory used
@@ -374,10 +350,6 @@
   - expr: p4_pull_queue_bytes{sdpinst="$sdpinst",serverid="$serverid"}
   yformat: decbytes
 
-- row: 1
-- title: Pull queue file count
-  target:
-  - expr: p4_pull_queue_count{sdpinst="$sdpinst",serverid="$serverid"}
 - title: Pull queue total files
   target:
   - expr: p4_pull_queue_total{sdpinst="$sdpinst",serverid="$serverid"}
@@ -392,7 +364,6 @@
 
 - section: Additional Requested Metrics
 
-- row: 1
 - title: Active memory by cmd
   target:
   - expr: p4_active_memory_by_cmd{sdpinst="$sdpinst",serverid="$serverid"}
@@ -408,16 +379,18 @@
   target:
   - expr: p4_monitor_by_state{sdpinst="$sdpinst",serverid="$serverid"}
     legend: "{{state}}"
-- title: Monitor cmds
+- title: Monitor cmds by group
   target:
   - expr: p4_monitor_cmds{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: "{{cmd_group}}"
 
 - row: 1
-- title: Monitor cmds max runtime
+- title: Monitor cmds max runtime by group
   target:
   - expr: p4_monitor_cmds_max_runtime{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: "{{cmd_group}}"
   yformat: s
-- title: Monitor cmds runtime
+- title: Monitor cmds runtime by group
   target:
   - expr: p4_monitor_cmds_runtime{sdpinst="$sdpinst",serverid="$serverid"}
   yformat: s
@@ -435,35 +408,31 @@
 - title: Change counter
   target:
   - expr: p4_change_counter{sdpinst="$sdpinst",serverid="$serverid"}
-- title: Completed cmds
+
+- title: Completed cmds per day
   target:
-  - expr: p4_completed_cmds{sdpinst="$sdpinst",serverid="$serverid"}
+  - expr: p4_completed_cmds_per_day{sdpinst="$sdpinst",serverid="$serverid"}
 
 - row: 1
-- title: Errors count
-  target:
-  - expr: p4_errors_count{sdpinst="$sdpinst",serverid="$serverid"}
 - title: Journal size
   target:
   - expr: p4_journal_size{sdpinst="$sdpinst",serverid="$serverid"}
   yformat: decbytes
-
-- row: 1
 - title: Journals rotated
   target:
   - expr: p4_journals_rotated{sdpinst="$sdpinst",serverid="$serverid"}
+
 - title: Log size
   target:
   - expr: p4_log_size{sdpinst="$sdpinst",serverid="$serverid"}
   yformat: decbytes
-
-- row: 1
-- title: Logs file count
-  target:
-  - expr: p4_logs_file_count{sdpinst="$sdpinst",serverid="$serverid"}
 - title: Logs rotated
   target:
   - expr: p4_logs_rotated{sdpinst="$sdpinst",serverid="$serverid"}
+
+- title: Logs file count
+  target:
+  - expr: p4_logs_file_count{sdpinst="$sdpinst",serverid="$serverid"}
 
 
 - row: 1
@@ -497,14 +466,14 @@
   yformat: s
 
 - row: 1
-- title: Swarm authorized
+- title: Swarm user authorized (or not)
   target:
   - expr: p4_swarm_authorized{sdpinst="$sdpinst",serverid="$serverid"}
-- title: Swarm error
+- title: Swarm error (zero is good, non-zero is bad)
   target:
   - expr: p4_swarm_error{sdpinst="$sdpinst",serverid="$serverid"}
 
 - row: 1
-- title: Swarm tasks
+- title: Swarm task queue size
   target:
   - expr: p4_swarm_tasks{sdpinst="$sdpinst",serverid="$serverid"}

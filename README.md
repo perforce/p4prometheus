@@ -148,8 +148,7 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_auth_ssl_cert_expires |  | Epoch seconds when Helix Auth Service SSL cert expires |
 | p4_auth_version | version | The version of the Helix Auth Service (unknown means <= 2022.1) |
 | p4_change_counter |  | P4D change counter - monitor normal activity for submits etc |
-| p4_completed_cmds |  | Completed p4 commands - simple grep of log file (turned off for large logs) |
-| p4_error_count | subsystem, error_id, level | (Deprecated - monitor_metrics.sh) Server errors by id - for sudden spurts of errors |
+| p4_error_count | subsystem, error_id, level | (DEPRECATED - replaced by p4_errors_count) Server errors by id - for sudden spurts of errors |
 | p4_errors_count | subsys, severity | Server errors by subsystem and severiy (e.g. error/fatal) - for sudden spurts of errors |
 | p4_filesys_min | filesys | Value of P4D configurable filesys.*.min |
 | p4_journal_size | | Size of P4JOURNAL in bytes |
@@ -175,11 +174,11 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_monitor_max_cmd_time |  | Max time in seconds for a non-service user command in the monitor table |
 | p4_p4d_build_info | version | P4D Version/build info |
 | p4_p4d_server_type | services | P4D server type/services |
-| p4_process_count |  | (Deprecated monitor_metrics.sh) P4 running processes - counted via 'ps' |
+| p4_process_count |  | (DEPRECATED monitor_metrics.sh - replaced by p4_processes_count) P4 running processes - counted via 'ps' |
 | p4_processes_count |  | P4 running processes - counted via 'ps' |
 | p4_pull_error_count |  | P4 pull transfers in failed state - to monitor replication status |
 | p4_pull_errors |  | P4 pull transfers failed count - to monitor replication status |
-| p4_pull_queue |  | (Deprecated monitor_metrics.sh) P4 pull files in queue count - for replication |
+| p4_pull_queue |  | (DEPRECATED monitor_metrics.sh - replaced by p4_pull_queue_total) P4 pull files in queue count - for replication |
 | p4_pull_queue_bytes |  | P4 `pull -ls` how many bytes in archive pull queue |
 | p4_pull_queue_count |  | P4 `pull -ls` how many files in archive pull queue (not in failed state) |
 | p4_pull_queue_total |  | P4 `pull -ls` how many files in archive pull queue (total) |

@@ -80,7 +80,7 @@ class CreateDashboard():
         parser = argparse.ArgumentParser(
             formatter_class=argparse.RawDescriptionHelpFormatter,
             description=desc,
-            epilog="Copyright (c) 2021-2 Perforce Software, Inc."
+            epilog="Copyright (c) 2021-6 Perforce Software, Inc."
         )
         self.add_parse_args(parser)
         self.options = parser.parse_args(args=args)
