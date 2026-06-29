@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Generate Go error CSV schema mappings from filtered p4 logschema output.
+"""Generate Go error CSV schema mappings from full p4 logschema output.
 
-Input format expects records like:
+Input format expects p4 logschema -Aa records like:
 ... f_recordType 4
 ... f_recordVersion 58
 ... f_recordName Error
 ... f_field 12
 ... f_name f_prog
---
+
 """
 
 from __future__ import annotations
@@ -35,6 +35,9 @@ class Schema:
             return 0
         return max(self.fields.values()) + 1
 
+
+def is_error_record_name(record_name: str) -> bool:
+    return "error" in record_name.lower()
 
 
 def parse_errschema(text: str) -> list[Schema]:
@@ -68,6 +71,10 @@ def parse_errschema(text: str) -> list[Schema]:
         rname = str(current["f_recordName"])
         fidx = int(current["f_field"])
         fname = str(current["f_name"])
+
+        # Keep only error-family records from full logschema output.
+        if not is_error_record_name(rname):
+            continue
 
         schema_key = (rtype, rver, rname)
         schema = entries.get(schema_key)
@@ -146,8 +153,8 @@ def render_go(schemas: list[Schema], source_path: Path) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate Go schema from filtered errschema text")
-    parser.add_argument("--in", dest="infile", required=True, help="Input errschema text file")
+    parser = argparse.ArgumentParser(description="Generate Go error schema from p4 logschema -Aa output")
+    parser.add_argument("--in", dest="infile", required=True, help="Input logschema text file (full p4 logschema -Aa output)")
     parser.add_argument("--out", dest="outfile", required=True, help="Output Go file")
     args = parser.parse_args()
 

@@ -26,6 +26,7 @@ type record struct {
 	ErrorID   string
 	User      string
 	Command   string
+	Program   string
 	IP        string
 	Message   string
 }
@@ -48,6 +49,7 @@ type report struct {
 	TopSignatures    [][2]string       `json:"top_signatures"`
 	TopUsers         [][2]string       `json:"top_users"`
 	TopCommands      [][2]string       `json:"top_commands"`
+	TopPrograms      [][2]string       `json:"top_programs"`
 	SevereEvents     []record          `json:"severe_events"`
 	Spikes           []bucketSpike     `json:"spikes"`
 	NewSignatures    [][2]string       `json:"new_signatures"`
@@ -83,6 +85,8 @@ type ollamaGenerateResponse struct {
 
 const analyzerVersion = "0.1.0"
 
+//go:generate python3 generate_errschema_go.py --in logschema.txt --out error_schema_generated.go
+
 func main() {
 	var (
 		filePath       string
@@ -106,7 +110,7 @@ func main() {
 	)
 
 	flag.StringVar(&filePath, "file", "", "Path to structured p4 errors CSV file")
-	flag.IntVar(&topN, "top", 10, "How many top signatures/users/commands to display")
+	flag.IntVar(&topN, "top", 10, "How many top signatures/users/commands/programs to display")
 	flag.DurationVar(&bucketDuration, "bucket", 5*time.Minute, "Bucket duration for anomaly detection")
 	flag.IntVar(&minSpikeCount, "min-spike-count", 8, "Minimum bucket count for a spike")
 	flag.Float64Var(&zThreshold, "z", 4.0, "Z-score threshold for spike detection")
@@ -211,6 +215,7 @@ func analyzeFile(filePath string, topN int, bucket time.Duration, minSpikeCount 
 	sigTotals := map[string]int{}
 	userTotals := map[string]int{}
 	cmdTotals := map[string]int{}
+	progTotals := map[string]int{}
 	severityExamples := map[string]string{}
 	sigBuckets := map[string]map[time.Time]int{}
 	sigFirstSeen := map[string]time.Time{}
@@ -251,6 +256,9 @@ func analyzeFile(filePath string, topN int, bucket time.Duration, minSpikeCount 
 		}
 		if rec.Command != "" {
 			cmdTotals[rec.Command]++
+		}
+		if rec.Program != "" {
+			progTotals[rec.Program]++
 		}
 		if _, ok := severityExamples[rec.Severity]; !ok {
 			severityExamples[rec.Severity] = rec.Message
@@ -294,6 +302,7 @@ func analyzeFile(filePath string, topN int, bucket time.Duration, minSpikeCount 
 		TopSignatures:    topPairs(sigTotals, topN),
 		TopUsers:         topPairs(userTotals, topN),
 		TopCommands:      topPairs(cmdTotals, topN),
+		TopPrograms:      topPairs(progTotals, topN),
 		SevereEvents:     severe,
 		Spikes:           spikes,
 		NewSignatures:    newSigs,
@@ -306,27 +315,72 @@ func analyzeFile(filePath string, topN int, bucket time.Duration, minSpikeCount 
 }
 
 func parseRecord(row []string) (record, error) {
-	if len(row) < 20 {
-		return record{}, fmt.Errorf("expected >=20 columns, got %d", len(row))
+	if len(row) < 12 {
+		return record{}, fmt.Errorf("expected >=12 columns, got %d", len(row))
 	}
-	n := len(row)
 
-	ts := strings.TrimSpace(row[3])
-	tm, err := time.Parse(time.RFC3339Nano, ts)
+	schema, ok := findSchemaForRowLen(len(row))
+
+	dateVal := fieldFromSchema(row, schema, "f_date")
+	epochVal := fieldFromSchema(row, schema, "f_timestamp")
+	if dateVal == "" && len(row) > 3 {
+		dateVal = strings.TrimSpace(row[3])
+	}
+	if epochVal == "" && len(row) > 1 {
+		epochVal = strings.TrimSpace(row[1])
+	}
+
+	tm, err := parseRecordTime(dateVal, epochVal)
 	if err != nil {
-		epochSec, secErr := strconv.ParseInt(strings.TrimSpace(row[1]), 10, 64)
-		if secErr != nil {
-			return record{}, fmt.Errorf("invalid timestamp %q", ts)
-		}
-		tm = time.Unix(epochSec, 0).UTC()
+		return record{}, err
 	}
 
-	msg := strings.TrimSpace(row[n-1])
+	msg := fieldFromSchema(row, schema, "f_text")
+	if msg == "" {
+		msg = strings.TrimSpace(row[len(row)-1])
+	}
 	if decoded, err := url.QueryUnescape(msg); err == nil {
 		msg = decoded
 	}
 
-	level, severity, subsystem, errorID := parseTailFields(row)
+	level := normalizeEventType(fieldFromSchema(row, schema, "f_eventtype"))
+	severity := fieldFromSchema(row, schema, "f_severity")
+	subsystem := fieldFromSchema(row, schema, "f_subsys")
+	errorID := fieldFromSchema(row, schema, "f_subcode")
+
+	if !ok || level == "" || severity == "" || subsystem == "" {
+		fLevel, fSeverity, fSubsystem, fErrorID := parseTailFields(row)
+		if level == "" {
+			level = fLevel
+		}
+		if severity == "" {
+			severity = fSeverity
+		}
+		if subsystem == "" {
+			subsystem = fSubsystem
+		}
+		if errorID == "" {
+			errorID = fErrorID
+		}
+	}
+
+	user := fieldFromSchema(row, schema, "f_user")
+	command := fieldFromSchema(row, schema, "f_func")
+	program := fieldFromSchema(row, schema, "f_prog")
+	ip := fieldFromSchema(row, schema, "f_host")
+
+	if user == "" && len(row) > 8 {
+		user = strings.TrimSpace(row[8])
+	}
+	if command == "" && len(row) > 10 {
+		command = strings.TrimSpace(row[10])
+	}
+	if program == "" && len(row) > 10 {
+		program = strings.TrimSpace(row[10])
+	}
+	if ip == "" && len(row) > 11 {
+		ip = strings.TrimSpace(row[11])
+	}
 
 	return record{
 		Time:      tm,
@@ -334,11 +388,70 @@ func parseRecord(row []string) (record, error) {
 		Severity:  severity,
 		Subsystem: subsystem,
 		ErrorID:   errorID,
-		User:      strings.TrimSpace(row[8]),
-		Command:   strings.TrimSpace(row[10]),
-		IP:        strings.TrimSpace(row[11]),
+		User:      user,
+		Command:   command,
+		Program:   program,
+		IP:        ip,
 		Message:   msg,
 	}, nil
+}
+
+func findSchemaForRowLen(rowLen int) (errorCSVSchema, bool) {
+	if s, ok := generatedErrorCSVByFieldCount[rowLen]; ok {
+		return s, true
+	}
+
+	bestCount := -1
+	var best errorCSVSchema
+	for count, schema := range generatedErrorCSVByFieldCount {
+		if count <= rowLen && count > bestCount {
+			bestCount = count
+			best = schema
+		}
+	}
+	if bestCount >= 0 {
+		return best, true
+	}
+	return errorCSVSchema{}, false
+}
+
+func fieldFromSchema(row []string, schema errorCSVSchema, fieldName string) string {
+	idx, ok := schema.FieldIndex[fieldName]
+	if !ok || idx < 0 || idx >= len(row) {
+		return ""
+	}
+	return strings.TrimSpace(row[idx])
+}
+
+func parseRecordTime(dateVal string, epochVal string) (time.Time, error) {
+	if dateVal != "" {
+		if tm, err := time.Parse(time.RFC3339Nano, dateVal); err == nil {
+			return tm, nil
+		}
+	}
+	if epochVal != "" {
+		epochSec, err := strconv.ParseInt(epochVal, 10, 64)
+		if err == nil {
+			return time.Unix(epochSec, 0).UTC(), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid timestamp date=%q epoch=%q", dateVal, epochVal)
+}
+
+func normalizeEventType(eventType string) string {
+	v := strings.TrimSpace(strings.ToLower(eventType))
+	switch v {
+	case "":
+		return ""
+	case "4", "error":
+		return "error"
+	case "5", "fatal", "fatalerror", "fatal_error":
+		return "fatal"
+	case "3", "anyerror", "any_error":
+		return "error"
+	default:
+		return strings.TrimSpace(eventType)
+	}
 }
 
 func parseTailFields(row []string) (level, severity, subsystem, errorID string) {
@@ -350,7 +463,6 @@ func parseTailFields(row []string) (level, severity, subsystem, errorID string) 
 		case "error", "warn", "warning", "fatal", "info", "failed":
 			levelIdx = i
 			level = strings.TrimSpace(row[i])
-			break
 		}
 		if levelIdx >= 0 {
 			break
@@ -544,14 +656,15 @@ func printTextReport(rep *report) {
 	printTop("Top signatures", rep.TopSignatures)
 	printTop("Top users", rep.TopUsers)
 	printTop("Top commands", rep.TopCommands)
+	printTop("Top programs", rep.TopPrograms)
 
 	fmt.Printf("\nSevere events (first %d):\n", len(rep.SevereEvents))
 	if len(rep.SevereEvents) == 0 {
 		fmt.Println("  none")
 	} else {
 		for _, e := range rep.SevereEvents {
-			fmt.Printf("  %s %s sev=%s subsys=%s id=%s user=%s cmd=%s msg=%q\n",
-				e.Time.Format(time.RFC3339), e.Level, e.Severity, e.Subsystem, e.ErrorID, e.User, e.Command, e.Message)
+			fmt.Printf("  %s %s sev=%s subsys=%s id=%s user=%s cmd=%s prog=%s msg=%q\n",
+				e.Time.Format(time.RFC3339), e.Level, e.Severity, e.Subsystem, e.ErrorID, e.User, e.Command, e.Program, e.Message)
 		}
 	}
 
@@ -614,6 +727,7 @@ func buildTriageCompact(rep *report, cfg triageConfig) map[string]interface{} {
 			"error_id":  ev.ErrorID,
 			"user":      ev.User,
 			"command":   ev.Command,
+			"program":   ev.Program,
 			"message":   ev.Message,
 		})
 	}
@@ -639,6 +753,7 @@ func buildTriageCompact(rep *report, cfg triageConfig) map[string]interface{} {
 		"top_signatures":       topPairObjects(rep.TopSignatures, cfg.TopSignatures),
 		"top_users":            topPairObjects(rep.TopUsers, 10),
 		"top_commands":         topPairObjects(rep.TopCommands, 10),
+		"top_programs":         topPairObjects(rep.TopPrograms, 10),
 		"new_signatures":       newSigs,
 		"spikes":               spikes,
 		"severity_examples":    rep.SeverityExamples,
