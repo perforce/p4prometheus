@@ -54,17 +54,17 @@ import textwrap
 import argparse
 import os
 import sys
-import io
+import warnings
 import yaml
 import json
 import grafanalib.core as G
-from grafanalib._gen import write_dashboard, DashboardEncoder
 # import http
 import requests
 
 
 DEFAULT_TITLE = "P4Prometheus Metrics"
 DEFAULT_CONFIG = "dashboard.yaml"
+DEFAULT_HTTP_TIMEOUT = 15
 # http.client.HTTPConnection.debuglevel = 1
 
 
@@ -93,26 +93,216 @@ class CreateDashboard():
         parser.add_argument('--customer', action='store_true', help="Specify that customer variable is defined and included")
         parser.add_argument('--no-sdp', action='store_true', default=False, help="Whether this is SDP instance or not - default is SDP")
         parser.add_argument('--filter-labels', action='store_true', default=False, help="Whether to filter labels by SDP or not")
-        parser.add_argument('-a', '--api-key', help="Grafana API key token - default $GRAFANA_API_KEY")
+        parser.add_argument('-a', '--api-key', dest='api_key',
+                            help="Grafana service account token (or legacy API key) - defaults to $GRAFANA_API_TOKEN or $GRAFANA_API_KEY")
+        parser.add_argument('--api-token', dest='api_key',
+                            help="Alias for --api-key")
         parser.add_argument('--datasource', help="Grafana datasource name (otherwise uses default)")
         parser.add_argument('--list-datasources', action='store_true', default=False, 
                             help="Calls Grafana API to list datasources - output can be used with --datasource. " +
                             " This command will not upload anything.")
         parser.add_argument('-u', '--url', help="Grafana url base, e.g. http://server or https://server - default $GRAFANA_SERVER")
+        parser.add_argument('--ca-cert', dest='ca_cert',
+                    help="Path to CA bundle for Grafana HTTPS verification (defaults to $GRAFANA_CA_CERT)")
+        parser.add_argument('--insecure-skip-verify', action='store_true', default=False,
+                    help="Disable TLS certificate verification for Grafana HTTPS requests (defaults to $GRAFANA_INSECURE_SKIP_VERIFY)")
+
+    def _bearer_headers(self):
+        return {"Authorization": "Bearer " + self.options.api_key, "Content-Type": "application/json"}
+
+    def _tls_verify_setting(self):
+        """Return requests verify setting: True, False, or CA bundle path."""
+        if self.options.insecure_skip_verify:
+            return False
+        if self.options.ca_cert:
+            return self.options.ca_cert
+        return True
+
+    def _request_json(self, method, url, **kwargs):
+        """Issue HTTP request with timeout and raise useful errors for Grafana API failures."""
+        kwargs.setdefault("timeout", DEFAULT_HTTP_TIMEOUT)
+        kwargs.setdefault("verify", self._tls_verify_setting())
+        response = requests.request(method, url, **kwargs)
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as e:
+            body = response.text.strip()
+            if len(body) > 500:
+                body = body[:500] + "..."
+            raise Exception("Grafana API request failed (%s %s): HTTP %s: %s" %
+                            (method, url, response.status_code, body)) from e
+        return response
+
+    def _modernize_panel(self, panel):
+        """Convert legacy panel JSON to Grafana 13-friendly panel definitions."""
+        # grafanalib may still hand us Row/Panel objects in some paths.
+        # Convert where possible, and ignore anything we cannot treat as a dict.
+        if panel is None:
+            return panel
+        if not isinstance(panel, dict):
+            if hasattr(panel, "to_json_data"):
+                panel = panel.to_json_data()
+            else:
+                return panel
+
+        ptype = panel.get("type")
+
+        if ptype == "graph":
+            panel["type"] = "timeseries"
+            panel.setdefault("options", {})
+            panel["options"].setdefault("legend", {
+                "displayMode": "table",
+                "placement": "bottom",
+                "showLegend": True,
+            })
+            panel["options"].setdefault("tooltip", {
+                "mode": "multi",
+                "sort": "none",
+            })
+            panel.setdefault("fieldConfig", {
+                "defaults": {
+                    "unit": "short",
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [{"color": "green", "value": None}],
+                    },
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineInterpolation": "linear",
+                        "barAlignment": 0,
+                        "lineWidth": 1,
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "spanNulls": False,
+                        "showPoints": "never",
+                        "pointSize": 5,
+                        "stacking": {"mode": "none", "group": "A"},
+                        "axisPlacement": "auto",
+                        "axisLabel": "",
+                        "axisColorMode": "text",
+                        "axisBorderShow": False,
+                        "scaleDistribution": {"type": "linear"},
+                        "axisCenteredZero": False,
+                        "hideFrom": {
+                            "tooltip": False,
+                            "viz": False,
+                            "legend": False,
+                        },
+                    },
+                },
+                "overrides": [],
+            })
+
+            # Remove legacy graph fields to avoid old migration paths.
+            for k in [
+                "aliasColors", "bars", "dashLength", "dashes", "fill", "fillGradient",
+                "hiddenSeries", "legend", "lines", "linewidth", "nullPointMode",
+                "percentage", "pointradius", "points", "renderer", "seriesOverrides",
+                "spaceLength", "stack", "steppedLine", "thresholds", "timeRegions",
+                "tooltip", "xaxis", "yaxes", "yaxis",
+            ]:
+                panel.pop(k, None)
+
+        elif ptype == "singlestat":
+            panel["type"] = "stat"
+            panel.setdefault("options", {
+                "reduceOptions": {
+                    "values": False,
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+            })
+            panel.setdefault("fieldConfig", {
+                "defaults": {
+                    "unit": "short",
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {"color": "green", "value": None},
+                            {"color": "red", "value": 80},
+                        ],
+                    },
+                },
+                "overrides": [],
+            })
+
+            for k in [
+                "colorBackground", "colorValue", "colors", "gauge", "mappingType",
+                "rangeMaps", "sparkline", "valueFontSize", "valueMaps", "valueName",
+            ]:
+                panel.pop(k, None)
+
+        for child in panel.get("panels", []):
+            self._modernize_panel(child)
+        return panel
+
+    def _modernize_dashboard_json(self, dashboard_data):
+        """Walk dashboard JSON and modernize legacy panels recursively."""
+        for panel in dashboard_data.get("panels", []):
+            self._modernize_panel(panel)
+        for row in dashboard_data.get("rows", []):
+            row_data = self._modernize_panel(row)
+            if isinstance(row_data, dict):
+                row_panels = row_data.get("panels", [])
+            elif isinstance(row, dict):
+                row_panels = row.get("panels", [])
+            else:
+                row_panels = []
+            for panel in row_panels:
+                self._modernize_panel(panel)
+        return dashboard_data
+
+    def _normalize_json_types(self, value):
+        """Recursively convert grafanalib objects to plain JSON-serializable types."""
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, dict):
+            normalized = {}
+            for k, v in value.items():
+                normalized[k] = self._normalize_json_types(v)
+            return normalized
+        if isinstance(value, list):
+            return [self._normalize_json_types(v) for v in value]
+        if isinstance(value, tuple):
+            return [self._normalize_json_types(v) for v in value]
+        if hasattr(value, "to_json_data"):
+            return self._normalize_json_types(value.to_json_data())
+        if hasattr(value, "__dict__"):
+            return self._normalize_json_types(value.__dict__)
+        return str(value)
 
     def run(self):
         
         if not self.options.url:
             self.options.url = os.getenv('GRAFANA_SERVER')
         if not self.options.api_key:
-            self.options.api_key = os.getenv('GRAFANA_API_KEY')
+            self.options.api_key = os.getenv('GRAFANA_API_TOKEN') or os.getenv('GRAFANA_API_KEY')
+        if not self.options.ca_cert:
+            self.options.ca_cert = os.getenv('GRAFANA_CA_CERT')
+        if not self.options.insecure_skip_verify:
+            insecure_env = (os.getenv('GRAFANA_INSECURE_SKIP_VERIFY') or '').strip().lower()
+            self.options.insecure_skip_verify = insecure_env in ('1', 'true', 'yes', 'on')
+
+        if self.options.insecure_skip_verify:
+            warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+
         if self.options.list_datasources:
             if not self.options.url or not self.options.api_key:
                 raise Exception("You must specify --url and --api-key when you specify --list-datasources")
-            headers = {"Authorization": "Bearer " + self.options.api_key, "Content-Type": "application/json"}
+            headers = self._bearer_headers()
             url = self.options.url + "/api/datasources"
-            response = requests.get(url, headers=headers)
-            for j in response.json():
+            response = self._request_json("GET", url, headers=headers)
+            data = response.json()
+            if not isinstance(data, list):
+                raise Exception("Unexpected response from Grafana datasources API: %s" % type(data).__name__)
+            for j in data:
                 if 'name' in j and 'uid' in j:
                     print("Name: %s, uid: %s" % (j['name'], j['uid']))
             return
@@ -229,23 +419,22 @@ class CreateDashboard():
         # Auto-number panels - returns new dashboard
         dashboard = dashboard.auto_panel_ids()
 
-        s = io.StringIO()
-        write_dashboard(dashboard, s)
+        dashboard_data = self._modernize_dashboard_json(dashboard.to_json_data())
+        dashboard_data = self._normalize_json_types(dashboard_data)
+        dashboard_json = json.dumps(dashboard_data, sort_keys=True, indent=2)
         if self.options.url and self.options.api_key:
-            headers = {"Authorization": "Bearer " + self.options.api_key, "Content-Type": "application/json"}
+            headers = self._bearer_headers()
             url = self.options.url + "/api/dashboards/db"
-            response = requests.post(
-                url,
-                data=json.dumps({
-                    "dashboard": dashboard.to_json_data(),
-                    "overwrite": True,
-                    "message": "Initialise"
-                }, sort_keys=True, indent=2, cls=DashboardEncoder),
-                headers=headers,
-            )
+            response = self._request_json("POST", url,
+                                          data=json.dumps({
+                                              "dashboard": dashboard_data,
+                                              "overwrite": True,
+                                              "message": "Initialise"
+                                          }, sort_keys=True, indent=2),
+                                          headers=headers)
             print(response.text)
         else:
-            print("""{"dashboard": %s}""" % s.getvalue())
+            print("""{"dashboard": %s}""" % dashboard_json)
 
 
 if __name__ == '__main__':

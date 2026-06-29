@@ -354,3 +354,157 @@
 - title: Processes blocked count
   target:
   - expr: p4_locks_cmds_blocked{sdpinst="$sdpinst",serverid="$serverid"}
+
+- section: Capacity and Health
+- row: 1
+- title: License time remaining (days)
+  target:
+  - expr: p4_license_time_remaining{sdpinst="$sdpinst",serverid="$serverid"} / (24 * 60 * 60)
+- title: SSL cert time remaining (days)
+  target:
+  - expr: (p4_ssl_cert_expires{sdpinst="$sdpinst",serverid="$serverid"} - time()) / (24 * 60 * 60)
+
+- row: 1
+- title: p4prometheus memory used
+  target:
+  - expr: p4_prom_memory{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: decbytes
+- title: Pull queue bytes
+  target:
+  - expr: p4_pull_queue_bytes{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: decbytes
+
+- row: 1
+- title: Pull queue file count
+  target:
+  - expr: p4_pull_queue_count{sdpinst="$sdpinst",serverid="$serverid"}
+- title: Pull queue total files
+  target:
+  - expr: p4_pull_queue_total{sdpinst="$sdpinst",serverid="$serverid"}
+
+- row: 1
+- title: Memlimit kill candidates
+  target:
+  - expr: p4_memlimit_kill_candidates{sdpinst="$sdpinst",serverid="$serverid"}
+- title: Memlimit kills total (rate/5min)
+  target:
+  - expr: rate(p4_memlimit_kills_total{sdpinst="$sdpinst",serverid="$serverid"}[5m])
+
+- section: Additional Requested Metrics
+
+- row: 1
+- title: Active memory by cmd
+  target:
+  - expr: p4_active_memory_by_cmd{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: "{{cmd}}"
+- title: Active memory by user
+  target:
+  - expr: p4_active_memory_by_user{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: "{{user}}"
+
+
+- row: 1
+- title: Monitor by state
+  target:
+  - expr: p4_monitor_by_state{sdpinst="$sdpinst",serverid="$serverid"}
+    legend: "{{state}}"
+- title: Monitor cmds
+  target:
+  - expr: p4_monitor_cmds{sdpinst="$sdpinst",serverid="$serverid"}
+
+- row: 1
+- title: Monitor cmds max runtime
+  target:
+  - expr: p4_monitor_cmds_max_runtime{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: s
+- title: Monitor cmds runtime
+  target:
+  - expr: p4_monitor_cmds_runtime{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: s
+
+- row: 1
+- title: Monitor max cmd time
+  target:
+  - expr: p4_monitor_max_cmd_time{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: s
+- title: Processes count
+  target:
+  - expr: p4_processes_count{sdpinst="$sdpinst",serverid="$serverid"}
+
+- row: 1
+- title: Change counter
+  target:
+  - expr: p4_change_counter{sdpinst="$sdpinst",serverid="$serverid"}
+- title: Completed cmds
+  target:
+  - expr: p4_completed_cmds{sdpinst="$sdpinst",serverid="$serverid"}
+
+- row: 1
+- title: Errors count
+  target:
+  - expr: p4_errors_count{sdpinst="$sdpinst",serverid="$serverid"}
+- title: Journal size
+  target:
+  - expr: p4_journal_size{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: decbytes
+
+- row: 1
+- title: Journals rotated
+  target:
+  - expr: p4_journals_rotated{sdpinst="$sdpinst",serverid="$serverid"}
+- title: Log size
+  target:
+  - expr: p4_log_size{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: decbytes
+
+- row: 1
+- title: Logs file count
+  target:
+  - expr: p4_logs_file_count{sdpinst="$sdpinst",serverid="$serverid"}
+- title: Logs rotated
+  target:
+  - expr: p4_logs_rotated{sdpinst="$sdpinst",serverid="$serverid"}
+
+
+- row: 1
+- title: Pull error count
+  target:
+  - expr: p4_pull_error_count{sdpinst="$sdpinst",serverid="$serverid"}
+
+
+- row: 1
+- title: Pull replica bytes behind
+  target:
+  - expr: p4_pull_replica_bytes_behind{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: decbytes
+- title: SDP checkpoint error
+  target:
+  - expr: p4_sdp_checkpoint_error{sdpinst="$sdpinst",serverid="$serverid"}
+
+- row: 1
+- title: SDP verify duration
+  target:
+  - expr: p4_sdp_verify_duration{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: s
+- title: SDP verify errors
+  target:
+  - expr: p4_sdp_verify_errors{sdpinst="$sdpinst",serverid="$serverid"}
+
+- row: 1
+- title: SDP verify log modtime
+  target:
+  - expr: p4_sdp_verify_log_modtime{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: s
+
+- row: 1
+- title: Swarm authorized
+  target:
+  - expr: p4_swarm_authorized{sdpinst="$sdpinst",serverid="$serverid"}
+- title: Swarm error
+  target:
+  - expr: p4_swarm_error{sdpinst="$sdpinst",serverid="$serverid"}
+
+- row: 1
+- title: Swarm tasks
+  target:
+  - expr: p4_swarm_tasks{sdpinst="$sdpinst",serverid="$serverid"}

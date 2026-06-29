@@ -68,6 +68,7 @@ structure or not - as desired.
 
 Checkout  following files:
 - [install_p4prom.sh](scripts/install_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance (`node_exporter`, `p4prometheus`, monitoring scripts)
+  - **the above requires also**: [p4prom_common.sh](scripts/p4prom_common.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/p4prom_common.sh)
 - [install_prom_graf.sh](scripts/install_prom_graf.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for the monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
 - [install_node.sh](scripts/install_node.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_node.sh) - the installer for monitoring a server hosting other tools such as Swarm, Hansoft, HTH (Helix TeamHub) etc. Just installs `node_exporter`
 
@@ -128,13 +129,36 @@ Download the following files:
 - [create_dashboard.py](scripts/create_dashboard.py) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/create_dashboard.py)
 - [dashboard.yaml](scripts/dashboard.yaml) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/dashboard.yaml)
 
-Create a [Grafana API key token](https://grafana.com/docs/grafana/latest/http_api/auth/#create-api-token) for your Grafana installation.
+Create a Grafana service account token (or legacy API key token) for your Grafana installation.
+
+Version notes (dashboard generation/upload):
+
+- Tested with Grafana 9.x, 10.x, 11.x, and 12.x using the classic dashboard API endpoint `/api/dashboards/db`.
+- Recommended Python package versions: `grafanalib>=0.7,<1.0` and `requests>=2.28`.
+- The script accepts both modern service account tokens (`GRAFANA_API_TOKEN`) and legacy API keys (`GRAFANA_API_KEY`).
+
+Install Python dependencies (recommended: uv):
+
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    uv venv .venv
+    source .venv/bin/activate
+    uv pip install "grafanalib>=0.7,<1.0" "requests>=2.28"
+
+Fallback (pip):
 
     pip3 install grafanalib requests
+
+Optional: verify installed package versions
+
+    python3 -c "import grafanalib, requests; print('grafanalib', getattr(grafanalib, '__version__', 'unknown')); print('requests', requests.__version__)"
 
 Set environment variables:
 
     export GRAFANA_SERVER=https://p4monitor:3000
+    export GRAFANA_API_TOKEN="<service account token created above>"
+
+or legacy variable name:
+
     export GRAFANA_API_KEY="<API key created above>"
 
 Review the `dashboard.yaml` file and adjust to your local site names where appropriate.
