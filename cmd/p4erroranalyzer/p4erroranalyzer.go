@@ -375,8 +375,11 @@ func parseRecord(row []string) (record, error) {
 	if command == "" && len(row) > 10 {
 		command = strings.TrimSpace(row[10])
 	}
-	if program == "" && len(row) > 10 {
-		program = strings.TrimSpace(row[10])
+	if program == "" && len(row) > 12 {
+		program = strings.TrimSpace(row[12])
+	}
+	if program == "" {
+		program = "unknown"
 	}
 	if ip == "" && len(row) > 11 {
 		ip = strings.TrimSpace(row[11])
