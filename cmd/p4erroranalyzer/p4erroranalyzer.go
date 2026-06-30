@@ -24,6 +24,7 @@ type record struct {
 	Severity  string
 	Subsystem string
 	ErrorID   string
+	ErrorName string
 	User      string
 	Command   string
 	Program   string
@@ -86,6 +87,7 @@ type ollamaGenerateResponse struct {
 const analyzerVersion = "0.1.0"
 
 //go:generate python3 generate_errschema_go.py --in logschema.txt --out error_schema_generated.go
+//go:generate python3 generate_error_lookup_go.py --errors all_errors.txt --errornum errornum.h --out error_lookup_generated.go
 
 func main() {
 	var (
@@ -347,6 +349,7 @@ func parseRecord(row []string) (record, error) {
 	severity := fieldFromSchema(row, schema, "f_severity")
 	subsystem := fieldFromSchema(row, schema, "f_subsys")
 	errorID := fieldFromSchema(row, schema, "f_subcode")
+	errorName := ""
 
 	if !ok || level == "" || severity == "" || subsystem == "" {
 		fLevel, fSeverity, fSubsystem, fErrorID := parseTailFields(row)
@@ -363,6 +366,7 @@ func parseRecord(row []string) (record, error) {
 			errorID = fErrorID
 		}
 	}
+	errorName = lookupErrorShortName(subsystem, errorID)
 
 	user := fieldFromSchema(row, schema, "f_user")
 	command := fieldFromSchema(row, schema, "f_func")
@@ -391,6 +395,7 @@ func parseRecord(row []string) (record, error) {
 		Severity:  severity,
 		Subsystem: subsystem,
 		ErrorID:   errorID,
+		ErrorName: errorName,
 		User:      user,
 		Command:   command,
 		Program:   program,
@@ -505,7 +510,26 @@ func parseTailFields(row []string) (level, severity, subsystem, errorID string) 
 }
 
 func signature(r record) string {
-	return fmt.Sprintf("%s|subsys=%s|id=%s", r.Level, r.Subsystem, r.ErrorID)
+	idPart := r.ErrorID
+	if r.ErrorName != "" {
+		idPart = fmt.Sprintf("%s(%s)", r.ErrorID, r.ErrorName)
+	}
+	if idPart == "" {
+		idPart = r.ErrorName
+	}
+	return fmt.Sprintf("%s|subsys=%s|id=%s", r.Level, r.Subsystem, idPart)
+}
+
+func lookupErrorShortName(subsysStr, subcodeStr string) string {
+	subsys, err := strconv.Atoi(strings.TrimSpace(subsysStr))
+	if err != nil {
+		return ""
+	}
+	subcode, err := strconv.Atoi(strings.TrimSpace(subcodeStr))
+	if err != nil {
+		return ""
+	}
+	return generatedErrorShortBySubsysSubcode[[2]int{subsys, subcode}]
 }
 
 func isSevere(r record) bool {

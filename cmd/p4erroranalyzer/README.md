@@ -33,6 +33,17 @@ cd cmd/p4erroranalyzer
 go generate
 ```
 
+## Regenerate Error Name Lookup
+
+To map `(f_subsys, f_subcode)` from `errors.csv` to short names (for example `CLIENT_LockCheckFail`), regenerate:
+
+```bash
+cd cmd/p4erroranalyzer
+python3 generate_error_lookup_go.py --errors all_errors.txt --errornum errornum.h --out error_lookup_generated.go
+```
+
+Or run `go generate` in this directory.
+
 ## Usage
 
 ```bash
