@@ -375,6 +375,9 @@ update_monitor_locks_service() {
         bootstrap_monitor_python_env "$updates_dir"
     fi
 
+    # Create default monitor_metrics.yaml if it doesn't already exist
+    ensure_monitor_metrics_config_exists
+
     if [[ ! -x "$updates_script" ]]; then
         msg "Warning: ${updates_script} not found or not executable, skipping update check"
         return
