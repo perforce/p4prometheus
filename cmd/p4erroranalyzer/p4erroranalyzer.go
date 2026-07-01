@@ -51,6 +51,7 @@ type report struct {
 	TopUsers         [][2]string       `json:"top_users"`
 	TopCommands      [][2]string       `json:"top_commands"`
 	TopPrograms      [][2]string       `json:"top_programs"`
+	TopErrUserCmd    [][2]string       `json:"top_error_user_commands"`
 	SevereEvents     []record          `json:"severe_events"`
 	Spikes           []bucketSpike     `json:"spikes"`
 	NewSignatures    [][2]string       `json:"new_signatures"`
@@ -218,6 +219,7 @@ func analyzeFile(filePath string, topN int, bucket time.Duration, minSpikeCount 
 	userTotals := map[string]int{}
 	cmdTotals := map[string]int{}
 	progTotals := map[string]int{}
+	errUserCmdTotals := map[string]int{}
 	severityExamples := map[string]string{}
 	sigBuckets := map[string]map[time.Time]int{}
 	sigFirstSeen := map[string]time.Time{}
@@ -253,6 +255,7 @@ func analyzeFile(filePath string, topN int, bucket time.Duration, minSpikeCount 
 		byLevel[rec.Level]++
 		sig := signature(rec)
 		sigTotals[sig]++
+		errUserCmdTotals[errorUserCommandKey(rec)]++
 		if rec.User != "" {
 			userTotals[rec.User]++
 		}
@@ -305,6 +308,7 @@ func analyzeFile(filePath string, topN int, bucket time.Duration, minSpikeCount 
 		TopUsers:         topPairs(userTotals, topN),
 		TopCommands:      topPairs(cmdTotals, topN),
 		TopPrograms:      topPairs(progTotals, topN),
+		TopErrUserCmd:    topPairs(errUserCmdTotals, topN),
 		SevereEvents:     severe,
 		Spikes:           spikes,
 		NewSignatures:    newSigs,
@@ -520,6 +524,25 @@ func signature(r record) string {
 	return fmt.Sprintf("%s|subsys=%s|id=%s", r.Level, r.Subsystem, idPart)
 }
 
+func errorUserCommandKey(r record) string {
+	errPart := r.ErrorID
+	if r.ErrorName != "" {
+		errPart = fmt.Sprintf("%s(%s)", r.ErrorID, r.ErrorName)
+	}
+	if errPart == "" {
+		errPart = "unknown"
+	}
+	userPart := r.User
+	if userPart == "" {
+		userPart = "unknown"
+	}
+	cmdPart := r.Command
+	if cmdPart == "" {
+		cmdPart = "unknown"
+	}
+	return fmt.Sprintf("subsys=%s|err=%s|user=%s|cmd=%s", r.Subsystem, errPart, userPart, cmdPart)
+}
+
 func lookupErrorShortName(subsysStr, subcodeStr string) string {
 	subsys, err := strconv.Atoi(strings.TrimSpace(subsysStr))
 	if err != nil {
@@ -684,6 +707,7 @@ func printTextReport(rep *report) {
 	printTop("Top users", rep.TopUsers)
 	printTop("Top commands", rep.TopCommands)
 	printTop("Top programs", rep.TopPrograms)
+	printTop("Top error/user/command", rep.TopErrUserCmd)
 
 	fmt.Printf("\nSevere events (first %d):\n", len(rep.SevereEvents))
 	if len(rep.SevereEvents) == 0 {
@@ -770,21 +794,22 @@ func buildTriageCompact(rep *report, cfg triageConfig) map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"file_path":            rep.FilePath,
-		"window_start":         rep.WindowStart.Format(time.RFC3339),
-		"window_end":           rep.WindowEnd.Format(time.RFC3339),
-		"total_records":        rep.TotalRecords,
-		"parse_errors":         rep.ParseErrors,
-		"bucket_duration":      rep.BucketDuration,
-		"by_level":             rep.ByLevel,
-		"top_signatures":       topPairObjects(rep.TopSignatures, cfg.TopSignatures),
-		"top_users":            topPairObjects(rep.TopUsers, 10),
-		"top_commands":         topPairObjects(rep.TopCommands, 10),
-		"top_programs":         topPairObjects(rep.TopPrograms, 10),
-		"new_signatures":       newSigs,
-		"spikes":               spikes,
-		"severity_examples":    rep.SeverityExamples,
-		"severe_events_sample": severeSample,
+		"file_path":               rep.FilePath,
+		"window_start":            rep.WindowStart.Format(time.RFC3339),
+		"window_end":              rep.WindowEnd.Format(time.RFC3339),
+		"total_records":           rep.TotalRecords,
+		"parse_errors":            rep.ParseErrors,
+		"bucket_duration":         rep.BucketDuration,
+		"by_level":                rep.ByLevel,
+		"top_signatures":          topPairObjects(rep.TopSignatures, cfg.TopSignatures),
+		"top_users":               topPairObjects(rep.TopUsers, 10),
+		"top_commands":            topPairObjects(rep.TopCommands, 10),
+		"top_programs":            topPairObjects(rep.TopPrograms, 10),
+		"top_error_user_commands": topPairObjects(rep.TopErrUserCmd, 10),
+		"new_signatures":          newSigs,
+		"spikes":                  spikes,
+		"severity_examples":       rep.SeverityExamples,
+		"severe_events_sample":    severeSample,
 	}
 }
 
