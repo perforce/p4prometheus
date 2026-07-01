@@ -601,10 +601,8 @@ EOF
 update_node_exporter
 update_p4prometheus
 update_p4metrics
-ensure_monitor_metrics_config_exists
+ensure_monitor_metrics_config_file_exists
 update_monitor_locks_service
-# Create default monitor_metrics.yaml if it doesn't already exist
-ensure_monitor_metrics_config_exists
 update_vmagent_service_if_present
 if [[ $InstallVMAgent -eq 1 ]]; then
     install_vmagent

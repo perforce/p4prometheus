@@ -593,7 +593,7 @@ install_monitor_locks () {
     bootstrap_monitor_python_env "$bin_dir"
 
     # Create default monitor_metrics.yaml if it doesn't already exist
-    ensure_monitor_metrics_config_exists
+    ensure_monitor_metrics_config_file_exists
 
     service_name="monitor_locks"
     service_file="/etc/systemd/system/${service_name}.service"

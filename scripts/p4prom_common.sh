@@ -413,3 +413,25 @@ notifications:
         command: "/usr/local/bin/p4_lock_notify.sh"
 EOF
 }
+
+ensure_monitor_metrics_config_file_exists() {
+    local config_file=${1:-${monitor_metrics_config_file:-}}
+
+    if [[ -z "$config_file" ]]; then
+        bail "monitor_metrics_config_file is not set and no config path was supplied"
+    fi
+
+    if [[ -f "$config_file" ]]; then
+        msg "monitor_metrics config already exists: $config_file"
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$config_file")"
+    write_default_monitor_metrics_config "$config_file"
+
+    if [[ -n "${OSUSER:-}" ]] && [[ -n "${OSGROUP:-}" ]]; then
+        chown "$OSUSER:$OSGROUP" "$config_file"
+    fi
+    chmod 640 "$config_file"
+    msg "Created default monitor_metrics config: $config_file"
+}
