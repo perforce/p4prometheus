@@ -247,7 +247,8 @@ func main() {
 	)
 
 	kingpin.Version(version.Print("p4prometheus"))
-	kingpin.HelpFlag.Short('h')
+	kingpin.CommandLine.VersionFlag.Short('V')
+	kingpin.CommandLine.HelpFlag.Short('h')
 	kingpin.Parse()
 
 	if *sampleConfig {
