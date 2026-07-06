@@ -14,6 +14,14 @@ type JournalMetric struct {
 	Record string
 }
 
+func (p4m *P4MonitorMetrics) shouldMonitorJournal() bool {
+	services := strings.TrimSpace(p4m.p4info["Server services"])
+	if services == "standby" || services == "forwarding-standby" {
+		return false
+	}
+	return true
+}
+
 func extractJournalField(token string) string {
 	if len(token) < 2 {
 		return ""
@@ -98,6 +106,10 @@ func (p4m *P4MonitorMetrics) setupJournalMonitoring() {
 		p4m.logger.Debugf("setupJournalMonitoring exiting as no P4JOURNAL")
 		return
 	}
+	if !p4m.shouldMonitorJournal() {
+		p4m.logger.Debugf("setupJournalMonitoring exiting as service type does not monitor journal: %q", p4m.p4info["Server services"])
+		return
+	}
 	if p4m.journalTailer != nil {
 		p4m.logger.Debugf("setupJournalMonitoring exiting as already running")
 		return
@@ -117,6 +129,11 @@ func (p4m *P4MonitorMetrics) setupJournalMonitoring() {
 func (p4m *P4MonitorMetrics) monitorJournalRecords() {
 	p4m.startMonitor("monitorJournalRecords", "p4_journal_records")
 	defer p4m.completeMonitor()
+
+	if !p4m.shouldMonitorJournal() {
+		p4m.logger.Debugf("monitorJournalRecords exiting as service type does not monitor journal: %q", p4m.p4info["Server services"])
+		return
+	}
 
 	p4m.journalLock.Lock()
 	defer p4m.journalLock.Unlock()

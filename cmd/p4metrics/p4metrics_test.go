@@ -477,6 +477,36 @@ func TestMonitorJournalRecordsMetrics(t *testing.T) {
 	compareMetricValues(t, expected, p4m.metrics)
 }
 
+func TestShouldMonitorJournalByServiceType(t *testing.T) {
+	cfg := config.Config{}
+	initLogger()
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+
+	p4m.p4info["Server services"] = "standard"
+	assert.True(t, p4m.shouldMonitorJournal())
+
+	p4m.p4info["Server services"] = "standby"
+	assert.False(t, p4m.shouldMonitorJournal())
+
+	p4m.p4info["Server services"] = "forwarding-standby"
+	assert.False(t, p4m.shouldMonitorJournal())
+}
+
+func TestMonitorJournalRecordsSkippedForStandby(t *testing.T) {
+	cfg := config.Config{}
+	initLogger()
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+	p4m.dryrun = true
+	p4m.p4info["Server services"] = "standby"
+	p4m.journalMetrics[JournalMetric{Table: "domain", Record: "rv"}] = 4
+
+	p4m.monitorJournalRecords()
+
+	assert.Equal(t, 0, len(p4m.metrics))
+}
+
 func TestP4PullParsing(t *testing.T) {
 	cfg := config.Config{}
 	initLogger()
