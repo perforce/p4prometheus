@@ -16,7 +16,7 @@ REVISION=`git rev-parse --short HEAD`
 MODULE="github.com/perforce/p4prometheus"
 LDFLAGS=-ldflags "-w -s -X ${MODULE}/version.Version=${VERSION} -X ${MODULE}/version.BuildDate=${BUILD_DATE} -X ${MODULE}/version.Branch=${BRANCH} -X ${MODULE}/version.Revision=${REVISION} -X ${MODULE}/version.BuildUser=${USER}"
 
-SRC_FILES=${BINARY}.go p4errors.go
+SRC_FILES=${BINARY}.go p4errors.go p4journal.go
 
 # Builds the project
 build:
