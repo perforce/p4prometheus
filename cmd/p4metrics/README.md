@@ -123,8 +123,8 @@ p4metrics emits the following key metrics:
 
 ### Journal Metrics
 
-- **p4_journal_records_count{table,record}** (counter) - Cumulative count of parsed P4JOURNAL records by table and record type.
-- `record` label values are `rv`, `pv`, and `dv`.
+- **p4_journal_records_count{table,record}** (counter) - Cumulative count of parsed P4JOURNAL records by table and action type.
+- `action` label values are `rv`, `pv`, and `dv`.
 - `table` label values are parsed from journal table names such as `db.domain` and emitted without the `db.` prefix (for example `domain`).
 - Controlled by config option `parse_journal` (default: `true`).
 

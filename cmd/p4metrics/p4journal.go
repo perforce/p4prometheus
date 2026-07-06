@@ -11,7 +11,7 @@ import (
 
 type JournalMetric struct {
 	Table  string
-	Record string
+	Action string
 }
 
 func (p4m *P4MonitorMetrics) shouldMonitorJournal() bool {
@@ -58,7 +58,7 @@ func (p4m *P4MonitorMetrics) parseJournalLine(line string) {
 		return
 	}
 
-	m := JournalMetric{Table: table, Record: recordType}
+	m := JournalMetric{Table: table, Action: recordType}
 	p4m.journalLock.Lock() // Accessed from tailer goroutine and monitor loop.
 	p4m.journalMetrics[m] += 1
 	p4m.journalLock.Unlock()
@@ -141,11 +141,11 @@ func (p4m *P4MonitorMetrics) monitorJournalRecords() {
 	for m, count := range p4m.journalMetrics {
 		p4m.metrics = append(p4m.metrics,
 			metricStruct{name: "p4_journal_records_count",
-				help:  "P4JOURNAL record count by table and type",
+				help:  "P4JOURNAL record count by table and action (rv/pv/dv)",
 				mtype: "counter",
 				value: strconv.Itoa(count),
 				labels: []labelStruct{{name: "table", value: m.Table},
-					{name: "record", value: m.Record},
+					{name: "action", value: m.Action},
 				}})
 	}
 	p4m.writeMetricsFile()
