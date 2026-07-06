@@ -151,6 +151,7 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_error_count | subsystem, error_id, level | (DEPRECATED - replaced by p4_errors_count) Server errors by id - for sudden spurts of errors |
 | p4_errors_count | subsys, severity | Server errors by subsystem and severiy (e.g. error/fatal) - for sudden spurts of errors |
 | p4_filesys_min | filesys | Value of P4D configurable filesys.*.min |
+| p4_journal_records_count | table, record | Cumulative count of parsed P4JOURNAL records by table (without the `db.` prefix) and record type (`rv`, `pv`, `dv`) |
 | p4_journal_size | | Size of P4JOURNAL in bytes |
 | p4_journals_rotated | | Count of rotations of P4JOURNAL by p4metrics |
 | p4_license_expires |  | P4D License expiry (epoch secs) |

@@ -46,6 +46,9 @@ func TestValidConfig(t *testing.T) {
 	checkValue(t, "MetricsRoot", cfg.MetricsRoot, "/hxlogs/metrics")
 	checkValue(t, "SDPInstance", cfg.SDPInstance, "1")
 	checkValueDuration(t, "UpdateInterval", cfg.UpdateInterval, 60*time.Second)
+	if !cfg.ParseJournal {
+		t.Fatalf("Error parsing ParseJournal, expected true got %v", cfg.ParseJournal)
+	}
 }
 
 func TestValidConfig2(t *testing.T) {
@@ -60,6 +63,12 @@ const config3 = `
 metrics_root:				/hxlogs/metrics
 sdp_instance: 				1
 max_journal_size:			100A
+`
+
+const configParseJournalFalse = `
+metrics_root:				/hxlogs/metrics
+sdp_instance:				1
+parse_journal:				false
 `
 
 const config4 = `
@@ -85,6 +94,13 @@ func TestInvalidConfig(t *testing.T) {
 	ensureFail(t, config4, "invalid max_journal_percent")
 	ensureFail(t, config5, "invalid max_log_size")
 	ensureFail(t, config6, "invalid max_log_percent")
+}
+
+func TestParseJournalConfig(t *testing.T) {
+	cfg := loadOrFail(t, configParseJournalFalse)
+	if cfg.ParseJournal {
+		t.Fatalf("Error parsing ParseJournal, expected false got %v", cfg.ParseJournal)
+	}
 }
 
 func ensureFail(t *testing.T, cfgString string, desc string) {

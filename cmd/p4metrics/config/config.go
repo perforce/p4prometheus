@@ -54,6 +54,7 @@ type Config struct {
 	UpdateInterval       time.Duration `yaml:"update_interval"`
 	LongUpdateInterval   time.Duration `yaml:"long_update_interval"`
 	MonitorSwarm         bool          `yaml:"monitor_swarm"`
+	ParseJournal         bool          `yaml:"parse_journal"`       // Whether to parse active P4JOURNAL in background and emit table/type counts
 	SwarmURL             string        `yaml:"swarm_url"`           // Swarm URL - if the value returned by p4 property -l does not work (VPN etc)
 	SwarmSecure          bool          `yaml:"swarm_secure"`        // Whether to validate the Swarm HTTPS certificate
 	CmdsByUser           bool          `yaml:"cmds_by_user"`        // Whether to output metric p4_monitor_by_user
@@ -264,6 +265,12 @@ memlimits:
     user_cumulative_max_percentage: 70%
     user_cumulative_max_value:      
 
+# ----------------------
+# parse_journal: true/false - Whether to parse active P4JOURNAL in the background
+# Normally this should be set to true to output p4_journal_records_count metrics.
+# Set to false if you want to disable journal tailing/parsing completely.
+parse_journal:   true
+
 `
 
 // parsePercentage parses a percentage string (e.g. "30" or "30%") into an integer 0-99.
@@ -329,6 +336,7 @@ func Unmarshal(config []byte) (*Config, error) {
 	cfg := &Config{
 		UpdateInterval: 60 * time.Second,
 		MonitorSwarm:   false,
+		ParseJournal:   true,
 		SwarmSecure:    true}
 	err := yaml.Unmarshal(config, cfg)
 	if err != nil {
