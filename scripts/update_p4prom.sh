@@ -22,7 +22,7 @@ vmagent_config_dir="/var/vmagent"
 
 
 VER_NODE_EXPORTER="1.3.1"
-VER_P4PROMETHEUS="0.11.0"
+VER_P4PROMETHEUS="0.11.1"
 VER_VICTORIA_METRICS="1.131.0"
 
 # Default to amd but allow arm architecture
