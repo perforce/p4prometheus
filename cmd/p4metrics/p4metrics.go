@@ -710,12 +710,15 @@ type P4MonitorMetrics struct {
 	verifyDuration      int
 	errorMetrics        map[ErrorMetric]int
 	errLock             sync.Mutex
+	journalMetrics      map[JournalMetric]int
+	journalLock         sync.Mutex
 	metricsFilePrefix   string
 	metricsFunction     string
 	metricsWritten      bool           // Set to true when metrics have been written
 	metricNames         map[string]int // Used when printing to avoid duplicate headers
 	metrics             []metricStruct
 	errTailer           *fswatcher.FileTailer
+	journalTailer       *fswatcher.FileTailer
 	memReader           MemReader         // Interface for reading process memory (Linux /proc)
 	memlimitKillCount   int               // Cumulative count of processes killed by memlimit enforcement
 	terminator          ProcessTerminator // Interface for terminating processes
@@ -723,14 +726,15 @@ type P4MonitorMetrics struct {
 
 func newP4MonitorMetrics(config *config.Config, envVars *map[string]string, logger *logrus.Logger) (p4m *P4MonitorMetrics) {
 	p4m = &P4MonitorMetrics{
-		config:       config,
-		env:          envVars,
-		logger:       logger,
-		p4info:       make(map[string]string),
-		p4license:    make(map[string]string),
-		errorMetrics: make(map[ErrorMetric]int),
-		metrics:      make([]metricStruct, 0),
-		memReader:    &LinuxProcMemReader{},
+		config:         config,
+		env:            envVars,
+		logger:         logger,
+		p4info:         make(map[string]string),
+		p4license:      make(map[string]string),
+		errorMetrics:   make(map[ErrorMetric]int),
+		journalMetrics: make(map[JournalMetric]int),
+		metrics:        make([]metricStruct, 0),
+		memReader:      &LinuxProcMemReader{},
 	}
 	// Initialize terminator
 	p4m.terminator = &P4ProcessTerminator{
@@ -878,6 +882,11 @@ func (p4m *P4MonitorMetrics) initVars() {
 		// If the path is not absolute, it is relative to the rootDir
 		p4m.p4errorsCSV = path.Join(p4m.p4root, p4m.p4errorsCSV)
 		p4m.logger.Debugf("errorsFile abspath: %s", p4m.p4errorsCSV)
+	}
+	if runtime.GOOS != "windows" && p4m.p4journal != "" && !strings.HasPrefix(p4m.p4journal, "/") {
+		// If the path is not absolute, it is relative to the rootDir
+		p4m.p4journal = path.Join(p4m.p4root, p4m.p4journal)
+		p4m.logger.Debugf("journalFile abspath: %s", p4m.p4journal)
 	}
 
 	// Check if a super user
@@ -3035,6 +3044,17 @@ func (p4m *P4MonitorMetrics) monitorErrors() {
 	p4m.writeMetricsFile()
 }
 
+func (p4m *P4MonitorMetrics) stopTailers() {
+	if p4m.errTailer != nil {
+		(*p4m.errTailer).Close()
+		p4m.errTailer = nil
+	}
+	if p4m.journalTailer != nil {
+		(*p4m.journalTailer).Close()
+		p4m.journalTailer = nil
+	}
+}
+
 func loadConfigFile(logger *logrus.Logger, configFileName string, sdpInstance string, p4port string, p4user string, p4config string) (*config.Config, error) {
 	logger.Debugf("Loading config file: %q", configFileName)
 	cfg, err := config.LoadConfigFile(configFileName)
@@ -3101,6 +3121,9 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 			go func() {
 				p4m.setupErrorMonitoring()
 			}()
+			go func() {
+				p4m.setupJournalMonitoring()
+			}()
 		}
 	} else {
 		err := p4m.runInfo() // update p4info to check connection and collect basic info
@@ -3129,6 +3152,7 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 	p4m.monitorVersions()
 	p4m.monitorVerify()
 	p4m.monitorErrors()
+	p4m.monitorJournalRecords()
 	p4m.monitorMonitoring()
 }
 
@@ -3223,9 +3247,7 @@ func main() {
 	for {
 		if iterations > -1 && count >= iterations {
 			p4m.logger.Infof("Exiting after %d iterations due to max.iterations=%d", iterations, *maxIterations)
-			if p4m.errTailer != nil {
-				(*p4m.errTailer).Close() // Stop the error tailer if running
-			}
+			p4m.stopTailers()
 			break
 		}
 		select {
@@ -3249,9 +3271,7 @@ func main() {
 				p4m.runMonitorFunctions()
 			} else {
 				p4m.logger.Infof("Terminating due to signal %v", sig)
-				if p4m.errTailer != nil {
-					(*p4m.errTailer).Close() // Stop the error tailer if running
-				}
+				p4m.stopTailers()
 				return
 			}
 		case <-ticker.C:

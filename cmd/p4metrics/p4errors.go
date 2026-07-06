@@ -104,6 +104,7 @@ type logConfig struct {
 	PollInterval         time.Duration
 	Readall              bool
 	FailOnMissingLogfile bool
+	MaxLineBytes         int
 }
 
 // LogSchema represents a single parsed record
@@ -202,10 +203,11 @@ func (p4m *P4MonitorMetrics) getTailer(cfgInput *logConfig) (fswatcher.FileTaile
 
 	switch {
 	case cfgInput.Type == "file":
+		opts := fswatcher.TailerOptions{MaxLineBytes: cfgInput.MaxLineBytes}
 		if cfgInput.PollInterval == 0 {
-			tail, err = fswatcher.RunFileTailer(parsedGlobs, cfgInput.Readall, cfgInput.FailOnMissingLogfile, p4m.logger)
+			tail, err = fswatcher.RunFileTailerWithOptions(parsedGlobs, cfgInput.Readall, cfgInput.FailOnMissingLogfile, opts, p4m.logger)
 		} else {
-			tail, err = fswatcher.RunPollingFileTailer(parsedGlobs, cfgInput.Readall, cfgInput.FailOnMissingLogfile, cfgInput.PollInterval, p4m.logger)
+			tail, err = fswatcher.RunPollingFileTailerWithOptions(parsedGlobs, cfgInput.Readall, cfgInput.FailOnMissingLogfile, cfgInput.PollInterval, opts, p4m.logger)
 		}
 		return tail, err
 	case cfgInput.Type == "stdin":

@@ -438,6 +438,45 @@ func TestP4MonitorParsing(t *testing.T) {
 	assert.Equal(t, 3821, p4m.getMaxNonSvcCmdTime(lines))
 }
 
+func TestJournalLineParsing(t *testing.T) {
+	cfg := config.Config{}
+	initLogger()
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+
+	p4m.parseJournalLine("@rv@ 8 @db.domain@ @workspace@ 99 @@")
+	p4m.parseJournalLine("@pv@ 2 @db.revsx@ @//spec/client/foo@")
+	p4m.parseJournalLine("@dv@ 1 @db.have@ @//depot/main/file@")
+	p4m.parseJournalLine("@nx@ 2 1783328428 @62@ 1 0 0 0 0")    // ignored: not rv/pv/dv
+	p4m.parseJournalLine("@rv@ 2 @serverlog.file.3@ @ignored@") // ignored: not db.* table
+
+	assert.Equal(t, 1, p4m.journalMetrics[JournalMetric{Table: "domain", Record: "rv"}])
+	assert.Equal(t, 1, p4m.journalMetrics[JournalMetric{Table: "revsx", Record: "pv"}])
+	assert.Equal(t, 1, p4m.journalMetrics[JournalMetric{Table: "have", Record: "dv"}])
+
+	longLine := "@rv@ 8 @db.domain@ @jenkins-master-squish-mac-suite_confirmation_bookmark_dialog@ 99 @@ @/var/jenkins_home/workspace/squish-mac-suite_confirmation_bookmark_dialog%40script@ @@ @@ @qtdev@"
+	p4m.parseJournalLine(longLine)
+	assert.Equal(t, 2, p4m.journalMetrics[JournalMetric{Table: "domain", Record: "rv"}])
+}
+
+func TestMonitorJournalRecordsMetrics(t *testing.T) {
+	cfg := config.Config{}
+	initLogger()
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+	p4m.dryrun = true
+	p4m.journalMetrics[JournalMetric{Table: "domain", Record: "rv"}] = 4
+	p4m.journalMetrics[JournalMetric{Table: "revsx", Record: "pv"}] = 3
+
+	p4m.monitorJournalRecords()
+
+	expected := metricValues{
+		{name: "p4_journal_records_count", value: "4", labelName: "table", labelValue: "domain"},
+		{name: "p4_journal_records_count", value: "3", labelName: "table", labelValue: "revsx"},
+	}
+	compareMetricValues(t, expected, p4m.metrics)
+}
+
 func TestP4PullParsing(t *testing.T) {
 	cfg := config.Config{}
 	initLogger()
