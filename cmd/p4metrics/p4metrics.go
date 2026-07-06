@@ -3121,9 +3121,11 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 			go func() {
 				p4m.setupErrorMonitoring()
 			}()
-			go func() {
-				p4m.setupJournalMonitoring()
-			}()
+			if p4m.config.ParseJournal {
+				go func() {
+					p4m.setupJournalMonitoring()
+				}()
+			}
 		}
 	} else {
 		err := p4m.runInfo() // update p4info to check connection and collect basic info
@@ -3131,6 +3133,10 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 			p4m.initialised = false
 			p4m.logger.Warnf("Lost connection to p4d, will re-initialise on next run: %v", err)
 			return
+		}
+		if !p4m.config.ParseJournal && p4m.journalTailer != nil {
+			(*p4m.journalTailer).Close()
+			p4m.journalTailer = nil
 		}
 	}
 
@@ -3152,7 +3158,9 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 	p4m.monitorVersions()
 	p4m.monitorVerify()
 	p4m.monitorErrors()
-	p4m.monitorJournalRecords()
+	if p4m.config.ParseJournal {
+		p4m.monitorJournalRecords()
+	}
 	p4m.monitorMonitoring()
 }
 

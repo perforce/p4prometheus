@@ -62,6 +62,11 @@ cmds_by_user:     true
 monitor_swarm:    true
 
 # ----------------------
+# parse_journal: true/false - Whether to parse active P4JOURNAL in the background
+# Normally this should be set to true to emit p4_journal_records_count metrics
+parse_journal:    true
+
+# ----------------------
 # swarm_url: URL of the Swarm instance to monitor
 # Normally this is blank, and p4metrics reads the p4 property value
 # Sometimes (e.g. due to VPN setup) that value is not correct - so set this instead

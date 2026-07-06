@@ -25,6 +25,10 @@ func extractJournalField(token string) string {
 }
 
 func (p4m *P4MonitorMetrics) parseJournalLine(line string) {
+	if !(strings.HasPrefix(line, "@rv@") || strings.HasPrefix(line, "@pv@") || strings.HasPrefix(line, "@dv@")) {
+		return
+	}
+
 	fields := strings.Fields(line)
 	if len(fields) < 3 {
 		return

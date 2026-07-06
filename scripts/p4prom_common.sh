@@ -347,6 +347,20 @@ memlimits:
 EOF
     fi
 
+    # Now add section for parse_journal if not present - whether to parse P4JOURNAL in the background 
+    # and emit p4_journal_records_count metrics
+    if ! grep -qE '^[[:space:]]*#?[[:space:]]*parse_journal:' "$p4metrics_config_file"; then
+        cat << EOF >> "$p4metrics_config_file"
+
+# ----------------------
+# parse_journal: true/false - Whether to parse active P4JOURNAL in the background
+# Normally this should be set to true to output p4_journal_records_count metrics.
+# Set to false if you want to disable journal tailing/parsing completely.
+parse_journal:   true
+
+EOF
+    fi
+
     chown "$OSUSER:$OSGROUP" "$p4metrics_config_file"
     chmod 640 "$p4metrics_config_file"
 }
