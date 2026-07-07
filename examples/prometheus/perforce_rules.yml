@@ -12,7 +12,7 @@ groups:
       severity: "warning"
     annotations:
       summary: "Endpoint {{ $labels.instance }} p4d service not running"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for 2 mins."
+      description: "{{ $labels.instance }} has been down for 2 mins."
       runbook_id: _p4d_service_not_running
 
   - alert: P4prometheus service not running
@@ -22,8 +22,48 @@ groups:
       severity: "warning"
     annotations:
       summary: "Endpoint {{ $labels.instance }} p4prometheus service not running"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for 10 mins."
+      description: "{{ $labels.instance }} has been down for 10 mins."
       runbook_id: _p4prometheus_service_not_running
+
+  - alert: P4Metrics service not running
+    expr: node_systemd_unit_state{name="p4metrics.service", state!="active", instance!~"(?i).*proxy.*"} == 1
+    for: 10m
+    labels:
+      severity: "warning"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} p4metrics service not running"
+      description: "{{ $labels.instance }} has been down for 10 mins."
+      runbook_id: _p4metrics_service_not_running
+
+  - alert: Swarm unhealthy
+    expr: p4_swarm_error != 0
+    for: 10m
+    labels:
+      severity: "warning"
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} swarm is unhealthy"
+      description: "{{ $labels.instance }} has been down for 10 mins."
+      runbook_id: _p4prometheus_swarm_unhealthy
+
+  - alert: Node Exporter parsing issue
+    expr: increase(node_textfile_scrape_error[10m]) > 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Node exporter parsing issue on {{ $labels.instance }}"
+      description: "Check the format of *.prom in /p4/metrics"
+      runbook_id: _node_exporter_parse_error_detected
+
+  - alert: OOM Issue detected by p4metrics
+    expr: increase(p4_memlimit_kill_candidates[10m]) > 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "OOM issue on {{ $labels.instance }}"
+      description: "One or more processes were exceeding out-of-memory thresholds by p4metrics"
+      runbook_id: _oom_p4metrics_issue_detected
 
   - alert: OOM Kill Detected
     expr: increase(node_vmstat_oom_kill[10m]) > 0
@@ -43,7 +83,7 @@ groups:
       severity: "warning"
     annotations:
       summary: 'Endpoint {{ $labels.instance }} license due to expire urgently (in {{ $value | printf "%.02f" }} days)'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been low for 6 hours."
+      description: "{{ $labels.instance }} has been low for 6 hours."
       runbook_id: _p4d_urgent_license_expiry
 
   - alert: P4D license expiry
@@ -54,7 +94,7 @@ groups:
       severity: "low"
     annotations:
       summary: 'Endpoint {{ $labels.instance }} license due to expire (in {{ $value  | printf "%.02f" }} days)'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been low for 6 hours."
+      description: "{{ $labels.instance }} has been low for 6 hours."
       runbook_id: _p4d_license_expiry
 
   - alert: P4D license data missing
@@ -64,7 +104,7 @@ groups:
       severity: "low"
     annotations:
       summary: "Endpoint {{ $labels.instance }} license metric p4_license_time_remaining missing"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been low for 1 hour."
+      description: "{{ $labels.instance }} has been low for 1 hour."
       runbook_id: _p4d_license_data_missing
 
   - alert: Checkpoint Not Taken
@@ -75,7 +115,7 @@ groups:
       severity: "warning"
     annotations:
       summary: 'Endpoint {{ $labels.instance }} checkpoint missing warning ({{ $value | printf "%.02f" }} hours)'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for 1 hour."
+      description: "{{ $labels.instance }} has been above target for 1 hour."
       runbook_id: _checkpoint_not_taken
 
   - alert: P4D SSL certificate expiry
@@ -86,7 +126,7 @@ groups:
       severity: "warning"
     annotations:
       summary: 'Endpoint {{ $labels.instance }} P4D SSL Certificate expiry warning ({{ $value | printf "%.02f" }} days)'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for 2 hours."
+      description: "{{ $labels.instance }} has been above target for 2 hours."
       runbook_id: _p4d_ssl_certificate_expiry
 
   - alert: HAS SSL certificate expiry
@@ -96,7 +136,7 @@ groups:
       severity: "warning"
     annotations:
       summary: 'Endpoint {{ $labels.instance }} HAS (Helix Auth) SSL Certificate expiry warning ({{ $value | printf "%.02f" }} days)'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been above target for 2 hours."
+      description: "{{ $labels.instance }} has been above target for 2 hours."
       runbook_id: _p4d_has_ssl_certificate_expiry
 
   - alert: Replication Errors
@@ -107,7 +147,7 @@ groups:
       severity: "high"
     annotations:
       summary: 'Endpoint {{ $labels.instance }} replication error occurring'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 30m."
+      description: "{{ $labels.instance }} has been true for 30m."
       runbook_id: _replication_error
 
   - alert: Replication Slow
@@ -118,7 +158,7 @@ groups:
       severity: "warning"
     annotations:
       summary: 'Endpoint {{ $labels.instance }} replication slow (metadata pull queue {{ $value | humanize }} behind }})'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 2h."
+      description: "{{ $labels.instance }} has been true for 2h."
       runbook_id: _replication_slow
 
   - alert: Diskspace Percentage Used Above Percentage Threshold
@@ -137,7 +177,7 @@ groups:
         Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space percentage is {{ $value | printf "%.02f" }}% full
         ({{ printf "node_filesystem_avail_bytes{mountpoint='%s',instance='%s'}" $labels.mountpoint $labels.instance | query | first | value | humanize1024 }} free of
         {{ printf "node_filesystem_size_bytes{mountpoint='%s',instance='%s'}" $labels.mountpoint $labels.instance | query | first | value | humanize1024 }} total)
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 2 hours."
+      description: "{{ $labels.instance }} has been true for 2 hours."
       runbook_id: _diskspace_percentage_used_above_percentage_threshold
 
   - alert: Diskspace Below Filesys Config /hxlogs - P4D STOPPED!
@@ -150,8 +190,8 @@ groups:
     labels:
       severity: "high"
     annotations:
-      summary: "Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space is {{$value | humanize}} below filesys.*.min NOW!!!"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 3 mins."
+      summary: "Endpoint {{ $labels.instance }} disk space is {{$value | humanize}} below filesys.*.min NOW!!!"
+      description: "{{ $labels.instance }} has been true for 3 mins."
       runbook_id: _diskspace_below_filesys_config_hxlogs_p4d_stopped
 
   - alert: Diskspace Below Filesys Config /hxmetadata - P4D STOPPED!
@@ -162,8 +202,8 @@ groups:
     labels:
       severity: "high"
     annotations:
-      summary: "Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space is {{$value | humanize}} below filesys.*.min NOW!!!"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 3 mins."
+      summary: "Endpoint {{ $labels.instance }} disk space is {{$value | humanize}} below filesys.*.min NOW!!!"
+      description: "{{ $labels.instance }} has been true for 3 mins."
       runbook_id: _diskspace_below_filesys_config_hxmetadata_p4d_stopped
 
   - alert: Diskspace Below Filesys Config /hxdepots - P4D STOPPED!
@@ -174,21 +214,22 @@ groups:
     labels:
       severity: "high"
     annotations:
-      summary: "Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space is {{$value | humanize}} below filesys.*.min NOW!!!"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 3 mins."
+      summary: "Endpoint {{ $labels.instance }} disk space is {{$value | humanize}} below filesys.*.min NOW!!!"
+      description: "{{ $labels.instance }} has been true for 3 mins."
       runbook_id: _diskspace_below_filesys_config_hxdepots_p4d_stopped
 
-  - alert: Diskspace Low - Proxy STOPPED!
-    expr: >
-        node_filesystem_free_bytes{mountpoint="/hxdepots",instance=~".*proxy.*"} -
-            on (instance) p4_filesys_min{filesys="depot",instance=~".*proxy.*"} < 0
-    for: 3m
-    labels:
-      severity: "high"
-    annotations:
-      summary: "Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space is {{$value | humanize}} for proxy NOW!!!"
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 3 mins."
-      runbook_id: _diskspace_low_proxy_stopped
+  # Enable if proxies exist
+  # - alert: Diskspace Low - Proxy STOPPED!
+  #   expr: >
+  #       node_filesystem_free_bytes{mountpoint="/hxdepots",instance=~".*proxy.*"} -
+  #           on (instance) p4_filesys_min{filesys="depot",instance=~".*proxy.*"} < 0
+  #   for: 3m
+  #   labels:
+  #     severity: "high"
+  #   annotations:
+  #     summary: "Endpoint {{ $labels.instance }} disk space is {{$value | humanize}} for proxy NOW!!!"
+  #     description: "{{ $labels.instance }} has been true for 3 mins."
+  #     runbook_id: _diskspace_low_proxy_stopped
 
   - alert: HX Diskspace Predicted Low /hxdepots
     expr: >
@@ -199,7 +240,7 @@ groups:
       severity: "warning"
     annotations:
       summary: '{{ $labels.instance }} for /hxdepots disk space predicting to go below filesys.*.min (by {{$value | humanize }}) in 24 hours'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 4 hours."
+      description: "{{ $labels.instance }} has been true for 4 hours."
       runbook_id: _hx_diskspace_predicted_low
 
   - alert: HX Diskspace Predicted Low /hxlogs
@@ -213,7 +254,7 @@ groups:
       severity: "warning"
     annotations:
       summary: '{{ $labels.instance }} for /hxlogs disk space predicting to go below filesys.*.min (by {{$value | humanize }}) in 24 hours'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 4 hours."
+      description: "{{ $labels.instance }} has been true for 4 hours."
       runbook_id: _hx_diskspace_predicted_low
 
   - alert: HX Diskspace Predicted Low /hxmetadata
@@ -225,7 +266,7 @@ groups:
       severity: "warning"
     annotations:
       summary: '{{ $labels.instance }} for /hxmetadata disk space predicting to go below filesys.*.min (by {{$value | humanize }}) in 24 hours'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 4 hours."
+      description: "{{ $labels.instance }} has been true for 4 hours."
       runbook_id: _hx_diskspace_predicted_low
 
   - alert: Root Diskspace Predicted Low
@@ -236,7 +277,7 @@ groups:
       severity: "warning"
     annotations:
       summary: 'Endpoint {{ $labels.instance }} for root disk space predicting to go below 0 (by {{$value | humanize }}) in 24 hours'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 2 hours."
+      description: "{{ $labels.instance }} has been true for 2 hours."
       runbook_id: _root_diskspace_predicted_low
 
   - alert: CPU Usage High
@@ -247,7 +288,7 @@ groups:
       severity: "warning"
     annotations:
       summary: 'Endpoint {{ $labels.instance }} CPU usage above 80% (actual {{$value | printf "%.02f"}})'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 90 mins."
+      description: "{{ $labels.instance }} has been true for 90 mins."
       runbook_id: _cpu_usage_high
 
   - alert: App Memory Usage High
@@ -267,7 +308,7 @@ groups:
       severity: "warning"
     annotations:
       summary: 'Endpoint {{ $labels.instance }} for App Memory usage above 70% (actual {{$value | printf "%.02f"}})'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 10 mins."
+      description: "{{ $labels.instance }} has been true for 10 mins."
       runbook_id: _app_memory_usage_high
 
   - alert: Hansoft Diskspace Low
@@ -281,5 +322,5 @@ groups:
       severity: "warning"
     annotations:
       summary: 'Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} Hansoft disk space predicting to go below threshold in 7 days or is below threshold (actual {{$value | printf "%.02f"}})'
-      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 4 hours."
+      description: "{{ $labels.instance }} has been true for 4 hours."
       runbook_id: _hansoft_diskspace_low
