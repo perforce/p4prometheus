@@ -36,18 +36,18 @@ This is currently a Community Supported Perforce tool.
 
 This is part of a solution consisting of the following components:
 
-* [Prometheus](https://prometheus.io/) - time series metrics management system
-* [VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics) - (optional but recommended) high performing storage management which is Prometheus-compatible
-* [Grafana](https://grafana.com/) - The leading open source software for time series analytics
-* [node_exporter](https://github.com/prometheus/node_exporter) - Prometheus collector for basic Linux metrics
-* [windows_exporter](https://github.com/prometheus-community/windows_exporter) - Prometheus collector for Windows machines
-* [alertmanager](https://github.com/prometheus/alertmanager) - handles alerting including de-duplication etc - part of Prometheus
+- [Prometheus](https://prometheus.io/) - time series metrics management system
+- [VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics) - (optional but recommended) high performing storage management which -s Prometheus-compatible
+- [Grafana](https://grafana.com/) - The leading open source software for time series analytics
+- [node_exporter](https://github.com/prometheus/node_exporter) - Prometheus collector for basic Linux metrics
+- [windows_exporter](https://github.com/prometheus-community/windows_exporter) - Prometheus collector for Windows machines
+- [alertmanager](https://github.com/prometheus/alertmanager) - handles alerting including de-duplication etc - part of Prometheus
 
 Custom components in this project:
 
-* [p4prometheus](releases/latest) - a released binary executable
-* [p4metrics](cmd/p4metrics/README.md) - an [SDP](https://swarm.workshop.perforce.com/projects/perforce-software-sdp) compatible tools to generate simple supplementary metrics - see also [installation instructions](INSTALL.md)
-* other useful scripts and tools
+- [p4prometheus](releases/latest) - a released binary executable
+- [p4metrics](cmd/p4metrics/README.md) - an [SDP](https://swarm.workshop.perforce.com/projects/perforce-software-sdp) compatible tools to generate simple supplementary metrics - see also [installation instructions](INSTALL.md)
+- other useful scripts and tools
 
 Check out the Prometheus architecture below. The custom components referred to above interface with
 "Prometheus targets"  (or "Jobs/exporters") in the lower left of the diagram.
@@ -88,6 +88,8 @@ You need to install Prometheus and Grafana using standard methods. This is typic
 Note that all the components do run on Windows but you may need an appropriate Service wrapper.
 
 See [Detailed Installation Instructions (INSTALL.md)](INSTALL.md) in this project.
+
+Please see also the examples of xref:doc/P4_RunbookAlertHandling.adoc[Runbook Alert Handling doc] which can be customised for your specific site/organisation.
 
 # Metrics Available
 
