@@ -1,14 +1,18 @@
 {{ define "__subject" }} [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .GroupLabels.SortedPairs.Values | join " " }} {{ if gt (len .CommonLabels) (len .GroupLabels) }}({{ with .CommonLabels.Remove .GroupLabels.Names }}{{ .Values | join " " }}{{ end }}) {{ end }} {{ end }}
 
 {{ define "__alertmanagerURL" }}https://monitor.p4demo.com/d/a12345-24232-9b33-79d1a87f9123/active-alerts?orgId=1{{ end }}
+{{ define "__grafanaURL" }}https://monitor.p4demo.com{{ end }}
+{{ define "__infoURL" }}https://info.p4demo.com/link{{ end }}
+{{ define "__nodeDashboardURL" }}d/ApnWnADS/node-exporter-server-metrics{{ end }}
+{{ define "__p4promDashboardURL" }}d/ngDASDfoo/p4prometheus-metrics{{ end }}
+{{ define "__runbookURL" }}https://github.com/perforce/p4prometheus/blob/master/doc/P4_RunbookAlertHandling.adoc{{ end }}
 
 {{ define "__text_alert_list" }}{{ range . }}Labels:
 {{ range .Labels.SortedPairs }} - {{ .Name }} = {{ .Value }}
 {{ end }}Annotations:
 {{ range .Annotations.SortedPairs }} - {{ .Name }} = {{ .Value }}
-{{ end }}Instance Info: https://p4demo.com/link/{{ index .Labels "instance" }}
+{{ end }}Instance Info: <{{ template "__infoURL" }}/{{ index .Labels "instance" }}|INFO.md>
 {{ end }}{{ end }}
-
 
 {{ define "__text_alert_list_markdown" }}{{ range . }}
 Labels:
@@ -17,7 +21,7 @@ Labels:
 Annotations:
 {{ range .Annotations.SortedPairs }}  - {{ .Name }} = {{ .Value }}
 {{ end }}
-Instance Info: https://p4demo.com/link/{{ index .Labels "instance" }}
+Instance Info: <{{ template "__infoURL" }}/{{ index .Labels "instance" }}|INFO.md>
 {{ end }}
 {{ end }}
 
@@ -43,10 +47,10 @@ Instance Info: https://p4demo.com/link/{{ index .Labels "instance" }}
 {{ .Annotations.description }}
 {{ range .Labels.SortedPairs }} • *{{ .Name }}:* `{{ .Value }}` {{ end }}
 {{/* We join the following lines together containing links to particular dashboards depending on labels in the alert promQL statement */ -}}
-Links: <https://p4demo.com/link/{{ index .Labels "instance" }}|INFO.md>
-{{- " | " }}<https://p4demo.com/view/docs/RunbookAlertHandling.html{{ if .Annotations.runbook_id -}} # {{- index .Annotations "runbook_id" -}} {{ end }}|Runbook>
-{{- "" }} {{ if .Labels.instance }} | <https://monitor.p4demo.com/d/ApnWnADS/node-exporter-server-metrics?orgId=1&var-node={{ index .Labels "instance" }}|Grafana Nodeexporter> {{ end }}
-{{- "" }} {{ if .Labels.sdpinst }} | <https://monitor.p4demo.com/d/ngDASDfoo/p4prometheus-metrics?orgId=1&refresh=10s&var-instance=
+Links: <{{ template "__infoURL" }}/{{ index .Labels "instance" }}|INFO.md>
+{{- " | " }}<{{ template "__runbookURL" . }}{{ if .Annotations.runbook_id -}}#{{- index .Annotations "runbook_id" -}}{{ end }} | Runbook>
+{{- "" }} {{ if .Labels.instance }} | <{{ template "__grafanaURL" . }}/{{ template "__nodeDashboardURL" . }}?orgId=1&var-node={{ index .Labels "instance" }}|Grafana Nodeexporter> {{ end }}
+{{- "" }} {{ if .Labels.sdpinst }} | <{{ template "__grafanaURL" . }}/{{ template "__p4promDashboardURL" . }}?orgId=1&refresh=10s&var-instance=
     {{- index .Labels "instance" }}&var-serverid={{ index .Labels "serverid" }}&var-sdpinst={{ index .Labels "sdpinst" }}|Grafana P4prometheus> {{ end}}
 {{ end }}
 {{ end }}
