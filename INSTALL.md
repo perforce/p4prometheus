@@ -639,7 +639,7 @@ Or open URL in a browser.
 
 Done via `alertmanager`. Optional component.
 
-Please see also the examples of xref:doc/P4_RunbookAlertHandling.adoc[Runbook Alert Handling doc] which can be customised for your specific site/organisation.
+Please see also the examples of [Runbook Alert Handling doc](doc/P4_RunbookAlertHandling.adoc) which can be customised for your specific site/organisation.
 
 Setup is very similar to the above.
 

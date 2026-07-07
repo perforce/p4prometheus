@@ -20,4 +20,4 @@ Will give you formatted output according to the templates in the `templates/` di
 ## Alertmanager runbook links
 
 Best practice for alerting, especially with Slack templates linked above, is that they include a "runbook_id" which
-links to the template xref:../doc/P4_RunbookAlertHandling.adoc[P4 Runbook for Alert Handling]
+links to the template [P4 Runbook for Alert Handling](../doc/P4_RunbookAlertHandling.adoc)

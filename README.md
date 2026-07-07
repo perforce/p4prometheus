@@ -89,7 +89,7 @@ Note that all the components do run on Windows but you may need an appropriate S
 
 See [Detailed Installation Instructions (INSTALL.md)](INSTALL.md) in this project.
 
-Please see also the examples of xref:doc/P4_RunbookAlertHandling.adoc[Runbook Alert Handling doc] which can be customised for your specific site/organisation.
+Please see also the examples of [Runbook Alert Handling doc](doc/P4_RunbookAlertHandling.adoc) which can be customised for your specific site/organisation.
 
 # Metrics Available
 
