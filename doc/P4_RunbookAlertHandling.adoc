@@ -1,0 +1,775 @@
+= Perforce P4 Runbook - Alert Handling Procedures
+Perforce Professional Services <consulting@perforce.com>
+:revnumber: v2026.1
+:revdate: 2026-06-22
+:doctype: book
+:icons: font
+:toc:
+:toclevels: 5
+:sectnumlevels: 4
+:xrefstyle: full
+
+== Preface
+
+These are detailed "runbook" procedures for P4 tasks involved with handling alerts.
+
+The intention of this doc is that anchors are provided for each alert type, so that the alert message can link 
+directly to the relevant section of this document. This is particularly useful for Slack notifications etc.
+
+This version is intended to be generic and for organisations to use as a template for their own alert handling procedures. It is not intended to be a definitive guide for all alert handling, as each organisation will have their own processes and procedures.
+
+Examples alerts are in xref:../examples/prometheus/perforce_rules.yml[Example perforce alert rules].
+
+If an alert has the attribute `runbook_id` then this is the anchor to link to in this document for the alert handling procedures.
+
+```yaml
+  - alert: Replication Errors
+    # This means we have a p4 pull value of -1 or similar
+    expr: p4_pull_replication_error > 0
+    for: 30m
+    labels:
+      severity: "high"
+    annotations:
+      summary: 'Endpoint {{ $labels.instance }} replication error occurring'
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been true for 30m."
+      runbook_id: _replication_error
+```
+
+:sectnums:
+== Basic workflow for alert handling
+
+. Monitor your Slack channel for new alerts:
+
++
+There are links on the bottom row to this document, and the node exporter and p4prometheus (if relevant) dashboards in Grafana for the alerting instance.
+
++
+Examples of Slack alert templates in xref:../examples/alertmanager/templates/perforce.tmpl[Example Slack alert templates]
+
+. Review severity and respond with appropriate urgency (both investigating and responding to users as appropriate)
+. Investigate alert and perform resolution steps
+. Escalate to other teams if necessary (e.g. storage, networking, etc)
+. Improve Alert Handling Procedure
+* Evaluate incident
+- Did you find a bug?
+- Did you learn something new worth sharing?
+* Update documents
+* Share learnings, and suggest opportunities for improvement
+
+## Severity 1 Alerts
+
+### P4D service not running
+
+Verify on server and try to identify cause of failure. In example commands below, the assumption is instance `1` is used - adjust if necessary.
+
+* Is service running?
++
+[source,bash]
+----
+ps aux | grep p4d
+p4 info
+sudo systemctl status p4d_1
+----
+
+* User stopped service? E.g. `p4 admin stop`
++
+```
+tail -1000 /p4/1/logs/log | less
+```
+
+* Errors in p4d log?
++
+```
+grep -A5 error: /p4/1/logs/log | less
+```
+
+* Service died?
++
+```
+sudo journalctl -u p4d_1
+sudo journalctl -u p4d_1 --no-pager | less
+```
+
+* OOM or other `syslog` errors?
++
+```
+sudo grep oom /var/log/messages
+sudo grep p4d /var/log/messages
+```
+
+.Resolution
+
+* Fix problem identified above and restart P4D!
++
+[source,bash]
+----
+sudo systemctl restart p4d_1
+ps aux | grep p4d
+p4 info
+----
+
+### P4D SSL certificate expiry
+
+This alert indicates the SSL certificate has expired
+
+.Resolution
+
+* Re-generate p4d certificate - *IMPORTANT* all users will have to run `p4 trust -yf` or equivalent again, including
+bots, replicas etc. So this will require comunication with users.
+
++
+[source,bash]
+----
+p4d -Gf
+# Examine the output of the above
+p4d -Gc
+# Optional - remove existing certs
+cd /p4/ssl
+mkdir save
+mv * save/
+p4d -Gc             # Generate new certificate
+p4d -Gf             # Validate new certificate
+p4 trust -yf        # Update trust on server
+----
+
+Optional: use organization provided certificate instead of self-generated one.
+
+### Swarm unhealthy
+
+This alert indicates that Swarm is not responding to requests from commit server.
+
+Recent occurrences have been due to memory issues with `php-fpm` service.
+
+.Resolution
+
+* Look at node_exporter dashboard to check for CPU/memory
+* Login to Swarm box and check status of `httpd` (Rocky) or `apache2` (Ubuntu) service
+* Review `atop` and historical data (`sudo atop -r /var/log/atop/atop_20250125` or similar)
+* Look for php-fpm errors (used up all memory), and restart the service: `systemctl restart php-fpm`
+* Look for errors in `/var/log/messages`
+* Look for errors in `/opt/perforce/swarm/data/log`
+* Try running `curl` to Swarm URL (from `p4 property -l` on commit server)
+* Make sure DNS is correctly setup
+
+### Diskspace Below Filesys Config - P4D STOPPED!
+
+This is a generic error for all filesystems - specifics are noted below for `/hxlogs`, `/hxmetadata` and `/hxdepots`.
+
+Note that as far as users are concerned `p4d` is not working when this error occurs, as the user will get an error message whatever command they run 
+(except for some reporting commands such as `p4 info`)
+
+Basic actions are:
+
+. Check values of volumes and relevant configurables:
+
++
+[source,bash]
+----
+df -h
+df -h | grep /hx
+p4 configure show | grep filesys
+p4d -cshow | grep filesys       # Assumes p4_vars has been sourced
+----
+
+.Resolution
+* Review dispace trends in Grafana dashboard for node exporter (follow link in slack alert message)
+* Check for any large/unexpected files, eg. in `ls -lhrS /p4/1/logs/ | tail` and consider deleting them (**but not `log` or `journal`!!!**)
+* Temporarily decrease relevant configurable (see next sections)
+* Follow local processes to increase volume size and grow filesystem if appropriate
+
+### Diskspace Below Filesys Config /hxlogs - P4D STOPPED!
+
+See common issues <<_diskspace_below_filesys_config_p4d_stopped>>. For this volume there may be:
+
+* Unexpectedly large `journal` or `log` in `/p4/1/logs/`
+
+.Resolution
+
+* Consider general resolution steps as above <<_diskspace_below_filesys_config_p4d_stopped>>
+
+* Configure the values in `p4metrics.yaml` to auto-rotate `journal` and `log` if they are too large (see xref:../cmd/p4metrics/p4metrics.yaml[example p4metrics.yaml] for details)
+
+* Temporarily reduce configurable - this can't be done using front door `p4 configure set` due to the error:
+
++
+[source,bash]
+----
+p4d -cshow | grep filesys
+# Set appropriate ones, e.g. reduce from 5G to 3G
+p4d "-cset filesys.P4JOURNAL.min=3G"
+p4d "-cset filesys.P4LOG.min=3G"
+# Cross check again
+p4d -cshow | grep filesys
+# Make sure server commands are going through again
+p4 depots
+----
+
+* Immediately rotate journal if it is very large (will move it to `/hxdepots`) - **NOTE this will block server while being moved
+and it can take a few minutes for large journal as this involves a copy between filesystems**:
+
++
+```
+p4 admin journal
+```
+
+* If `/p4/1/logs/journal` is regularly growing very fast then configure p4metrics.yaml as above to rotate it more regularly or at specific thresholds
+
+. P4metrics will collect journals metrics in which tables are being used `p4_journal_records_count` - look for particularly large values for specific tables
+
+. Also possible to analyse a journal to see which tables are being used:
+
++
+```
+cd /p4/1/checkpoints
+# Pick appropriate rotated journal number, e.g. 793
+nohup cat p4_1.jnl.793 | grep --color=auto -E "^@(dv|rv|pv)" | cut -d' ' -f 1,3 | sort | uniq -c > tables.txt &
+```
+
+### Diskspace Below Filesys Config /hxmetadata - P4D STOPPED!
+
+. Check sizes of root/offline_db
+
+```
+du -sh /p4/1/root/
+du -sh /p4/1/offline_db/
+```
+
+.Resolution
+
+* Most likely you will need to increase volume size as above <<_diskspace_below_filesys_config_p4d_stopped>>
+* Temporarily reduce configurable - this can't be done using front door `p4 configure set` due to the error:
++
+[source,bash]
+----
+p4d -cshow | grep filesys
+# Set appropriate ones, e.g. reduce from 5G to 3G
+p4d "-cset filesys.P4ROOT.min=3G"
+# Cross check again
+p4d -cshow | grep filesys
+# Make sure server commands are going through again
+p4 depots
+----
+
+* If `offline_db` is much smaller than `root`, then consider swapping (consult first - there is an SDP script)
+
+### Diskspace Below Filesys Config /hxdepots - P4D STOPPED!
+
+. Check values as above <<_diskspace_below_filesys_config_p4d_stopped>>
+
+.Resolution
+
+* Check Grafana for recent disk usage trends
+* Most likely this will require `/hxdepots` volume to be expanded - see above <<_diskspace_below_filesys_config_p4d_stopped>>
+* Review the size of `/p4/1/checkpoints/` and consider either deleting older journals/checkpoints if they are large or if there are lots of them:
+
++
+[source,bash]
+----
+du -sh /p4/1/checkpoints/
+ls -ltrh /p4/1/checkpoints/
+----
+
+** It **might** be an idea to reduce the value of the __KEEP__ variables (so that not as many are retained as curently if taking up too much space): 
+
+    grep KEEP /p4/common/config/p4_1.vars
+
+* Temporarily reduce configurable - this can't be done using front door `p4 configure set` due to the error:
++
+[source,bash]
+----
+p4d -cshow | grep filesys
+# Set appropriate ones, e.g. reduce from 5G to 3G
+p4d "-cset filesys.depot.min=3G"
+# Cross check again
+p4d -cshow | grep filesys
+# Make sure server commands are going through again
+p4 depots
+----
+
+### Diskspace Low - Proxy STOPPED!
+
+. Check values as above <<_diskspace_below_filesys_config_p4d_stopped>>
+
+.Resolution
+
+* Check Grafana for recent disk usage trends
+* Proxy usage when there is a new release can quite quickly overload the cache filesystem
+* This most likely is an instance where there is proxy cache cleaner script running regularly
+* Run the script to reduce load immediately
+* Consider running it more frequently (in the crontab)
+* Quite likely this will require `/hxdepots` volume to be expanded - see above <<_diskspace_below_filesys_config_p4d_stopped>>
+
++
+[source,bash]
+----
+du -sh /hxdepots/
+----
+
+### Replication Errors
+
+This indicates an error from `p4 pull -ljv` (don't use `-v` on p4d servers < 2021.1) on the replica. This is important to investigate if it is an HA replica.
+
+.Resolution
+
+* Login to instance
+* Restart p4d if required
+* Identify any replication errors and if necessary fix/restart
+* Temporarily reduce configurable - this can't be done using front door `p4 configure set` due to the error:
++
+[source,bash]
+----
+p4 pull -ljv
+# The -v option supported p4d 2021.1+
+----
+
+* Check the SDP resolution see link:https://swarm.workshop.perforce.com/view/guest/perforce_software/sdp/main/doc/SDP_Guide.Unix.html#_replication_appears_to_be_stalled[Replication appears stalled]
+
+In case of stuck replication:
+
+```
+$ p4 pull -ljv
+Current replica journal state is:       Journal 3443,   Sequence 344962308.
+Current master journal state is:        Journal 3443,   Sequence 841624005.
+Current master journal state is:        Journal 3444,   Sequence 137848798.
+Replica is 634510152 bytes of journal behind the upstream server (1 journal rotations)
+The statefile was last modified at:     2025/12/12 15:28:46.
+The replica server time is currently:   2025/12/13 23:39:36 +0000 UTC
+
+perforce@p4-edge:/home/perforce p4 monitor show -al
+1014510 B svc_p4d_edge_fra 23:28:04 pull -i 1 Journal file '-' replay failed at line 1!
+Bad opcode '1765553439' journal record!
+```
+
+This indicates a corrupt journal record (can happen when upstream server is forcibly shut down). To resolve:
+
+* Stop the replica p4d service
+* Move the current pull state file to a backup location
+* Restart the replica p4d service
+* Check status of replication again
+
+```
+sudo systemctl stop p4d_1
+cd $P4ROOT
+mv pull_state save/
+sudo systemctl start p4d_1
+p4 pull -ljv
+p4 monitor show -al
+```
+
+### Pull Queue Stuck
+
+This alert fires when the replica pull queue has exceeded 10,000 files
+for over 10 hours.
+
+This can happen for a variety of reasons, most commonly: 
+
+* Non-existent (purged) files (where filetype includes {plus}Sn - where n is number of
+revisions to keep contents for) 
+* Non-existent (shelved) files 
+* Non-existent files with verify problem on master server  
+* Temporary file transfer problems which exceeded thresholds for auto-retry
+
+.Resolution
+
+* Check pull queue contents:
+
+....
+p4 -e pull -l | head -20
+....
+
+* Retry stuck files
+
+....
+p4 pull -R 
+....
+
+* Verify that the files transferred:
+
+....
+p4 pull -ls
+....
+
+### Pint problem
+
+This is a problem with the Pint service, which is used to monitor the health of the prometheus service and our Alertmanager rules.
+
+Pint is the Prometheus linter, which checks the Prometheus rules and alerts for errors - see https://github.com/cloudflare/pint for details.
+
+The are 2 main types of problem when this alert happens:
+
+. There is a typo in the Prometheus rules file, which causes Pint to fail
+. There is a problem with the prometheus data which the rules are querying.
+
+.Resolution
+
+The first is the most common, and can be fixed by correcting the rules file and running `make` to validate the rules and redeploy them.
+
+[source,bash]
+----
+# Login the HRA Monitoring server
+sudo su - prometheus
+cd /etc/prometheus
+# Validate the rules
+make
+# Fix any errors reported by Pint
+# If no errors, then deploy the rules
+make deploy
+----
+
+The second is more complex, and may require investigation of the Prometheus data to see if it is valid.
+
+* Use Grafana Explore option, to query `pint_problem` metric - this will indicate which rule is causing the problem.
+* Check the Prometheus rules file for the rule that is causing the problem and copy the query to the Grafana Explore to find out what is happening.
+** It is usually a problem with data being somehow duplicated or 2 time series overlapping
+** Examples include: 
+*** the mountpoint for `/hxdepots` has changed - so there are 2 label series for the same mountpoint but with different values for `device` label
+* Resolution is typically to try deleting the group which is causing the problem.
+* Check the query in Grafana Explore again to ensure it is now working correctly (adjust time interval, e.g. to 5m or less to exclude older data)
+
+## Severity 2 Alerts
+
+### P4D urgent license expiry
+Validate the alert with Grafana and the server.
+
+.Resolution
+Coordinate with licensing team to get new license.
+
+### P4D license data missing
+Validate the alert with Grafana and the server.
+
+.Resolution
+Coordinate with licensing team to get new license.
+
+### P4prometheus service not running
+
+Verify on server. Note reason for failure and restart.
+
+.Resolution
+* Ensure `server` >= 3 and `track` = 1:
+
++
+[source,bash]
+----
+p4 configure show track
+p4 configure show server
+p4 configure set track=1
+p4 configure set server=3
+
+----
+
+* Restart p4prometheus:
+
+    sudo systemctl restart p4prometheus
+
+### P4metrics service not running
+
+Verify on server. Note reason for failure and restart.
+
+.Resolution
+* Review logs:
+
+    sudo journalctl -u p4metrics
+
+* Ensure `p4metrics` version is recent enough: `v0.10.0` or later
+
++
+[source,bash]
+----
+p4metrics --version
+p4metrics, version v0.10.0 (branch: master, revision: 1daae6f)
+  build user:       rcowham@perforce.com
+  build date:       2025-04-16T13:56:17+0100
+  go version:       go1.24.2
+
+----
+
+* Restart p4metrics:
+
+    sudo systemctl restart p4metrics
+
+### Missing Checkpoint Metrics
+
+This alert fires when a Perforce server (`commit-server`, `standard`, or
+`edge`) does not expose any checkpoint metrics for at least 5 minutes.
+
+It is intended to detect issues where: 
+
+* No checkpoints are running
+* Monitoring is misconfigured 
+* The server is not emitting the
+`p4++_++sdp++_++checkpoint++_++duration` or
+`p4++_++sdp++_++checkpoint++_++log++_++time` metrics
+
+.Resolution
+
+* Verify `node++_++exporter` is running on the P4D server:
+
+....
+systemctl status node_exporter
+....
+
+* Check checkpoint metrics
+
+....
+curl -s localhost:9100/metrics | grep checkpoint
+....
+
+You should see these two metrics
+
+....
+p4_sdp_checkpoint_duration
+p4_sdp_checkpoint_log_time
+....
+
+* Verify the `.prom` files exist on the server:
+
+....
+ls -l /hxlogs/metrics/p4_checkpoint-*.prom
+....
+
+The timestamp should be recent 
+
+* Review installation of monitoring
+
+### Replication slow
+
+This alert indicates that replication pull queue (metadata) is slow.
+
+Review past history 
+
+.Resolution
+
+. If the pull queue is advancing, even if slow then check networking or other issues
+. See <<_replication_errors>> for detailed steps, especially if it appears to be stalled.
+
+### Network access problems
+
+Initial basic questions to ask: 
+
+. When did this start happening?
+. Has anything changed?
+. Is it affecting all users or just some users?
+
+.Resolution
+
+. Confirm p4d service(s) running on the VM
+. Review server log to see if any ongoing or recent access:
+
+    tail -f /p4/1/logs/log
+    p4 monitor show -al
+
+. Confirm local firewall rules are not blocking p4d port
+. If you have access to AWS security group or Azure networking console, then confirm access rules look OK (check to see if any recent changes) 
+. Test access from another client machine if possible
+
+### Network performance problems (slow syncs or submits)
+
+Initial basic questions to ask: 
+
+. When did this start happening?
+. Has anything changed?
+. Is it affecting all users or just some users?
+
+.Resolution
+
+. Review p4d logs for errors:
+
+    less /p4/1/logs/errors.csv
+    grep -A4 error: /p4/1/logs/log | less
+
+. Check if the following configurables are set (these relate to large syncs or submits and users reporting disconnects):
+
+----
+net.keepalive.idle: 180
+net.keepalive.interval: 20
+net.keepalive.count: 6
+net.autotune=0  <== P4D 2022.2 and earlier versions only
+net.parallel.threads=4
+net.parallel.sub.threads=4
+net.parallel.submit.batch=8
+net.parallel.submit.min=4
+----
+
+For a user with a slow Internet connection, set `net.maxwait=60`` either for the server (via p4 configure) or in the workspace's `.p4config` file. Setting it for the server requires a stop and start (NOT restart) of the p4d service.
+
+### Node exporter parse error detected
+
+This alert means that `node_exporter` is not able to parse the metrics from the server - the files in `/p4/metrics/*.prom`. 
+
+Most likely this is due to a label formatting problem.
+
+.Resolution
+
+Upgrade to the latest version of `p4metrics` (v0.11.0 or later) as it santizes labels better.
+
+Login to the server and review issues with the `node_exporter` service:
+
+    sudo systemctl status node_exporter
+    sudo journalctl -u node_exporter --no-pager | less
+
+You may need to restart the `p4prometheus` service:
+
+    sudo systemctl restart p4prometheus
+    sudo systemctl status p4prometheus
+
+### OOM Kill Detected
+
+OOM (Out of Memory) kill detected means that the operating system has killed a process (in this case likely `p4d`) because it was using too much memory. It has also been observed many times on a Swarm/Code Review server, where the `php-fpm` service is using up all the memory and causing the OOM killer to kill processes.
+
+* Check Grafana and investigate on server using atop and logs to try to identify cause.
+* Check instance type and available memory.
+
+.Resolution
+
+- See <<_swarm_unhealthy>> for resolution steps if this is on a Swarm/Code Review server.
+- User education is important to avoid this happening again - consider reaching out to users to explain what happened and how to avoid it in the future
+- Might consider upgrade of instance type for more memory if this is a common occurrence, but this should be a last resort after user education and other mitigations such as setting up swap space.
+
+### OOM P4Metrics Issue Detected
+
+This is very similar to the above (<<_oom_kill_detected>>), but it is the `p4metrics` service which is killing the process (or terminating it) due to OOM thresholds exceeded. 
+
+Examples of this behaviour are often inexperienced users who attempt:
+
+- a sync of a workspace which includes tens of TB/tens of millions of files - because they are trying to sync a depot with many streams/branches rather than a single one
+- reporting commands trying to run on a very large number of files, e.g. `p4 files //depot/...` or `p4 filelog //depot/...`
+- a "p4 print" on a large number of files
+- a user ending up with many "active" processes, often due to tool usage (accidentally keeping connections open), which even if in Idle state consume lots of RAM (e.g. 20-30 processes each using 3% of RAM)
+
+.Resolution
+
+Investigate which command was terminated and why (it will be documented in the journal logs for the `p4metrics` service) and then take appropriate action.
+
+Check the configuration of `p4metrics` to see if the thresholds for OOM are set appropriately for the instance type and workload.
+
+    /p4/common/config/p4metrics.yaml
+    sudo journalctl -u p4metrics --no-pager | grep Memlimit | less
+
+## Severity 3 Alerts
+
+### Checkpoint Not Taken
+This alert indicates a checkpoint may not have been taken.
+
+Examine latest checkpoint log for errors:
+
+    less /p4/1/logs/checkpoint.log
+
+Validate the dates and times of the metrics files (ensure they are all recently updated!):
+
+    cd /p4/metrics/
+    ls -ltr
+
+Make sure the `p4metrics` service is running correctly:
+
+    sudo systemctl status p4metrics
+
+.Resolution
+
+* Potentially restart `p4metrics` service (if stopped):
+
+    sudo systemctl restart p4metrics
+    sudo systemctl status p4metrics
+
+* Resolve any issues with `verify_sdp.sh` for example (will be documented in the log)
+
+### P4D license expiry
+
+Validate the alert with Grafana and the server.
+
+.Resolution
+
+Coordinate with licensing team to get new license.
+
+### CPU Usage High
+
+* Check Grafana and investigate on server using `atop` (view historical snapshots every 10 mins) and logs to try to identify cause.
+* Check instance type and available memory.
+* Consider log analysis to identify culprit(s)
+* Consult with users as to any jobs they are running, or known load.
+
+.Resolution
+
+Resolutions include setting up swap space or upgrading instance type.
+
+* Ensure THP not enabled - see link:https://swarm.workshop.perforce.com/view/guest/perforce_software/sdp/main/doc/SDP_Guide.Unix.html#_ensure_transparent_huge_pages_thp_is_turned_off[SDP docs]
+
+or
+
+* Upgrade instance type to one with more CPU cores
+
+### App Memory Usage High
+
+* Check Grafana and investigate on server using atop and logs to try to identify cause.
+* Check instance type and available memory.
+
+Resolutions include setting up swap space or upgrading instance type to get more RAM.
+
+.Resolution
+* Upgrade instance type
+
+* If p4d >= 2023.1 then we should be setting the resource protection options on, and in particular we should make sure that the appropriate capability is enabled.
+
+[source, shell]
+----
+# For case sensitive servers:
+getcap $(readlink -f /p4/1/bin/p4d_1)
+# For case insensitive servers:
+getcap $(readlink -f /p4/common/bin/p4d_1_bin)
+
+# Output should be something like:
+/hxdepots/p4/common/bin/p4d_2023.2.1234567 cap_sys_resource=ep
+
+# If required, then set the capability
+# For case sensitive servers:
+sudo setcap CAP_SYS_RESOURCE=+ep $(readlink -f /p4/1/bin/p4d_1)
+# For case insensitive servers:
+sudo setcap CAP_SYS_RESOURCE=+ep $(readlink -f /p4/common/bin/p4d_1_bin)
+
+# And re-run the appropriate getcap command to ensure all OK
+----
+
+** **Restart p4d_1 service if you had to change the capability**
+
+### HX Diskspace Predicted Low
+Verify in Grafana and also on the server. These alerts may be overly cautious, so the algorithm may need to be adjusted to make it less sensitive.
+
+.Resolution
+
+* Check if the alert should be tweaked to be less sensitive.
+
+### Root Diskspace Predicted Low
+
+Verify in Grafana and also on the server. These alerts are usually incorrect, so the algorithm may need to be adjusted.
+
+.Resolution
+
+* Check if the alert should be tweaked to be less sensitive.
+
+### Diskspace Percentage Used Above Percentage Threshold
+This alert indicates disk space usage has crossed a threshold over time.
+
+.Resolution
+
+* increase volume size and grow filesystem
+
+## Severity 4 Alerts
+
+### Hansoft Diskspace Low
+
+We shouldn't see this alert, because we have cleanup script running.
+
+- AlertConditions
+* Disk space usage is projected to go below threshold within 48 hours based on current trend
+* Disk space is below 10GB
+
+.Resolution
+
+* Check current disk space and compare against alert to confirm validity
+* Check status of "clean up script" to ensure its running
+* Adjust disk space appropriately
+
+[source, shell]
+----
+df -Th                      # check disk usage on all file systems
+df -Th | grep /dev/nev      # limit usage to just
+----

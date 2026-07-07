@@ -1,0 +1,29 @@
+extends: default
+header:
+  height: 0.75in
+  line-height: 1.2
+  recto:
+    right:
+      content: |
+        {chapter-title} - {page-number} of {page-count}
+    left:
+      content: |
+        {document-subtitle}
+  verso:
+    left:
+      content: |
+        {page-number} of {page-count} - {chapter-title}
+    right:
+      content: |
+        {document-subtitle}
+footer:
+  height: 0.75in
+  line-height: 1.2
+  recto:
+    center:
+      content: |
+        (C) 2021 Perforce Software, Inc.
+  verso:
+    center:
+      content: |
+        (C) 2021 Perforce Software, Inc.
