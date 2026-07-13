@@ -704,6 +704,16 @@ update_vmagent_service_if_present() {
     fi
 }
 
+is_running_on_aws() {
+    local token=""
+    token=$(curl -s -f --connect-timeout 1 --max-time 2 -X PUT "http://169.254.169.254/latest/api/token" \
+        -H "X-aws-ec2-metadata-token-ttl-seconds: 60") || return 1
+
+    curl -s -f --connect-timeout 1 --max-time 2 \
+        -H "X-aws-ec2-metadata-token: $token" \
+        "http://169.254.169.254/latest/meta-data/instance-id" >/dev/null || return 1
+}
+
 # ── Check AWS CLI version ────────────────────────────────────────────────────
 check_aws_cli_version() {
     local version_output=""
@@ -712,6 +722,12 @@ check_aws_cli_version() {
     local pkg_arch=""
     local zip_url=""
     local install_dir="/tmp/awscliv2-install"
+    local pkgs=()
+
+    if command -v curl >/dev/null 2>&1 && ! is_running_on_aws; then
+        msg "Skipping AWS CLI v2 check: host does not appear to be running on AWS"
+        return 0
+    fi
 
     version_output=$(aws --version 2>&1 || true)
     major_version=$(echo "$version_output" | sed -n 's/^aws-cli\/\([0-9]\+\)\..*/\1/p')
@@ -726,16 +742,25 @@ check_aws_cli_version() {
         bail "AWS CLI v2 installation requires root privileges (run as root/sudo)"
     fi
 
+    command -v unzip >/dev/null 2>&1 || pkgs+=("unzip")
+    command -v curl >/dev/null 2>&1 || pkgs+=("curl")
+
     if command -v yum >/dev/null 2>&1; then
         yum remove awscli -y >/dev/null 2>&1 || true
-        yum install -y unzip curl >/dev/null
+        if [[ ${#pkgs[@]} -gt 0 ]]; then
+            yum install -y "${pkgs[@]}" >/dev/null
+        fi
     elif command -v dnf >/dev/null 2>&1; then
         dnf remove awscli -y >/dev/null 2>&1 || true
-        dnf install -y unzip curl >/dev/null
+        if [[ ${#pkgs[@]} -gt 0 ]]; then
+            dnf install -y "${pkgs[@]}" >/dev/null
+        fi
     elif command -v apt-get >/dev/null 2>&1; then
-        apt-get update -y >/dev/null
         apt-get remove -y awscli >/dev/null 2>&1 || true
-        apt-get install -y unzip curl >/dev/null
+        if [[ ${#pkgs[@]} -gt 0 ]]; then
+            # apt-get update -y >/dev/null
+            apt-get install -y "${pkgs[@]}" >/dev/null
+        fi
     else
         bail "Unsupported package manager for automatic AWS CLI installation"
     fi
