@@ -67,8 +67,9 @@ There are scripts which automate the manual installation steps listed below. The
 structure or not - as desired.
 
 Checkout  following files:
-- [install_p4prom.sh](scripts/install_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance (`node_exporter`, `p4prometheus`, monitoring scripts)
+- [install_p4prom.sh](scripts/install_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance (`node_exporter`, `p4prometheus`, `p4metrics`, monitoring scripts)
   - **the above requires also**: [p4prom_common.sh](scripts/p4prom_common.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/p4prom_common.sh)
+- [update_p4prom.sh](scripts/update_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/update_p4prom.sh) - the installer/updater for servers hosting a p4d instance (`node_exporter`, `p4prometheus`, `p4metrics`, monitoring scripts)
 - [install_prom_graf.sh](scripts/install_prom_graf.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for the monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
 - [install_node.sh](scripts/install_node.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_node.sh) - the installer for monitoring a server hosting other tools such as Swarm, Hansoft, HTH (Helix TeamHub) etc. Just installs `node_exporter`
 
@@ -80,6 +81,10 @@ Example of use (as root):
     wget https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh
     chmod +x install_p4prom.sh
     ./install_p4prom.sh -h
+
+    wget https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/update_p4prom.sh
+    chmod +x update_p4prom.sh
+    ./update_p4prom.sh -h
 
 ## Package Install of Grafana
 

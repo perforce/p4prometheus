@@ -25,6 +25,7 @@ check_aws_cli_version() {
   local pkg_arch=""
   local zip_url=""
   local install_dir="/tmp/awscliv2-install"
+  local pkgs=()
 
   version_output=$(aws --version 2>&1 || true)
   major_version=$(echo "$version_output" | sed -n 's/^aws-cli\/\([0-9]\+\)\..*/\1/p')
@@ -40,16 +41,25 @@ check_aws_cli_version() {
     exit 1
   fi
 
+  command -v unzip >/dev/null 2>&1 || pkgs+=("unzip")
+  command -v curl >/dev/null 2>&1 || pkgs+=("curl")
+
   if command -v yum >/dev/null 2>&1; then
     yum remove awscli -y >/dev/null 2>&1 || true
-    yum install -y unzip curl >/dev/null
+    if [[ ${#pkgs[@]} -gt 0 ]]; then
+      yum install -y "${pkgs[@]}" >/dev/null
+    fi
   elif command -v dnf >/dev/null 2>&1; then
     dnf remove awscli -y >/dev/null 2>&1 || true
-    dnf install -y unzip curl >/dev/null
+    if [[ ${#pkgs[@]} -gt 0 ]]; then
+      dnf install -y "${pkgs[@]}" >/dev/null
+    fi
   elif command -v apt-get >/dev/null 2>&1; then
-    apt-get update -y >/dev/null
     apt-get remove -y awscli >/dev/null 2>&1 || true
-    apt-get install -y unzip curl >/dev/null
+    if [[ ${#pkgs[@]} -gt 0 ]]; then
+      # apt-get update -y >/dev/null
+      apt-get install -y "${pkgs[@]}" >/dev/null
+    fi
   else
     echo "ERROR: Unsupported package manager for automatic AWS CLI installation" >&2
     exit 1
