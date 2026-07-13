@@ -177,6 +177,15 @@ jq -n \
   --argjson mounts     "$MOUNTS_JSON" \
   --argjson vol_map    "$VOL_MAP" \
   '
+  # Convert AWS attachment device to likely Linux device path on Xen-based hosts.
+  # Examples: /dev/sdb -> /dev/xvdb, /dev/sda1 -> /dev/xvda1
+  def sd_to_xvd($d):
+    if ($d // "") | startswith("/dev/sd") then
+      "/dev/xvd" + (($d | sub("^/dev/sd"; "")) // "")
+    else
+      $d
+    end;
+
   # Flatten block devices one level (disk + partitions) keyed by device name
   [ $lsblk.blockdevices[] | ., (.children // [])[] ] as $all_blk |
   ($all_blk | map({key: .name, value: .}) | from_entries) as $blk_by_dev |
@@ -188,14 +197,16 @@ jq -n \
   [
     $volumes[] |
     . as $vol |
-    ($vol_map[$vol.VolumeId]) as $os_dev |
+    # Prefer explicit NVMe volume-id mapping if available, otherwise derive from AWS device name.
+    (($vol_map[$vol.VolumeId]) // (sd_to_xvd($vol.Device))) as $os_dev |
     # Prefer a direct mount; fall back to first mounted partition
     (
-      if $mount_by_dev[$os_dev] != null then
+      if ($os_dev != null and $mount_by_dev[$os_dev] != null) then
         $mount_by_dev[$os_dev]
       else
-        [ ($blk_by_dev[$os_dev].children // [])[] |
-          $mount_by_dev[.name] | select(. != null) ] | .[0]
+        [ (($blk_by_dev[$os_dev].children // [])[]? | .name) as $child_name |
+          $mount_by_dev[$child_name] | select(. != null) ]
+        | (map(select(.mountpoint == "/")) | .[0]) // .[0]
       end
     ) as $mnt |
     $vol + {
