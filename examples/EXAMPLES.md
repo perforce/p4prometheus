@@ -21,3 +21,12 @@ Will give you formatted output according to the templates in the `templates/` di
 
 Best practice for alerting, especially with Slack templates linked above, is that they include a "runbook_id" which
 links to the template [P4 Runbook for Alert Handling](../doc/P4_RunbookAlertHandling.adoc)
+
+## Scripts
+
+* Sample [Bash metrics creation script](scripts/monitor_metrics.sh)
+
+The above shows an example of how to write prometheus metrics in Bash for collection by node_exporter.
+
+It was fully functional but has been replaced by `p4metrics` executable for normal usage. You are welcome to
+use it as a template for your own extra metrics

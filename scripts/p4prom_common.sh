@@ -449,3 +449,325 @@ ensure_monitor_metrics_config_file_exists() {
     chmod 640 "$config_file"
     msg "Created default monitor_metrics config: $config_file"
 }
+
+write_vmagent_service_file() {
+    local service_file=$1
+    local vm_cfg_dir=${vmagent_config_dir:-/var/vmagent}
+    cat << EOF > "${service_file}"
+[Unit]
+Description=Victoria Metrics Agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=$OSUSER
+Group=$OSGROUP
+Type=simple
+WorkingDirectory=${vm_cfg_dir}
+EnvironmentFile=${vm_cfg_dir}/vmagent.env
+ExecStart=/usr/local/bin/vmagent-prod \
+  -memory.allowedPercent=20 \
+  -promscrape.config=vmagent.yml \
+  -remoteWrite.basicAuth.username=\${VM_CUSTOMER} \
+  -remoteWrite.basicAuth.passwordFile=.vmpassword \
+  -remoteWrite.urlRelabelConfig=relabelConfig.yml \
+  -remoteWrite.url=\${VM_METRICS_HOST}/api/v1/write
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+comment_out_push_metrics_cron() {
+    local osuser=$1
+    local temp_file
+    temp_file=$(mktemp)
+    crontab -u "$osuser" -l > "$temp_file" 2>/dev/null || echo "" > "$temp_file"
+    local comment="# This script has been replaced by systemd service (vmagent)"
+    local changes_made=false
+    if grep -v "^#" "$temp_file" | grep -q "push_metrics.sh"; then
+        cp "$temp_file" "${temp_file}.bak"
+        sed -i "/^[^#].*\/push_metrics.sh/ s|^|# ${comment}\\n# |" "$temp_file"
+        changes_made=true
+    fi
+    if [[ "$changes_made" == "true" ]]; then
+        crontab -u "$osuser" "$temp_file"
+    fi
+}
+
+create_vmagent_configs_from_push_config() {
+    local config_file=${1:-${p4prom_config_dir:-}/.push_metrics.cfg}
+    local vm_cfg_dir=${vmagent_config_dir:-/var/vmagent}
+
+    if [[ ! -f "$config_file" ]]; then
+        msg "Warning: Config file $config_file not found, skipping vmagent config creation"
+        return
+    fi
+
+    # shellcheck disable=SC1090
+    source "$config_file"
+
+    local customer="${metrics_customer:-}"
+    local instance="${metrics_instance:-}"
+    local host="${metrics_host:-}"
+    local password="${metrics_passwd:-}"
+
+    if [[ -z "$customer" || -z "$instance" || -z "$host" ]]; then
+        msg "Warning: Required metrics values not found in $config_file"
+        return
+    fi
+
+    local vm_host="${host/:9091/:9093}"
+
+    mkdir -p "$vm_cfg_dir"
+    chown "$OSUSER:$OSGROUP" "$vm_cfg_dir"
+    chmod 755 "$vm_cfg_dir"
+
+    if [[ ${SELinuxEnabled:-0} -eq 1 ]]; then
+        semanage fcontext -a -t etc_t "$vm_cfg_dir(/.*)?" 2>/dev/null || true
+        restorecon -Rv "$vm_cfg_dir"
+    fi
+
+    cat << EOF > "$vm_cfg_dir/vmagent.env"
+# For use with vmagent to send to P4RA monitoring server
+VM_METRICS_HOST=$vm_host
+VM_CUSTOMER=$customer
+EOF
+    chown "$OSUSER:$OSGROUP" "$vm_cfg_dir/vmagent.env"
+    chmod 644 "$vm_cfg_dir/vmagent.env"
+
+    cat << EOF > "$vm_cfg_dir/relabelConfig.yml"
+# Relabelling config for vmagent
+# These values are specific to each P4RA customer and need to conform to the values on P4RA Monitor server
+
+# P4RA customer tag
+- target_label: customer
+  replacement: $customer
+
+# Unique P4RA instance ID for this server
+- target_label: instance
+  replacement: $instance
+EOF
+    chown "$OSUSER:$OSGROUP" "$vm_cfg_dir/relabelConfig.yml"
+    chmod 644 "$vm_cfg_dir/relabelConfig.yml"
+
+    cat << EOF > "$vm_cfg_dir/vmagent.yml"
+# Configuration file for vmagent to scrape local node_exporter on (default) localhost:9100
+global:
+  scrape_interval:     30s # Set the scrape interval
+
+scrape_configs:
+  - job_name: 'remote_vmagent'
+    static_configs:
+    - targets:
+        - localhost:9100
+EOF
+    chown "$OSUSER:$OSGROUP" "$vm_cfg_dir/vmagent.yml"
+    chmod 644 "$vm_cfg_dir/vmagent.yml"
+
+    if [[ -n "$password" ]]; then
+        echo "$password" > "$vm_cfg_dir/.vmpassword"
+        chown "$OSUSER:$OSGROUP" "$vm_cfg_dir/.vmpassword"
+        chmod 600 "$vm_cfg_dir/.vmpassword"
+    else
+        msg "Warning: metrics_passwd not found in $config_file"
+    fi
+
+    comment_out_push_metrics_cron "$OSUSER"
+}
+
+create_vmagent_temp_configs() {
+    local vm_cfg_dir=${vmagent_config_dir:-/var/vmagent}
+
+    mkdir -p "$vm_cfg_dir"
+    chown "$OSUSER:$OSGROUP" "$vm_cfg_dir"
+    chmod 755 "$vm_cfg_dir"
+
+    if [[ ${SELinuxEnabled:-0} -eq 1 ]]; then
+        semanage fcontext -a -t etc_t "$vm_cfg_dir(/.*)?" 2>/dev/null || true
+        restorecon -Rv "$vm_cfg_dir"
+    fi
+
+    cat << EOF > "$vm_cfg_dir/vmagent.env"
+# For use with vmagent to send to P4RA monitoring server
+VM_METRICS_HOST=https://monitor.hra.p4demo.com:9093
+VM_CUSTOMER=customerid_CHANGEME
+EOF
+    chown "$OSUSER:$OSGROUP" "$vm_cfg_dir/vmagent.env"
+    chmod 644 "$vm_cfg_dir/vmagent.env"
+
+    cat << EOF > "$vm_cfg_dir/relabelConfig.yml"
+# Relabelling config for vmagent
+# These values are specific to each P4RA customer and need to conform to the values on P4RA Monitor server
+
+# P4RA customer tag
+- target_label: customer
+  replacement: customerid_CHANGEME
+
+# Unique P4RA instance ID for this server
+- target_label: instance
+  replacement: customerid-prod-hra_CHANGEME
+EOF
+    chown "$OSUSER:$OSGROUP" "$vm_cfg_dir/relabelConfig.yml"
+    chmod 644 "$vm_cfg_dir/relabelConfig.yml"
+
+    cat << EOF > "$vm_cfg_dir/vmagent.yml"
+# Configuration file for vmagent to scrape local node_exporter on (default) localhost:9100
+global:
+  scrape_interval:     30s # Set the scrape interval
+
+scrape_configs:
+  - job_name: 'remote_vmagent'
+    static_configs:
+    - targets:
+        - localhost:9100
+EOF
+    chown "$OSUSER:$OSGROUP" "$vm_cfg_dir/vmagent.yml"
+    chmod 644 "$vm_cfg_dir/vmagent.yml"
+
+    echo "MySecurePassword_CHANGEME" > "$vm_cfg_dir/.vmpassword"
+    chown "$OSUSER:$OSGROUP" "$vm_cfg_dir/.vmpassword"
+    chmod 600 "$vm_cfg_dir/.vmpassword"
+}
+
+install_vmagent() {
+    local mode=${1:-${VMAGENT_CONFIG_MODE:-push_config}}
+    local vm_cfg_dir=${vmagent_config_dir:-/var/vmagent}
+
+    msg "Installing Victoria Metrics Agent..."
+
+    if systemctl list-unit-files | grep -q "^vmagent.service" && systemctl is-active --quiet vmagent; then
+        msg "Stopping existing vmagent service..."
+        systemctl stop vmagent
+    fi
+
+    local userid="$OSUSER"
+    if ! grep -q "^$userid:" /etc/passwd ;then
+        useradd --no-create-home --shell /bin/false "$userid" || bail "Failed to create user"
+    fi
+
+    cd /tmp || bail "failed to cd"
+    local pver="${VER_VICTORIA_METRICS:-}"
+    [[ -n "$pver" ]] || bail "VER_VICTORIA_METRICS is not set"
+    local cpu_arch="${arch:-amd64}"
+    local fname="vmutils-linux-${cpu_arch}-v${pver}.tar.gz"
+    download_and_untar "$fname" "https://github.com/victoriametrics/victoriametrics/releases/download/v${pver}/$fname"
+
+    if [[ -f "vmagent-prod" ]]; then
+        local bin_file=/usr/local/bin/vmagent-prod
+        mv "vmagent-prod" /usr/local/bin/
+        chown "$userid:$userid" "$bin_file"
+        chmod 755 "$bin_file"
+        if [[ ${SELinuxEnabled:-0} -eq 1 ]]; then
+            semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
+            restorecon -vF "$bin_file"
+        fi
+    else
+        bail "Failed to find vmagent-prod after download"
+    fi
+
+    if [[ "$mode" == "temp" ]]; then
+        create_vmagent_temp_configs
+    else
+        create_vmagent_configs_from_push_config
+    fi
+
+    write_vmagent_service_file /etc/systemd/system/vmagent.service
+    systemctl daemon-reload
+    systemctl enable vmagent
+
+    msg ""
+    msg "===================================="
+    msg "vmagent configuration files created:"
+    msg "  - $vm_cfg_dir/vmagent.env"
+    msg "  - $vm_cfg_dir/relabelConfig.yml"
+    msg "  - $vm_cfg_dir/vmagent.yml"
+    msg "  - $vm_cfg_dir/.vmpassword"
+    msg "===================================="
+    msg ""
+}
+
+update_vmagent_service_if_present() {
+    local service_name="vmagent"
+    local service_file="/etc/systemd/system/${service_name}.service"
+    if [[ ! -f "${service_file}" ]]; then
+        return
+    fi
+
+    msg "Updating existing vmagent service file"
+    write_vmagent_service_file "${service_file}"
+    systemctl daemon-reload
+    systemctl enable "$service_name"
+    if systemctl is-active --quiet "$service_name"; then
+        systemctl restart "$service_name"
+        systemctl status "$service_name" --no-pager
+    fi
+}
+
+# ── Check AWS CLI version ────────────────────────────────────────────────────
+check_aws_cli_version() {
+    local version_output=""
+    local major_version=""
+    local arch=""
+    local pkg_arch=""
+    local zip_url=""
+    local install_dir="/tmp/awscliv2-install"
+
+    version_output=$(aws --version 2>&1 || true)
+    major_version=$(echo "$version_output" | sed -n 's/^aws-cli\/\([0-9]\+\)\..*/\1/p')
+
+    if [[ -n "$major_version" ]] && [[ "$major_version" -ge 2 ]]; then
+        return 0
+    fi
+
+    msg "AWS CLI v2 required for EBS Throughput data; installing/upgrading now"
+
+    if [[ $(id -u) -ne 0 ]]; then
+        bail "AWS CLI v2 installation requires root privileges (run as root/sudo)"
+    fi
+
+    if command -v yum >/dev/null 2>&1; then
+        yum remove awscli -y >/dev/null 2>&1 || true
+        yum install -y unzip curl >/dev/null
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf remove awscli -y >/dev/null 2>&1 || true
+        dnf install -y unzip curl >/dev/null
+    elif command -v apt-get >/dev/null 2>&1; then
+        apt-get update -y >/dev/null
+        apt-get remove -y awscli >/dev/null 2>&1 || true
+        apt-get install -y unzip curl >/dev/null
+    else
+        bail "Unsupported package manager for automatic AWS CLI installation"
+    fi
+
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64|amd64) pkg_arch="x86_64" ;;
+        aarch64|arm64) pkg_arch="aarch64" ;;
+        *) bail "Unsupported architecture for AWS CLI v2 install: $arch" ;;
+    esac
+
+    zip_url="https://awscli.amazonaws.com/awscli-exe-linux-${pkg_arch}.zip"
+
+    rm -rf "$install_dir"
+    mkdir -p "$install_dir"
+    cd "$install_dir" || bail "Failed to cd to install dir: $install_dir"
+
+    curl -fsSL "$zip_url" -o awscliv2.zip || bail "Failed to download AWS CLI v2 from $zip_url"
+    unzip -q -o awscliv2.zip || bail "Failed to unzip awscliv2.zip"
+
+    if [[ -x /usr/local/bin/aws ]]; then
+        ./aws/install --update || bail "Failed to update AWS CLI v2"
+    else
+        ./aws/install || bail "Failed to install AWS CLI v2"
+    fi
+
+    version_output=$(aws --version 2>&1 || true)
+    major_version=$(echo "$version_output" | sed -n 's/^aws-cli\/\([0-9]\+\)\..*/\1/p')
+
+    if [[ -z "$major_version" ]] || [[ "$major_version" -lt 2 ]]; then
+        bail "AWS CLI install attempted but v2 is not active. Current version output: ${version_output:-unknown}"
+    fi
+
+    msg "AWS CLI successfully installed/upgraded: $version_output"
+}

@@ -19,39 +19,90 @@ imds() {
 
 # ── Check AWS CLI version ────────────────────────────────────────────────────
 check_aws_cli_version() {
-  local version_output
-  version_output=$(aws --version 2>&1 || echo "aws-cli/1.0.0")
-  
-  # Extract major version (e.g., "aws-cli/2.13.5" → 2)
-  local major_version
-  major_version=$(echo "$version_output" | sed -n 's/^aws-cli\/\([0-9]\).*/\1/p')
-  
-  if [[ -z "$major_version" ]] || [[ "$major_version" -lt 2 ]]; then
-    cat >&2 << 'UPGRADE_MSG'
-⚠️  WARNING: AWS CLI v1 detected or version check failed.
+  local version_output=""
+  local major_version=""
+  local arch=""
+  local pkg_arch=""
+  local zip_url=""
+  local install_dir="/tmp/awscliv2-install"
 
-AWS CLI v1 does not return the 'Throughput' field for EBS volumes, which is needed
-for accurate GP3 analysis. The script will still work but ThroughputMBps may be null.
+  version_output=$(aws --version 2>&1 || true)
+  major_version=$(echo "$version_output" | sed -n 's/^aws-cli\/\([0-9]\+\)\..*/\1/p')
 
-RECOMMENDED FIX:
-1. Remove the old yum-installed CLI:
-   yum remove awscli -y
-
-2. Download and install AWS CLI v2:
-   cd /tmp
-   curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-   yum install -y unzip
-   unzip awscliv2.zip
-   ./aws/install
-
-3. Verify:
-   aws --version
-   which aws  # Should be /usr/local/bin/aws
-
-4. Re-run this script to get Throughput data.
-
-UPGRADE_MSG
+  if [[ -n "$major_version" ]] && [[ "$major_version" -ge 2 ]]; then
+    return 0
   fi
+
+  echo "INFO: AWS CLI v2 required for EBS Throughput data; installing/upgrading now" >&2
+
+  if [[ $(id -u) -ne 0 ]]; then
+    echo "ERROR: AWS CLI v2 installation requires root privileges (run as root/sudo)" >&2
+    exit 1
+  fi
+
+  if command -v yum >/dev/null 2>&1; then
+    yum remove awscli -y >/dev/null 2>&1 || true
+    yum install -y unzip curl >/dev/null
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf remove awscli -y >/dev/null 2>&1 || true
+    dnf install -y unzip curl >/dev/null
+  elif command -v apt-get >/dev/null 2>&1; then
+    apt-get update -y >/dev/null
+    apt-get remove -y awscli >/dev/null 2>&1 || true
+    apt-get install -y unzip curl >/dev/null
+  else
+    echo "ERROR: Unsupported package manager for automatic AWS CLI installation" >&2
+    exit 1
+  fi
+
+  arch=$(uname -m)
+  case "$arch" in
+    x86_64|amd64) pkg_arch="x86_64" ;;
+    aarch64|arm64) pkg_arch="aarch64" ;;
+    *)
+      echo "ERROR: Unsupported architecture for AWS CLI v2 install: $arch" >&2
+      exit 1
+      ;;
+  esac
+
+  zip_url="https://awscli.amazonaws.com/awscli-exe-linux-${pkg_arch}.zip"
+
+  rm -rf "$install_dir"
+  mkdir -p "$install_dir"
+  cd "$install_dir" || {
+    echo "ERROR: Failed to cd to install dir: $install_dir" >&2
+    exit 1
+  }
+
+  curl -fsSL "$zip_url" -o awscliv2.zip || {
+    echo "ERROR: Failed to download AWS CLI v2 from $zip_url" >&2
+    exit 1
+  }
+  unzip -q -o awscliv2.zip || {
+    echo "ERROR: Failed to unzip awscliv2.zip" >&2
+    exit 1
+  }
+
+  if [[ -x /usr/local/bin/aws ]]; then
+    ./aws/install --update || {
+      echo "ERROR: Failed to update AWS CLI v2" >&2
+      exit 1
+    }
+  else
+    ./aws/install || {
+      echo "ERROR: Failed to install AWS CLI v2" >&2
+      exit 1
+    }
+  fi
+
+  version_output=$(aws --version 2>&1 || true)
+  major_version=$(echo "$version_output" | sed -n 's/^aws-cli\/\([0-9]\+\)\..*/\1/p')
+  if [[ -z "$major_version" ]] || [[ "$major_version" -lt 2 ]]; then
+    echo "ERROR: AWS CLI install attempted but v2 is not active. Current version output: ${version_output:-unknown}" >&2
+    exit 1
+  fi
+
+  echo "INFO: AWS CLI successfully installed/upgraded: $version_output" >&2
 }
 
 check_aws_cli_version

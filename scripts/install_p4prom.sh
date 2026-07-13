@@ -19,9 +19,12 @@ metrics_root=/hxlogs/metrics
 metrics_link=/p4/metrics
 # Just in case you want to customize this
 local_bin_dir=/usr/local/bin
+# To avoid issues with SELinux, install service config files into /var/vmagent
+vmagent_config_dir="/var/vmagent"
 
 VER_NODE_EXPORTER="1.3.1"
 VER_P4PROMETHEUS="0.11.1"
+VER_VICTORIA_METRICS="1.131.0"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -75,7 +78,7 @@ install_p4prom.sh -h
     <P4PORT>        P4PORT to use within any installed scripts
     <P4USER>        P4USER to use within any installed scripts
     <p4prom_config_dir> Specify directory to install p4prometheus config file - useful for nonsdp installs
-    -push           Means install pushgateway/report_data_instance cronjobs and config file.
+    -push           Means install vmagent service/configuration in /var/vmagent.
                     Not relevant for most installations.
 
 IMPORTANT: Specify either the installed SDP instance (e.g. 1), or -nosdp and other parameters
@@ -97,7 +100,7 @@ Examples:
 declare -i shiftArgs=0
 declare -i UseSDP=1
 declare -i SELinuxEnabled=0
-declare -i InstallPushgateway=0
+declare -i InstallVMAgent=0
 declare OsUser=""
 declare p4port=""
 declare p4user=""
@@ -115,7 +118,7 @@ while [[ $# -gt 0 ]]; do
         (-osuser) OsUser="$2"; shiftArgs=1;;
         (-p) p4port="$2"; shiftArgs=1;;
         (-u) p4user="$2"; shiftArgs=1;;
-        (-push) InstallPushgateway=1;;
+        (-push) InstallVMAgent=1;;
         (-c) p4prom_config_dir="$2"; shiftArgs=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
@@ -654,7 +657,7 @@ EOF
 # Download latest versions
 mkdir -p $p4prom_bin_dir
 cd $p4prom_bin_dir
-for scriptname in push_metrics.sh report_instance_data.sh check_for_updates.sh; do
+for scriptname in check_for_updates.sh; do
     [[ -f "\$scriptname" ]] && rm "\$scriptname"
     echo "downloading \$scriptname"
     wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/\$scriptname"
@@ -665,52 +668,13 @@ EOF
 
     chmod 755 "$mon_installer"
     sudo -u "$OSUSER" bash "$mon_installer"
+    sudo -u "$OSUSER" bash -c "cd $p4prom_bin_dir && ./check_for_updates.sh"
 
-    if [[ $InstallPushgateway -eq 0 ]]; then
+    if [[ $InstallVMAgent -eq 0 ]]; then
         return
     fi
 
-    config_file="$p4prom_config_dir/.push_metrics.cfg"
-    cat << EOF > "$config_file"
-# Set these values as appropriate according to HRA Procedures document
-metrics_host=https://monitor.hra.p4demo.com:9091
-metrics_user=customerid_CHANGEME
-metrics_passwd=MySecurePassword_CHANGEME
-metrics_job=pushgateway
-metrics_instance=customerid-prod-hra_CHANGEME
-metrics_customer=customerid_CHANGEME
-# Modify the value below when everything above is ready - avoids getting bad metrics
-enabled=0
-EOF
-
-    chown "$OSUSER:$OSGROUP" "$config_file"
-    push_installer="/tmp/_install_push.sh"
-    cat << EOF > $push_installer
-scriptname="push_metrics.sh"
-if ! crontab -l | grep -q "\$scriptname" ;then
-    entry1="*/1 * * * * $p4prom_bin_dir/\$scriptname -c $config_file > /dev/null 2>&1 ||:"
-    (crontab -l && echo "\$entry1") | crontab -
-fi
-
-scriptname="report_instance_data.sh"
-if ! crontab -l | grep -q "\$scriptname" ;then
-    entry1="0 23 * * * $p4prom_bin_dir/\$scriptname -c $config_file > /dev/null 2>&1 ||:"
-    (crontab -l && echo "\$entry1") | crontab -
-fi
-
-# List things out for review
-echo "Crontab after updating - showing push_metrics entries:"
-crontab -l | grep -E "/push_metrics|/report_instance"
-
-echo ""
-echo "===================================="
-echo "Please update values in $config_file"
-echo "===================================="
-
-EOF
-
-    chmod 755 "$push_installer"
-    sudo -u "$OSUSER" bash "$push_installer"
+    VMAGENT_CONFIG_MODE=temp install_vmagent
 
 }
 
@@ -718,11 +682,24 @@ install_node_exporter
 install_p4prometheus
 install_p4metrics
 install_monitor_locks
+check_aws_cli_version
 systemctl list-timers | grep -E "^NEXT|monitor"
 
 echo "
 
 Should have installed node_exporter, p4prometheus and friends.
+
+"
+
+if [[ $InstallVMAgent -eq 1 ]]; then
+echo "Please start the vmagent service when you have checked its configuration...
+
+    systemctl start vmagent
+    systemctl status vmagent --no-pager
+"
+fi
+
+echo "
 
 To review further, please:
 

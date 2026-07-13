@@ -9,17 +9,17 @@
 repo_path="scripts"
 github_url="https://api.github.com/repos/perforce/p4prometheus/commits?per_page=1&path=$repo_path"
 github_download_url="https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts"
+workshop_url="https://swarm.workshop.perforce.com/downloads/guest/perforce_software/command-runner/scripts"
 
 # Just in case you want to customize this
 local_bin_dir=/usr/local/bin
 
 function msg () { echo -e "$*"; }
-function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit ${2:-1}; }
+function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
 function usage
 {
-   declare style=${1:--h}
-   declare errorMessage=${2:-Unset}
+   declare errorMessage=${1:-Unset}
  
    if [[ "$errorMessage" != Unset ]]; then
       echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
@@ -42,7 +42,9 @@ Depends on 'curl' and 'jq' being in the path.
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-FILE_LIST="install_p4prom.sh update_p4prom.sh p4prom_common.sh monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh push_metrics.sh report_instance_data.sh check_for_updates.sh create_dashboard.py dashboard.yaml upload_grafana_dashboard.sh"
+FILE_LIST="install_p4prom.sh update_p4prom.sh p4prom_common.sh monitor_metrics.py monitor_wrapper.sh check_for_updates.sh get_volume_info.sh create_dashboard.py dashboard.yaml upload_grafana_dashboard.sh"
+WORKSHOP_FILE_LIST="install_command-runner.sh"
+DEPRECATED_FILE_LIST="push_metrics.sh report_instance_data.sh monitor_metrics.sh"
 
 # Command Line Processing
  
@@ -52,10 +54,10 @@ ConfigFile=".update_config"
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
-        (-h) usage -h && exit 0;;
+        (-h) usage && exit 0;;
         # (-man) usage -man;;
         (-c) ConfigFile=$2; shiftArgs=1;;
-        (-*) usage -h "Unknown command line option ($1)." && exit 1;;
+        (-*) usage "Unknown command line option ($1)." && exit 1;;
     esac
  
     # Shift (modify $#) the appropriate number of times.
@@ -86,6 +88,14 @@ fi
 github_sha=$(curl "$github_url" | jq '.[] | .sha')
 github_date=$(curl "$github_url" | jq '.[] | .commit.committer.date')
 
+mkdir -p save
+for fname in $DEPRECATED_FILE_LIST; do
+    if [[ -f "$fname" ]]; then
+        msg "Removing deprecated file $fname"
+        mv "$fname" "save/$fname"
+    fi
+done
+
 # For the sake of SELinux and systemd timers, we need to avoid changing attributes for the file (ls -alZ)
 # Thus we overwrite the existing file (having saved a copy) - as that keeps attributes
 if [[ "$last_github_sha" != "$github_sha" ]]; then
@@ -99,6 +109,14 @@ if [[ "$last_github_sha" != "$github_sha" ]]; then
     echo "last_github_sha=$github_sha" > "$ConfigFile"
     echo "last_github_date=$github_date" >> "$ConfigFile"
     msg "Scripts updated"
+
+    for fname in $WORKSHOP_FILE_LIST; do
+        [[ -f "$fname" ]] && cp "$fname" "$fname.bak"
+        msg "downloading $fname"
+        wget -O - "$workshop_url/$fname" > "$fname"
+        chmod +x "$fname"
+    done
+
 else
     msg "Scripts are up-to-date - nothing to do"
 fi
