@@ -1,6 +1,13 @@
 #!/bin/bash
 # Installs the following: node_exporter, prometheus, victoriametrics, grafana and alertmanager
 # This is the monitoring machine
+#
+# New in this version:
+#   -d <data_root>            Set base directory for all runtime data (default: /var/lib)
+#   -b <bin_dir>              Set directory for installed binaries (default: /usr/local/bin)
+#   -r <months>               Set metrics retention period in months (default: 6)
+#   -target <host:port>       Add a Prometheus scrape target (repeatable)
+#   --local-tarballs-dir <p>  Use pre-staged local tarballs instead of downloading from GitHub
 
 set -e  # Exit on error
 set -o pipefail  # Catch errors in pipes
@@ -19,6 +26,16 @@ VER_PROMETHEUS="2.54.1"
 VER_ALERTMANAGER="0.27.0"
 VER_PUSHGATEWAY="1.9.0"
 VER_VICTORIA_METRICS="1.105.0"
+
+# Configurable paths - override with CLI flags
+data_root="/var/lib"
+bin_dir="/usr/local/bin"
+retention_months=6
+local_tarballs_dir=""
+scrape_targets=()
+
+# State file - records chosen paths for future upgrades
+state_file="/etc/p4prometheus-monitoring/install.env"
 
 # Default to amd but allow arm architecture
 arch="amd64"
@@ -58,13 +75,28 @@ function usage
 
    echo "USAGE for install_prom_graf.sh:
 
-    install_prom_graf.sh [-push]
+    install_prom_graf.sh [-d <data_root>] [-b <bin_dir>] [-r <months>]
+                         [-target <host:port>] [--local-tarballs-dir <path>]
+                         [-push]
 
 or
 
     install_prom_graf.sh -h
 
-  -push Means install pushgateway (otherwise it won't be installed)
+  -d <data_root>           Base directory for all runtime data.
+                           Default: /var/lib
+                           Example: -d /data  (puts all data under /data/)
+  -b <bin_dir>             Directory for installed binaries.
+                           Default: /usr/local/bin
+  -r <months>              Metrics retention period in months.
+                           Default: 6
+  -target <host:port>      Prometheus scrape target. Repeatable.
+                           Example: -target myserver:9100 -target otherserver:9100
+                           If not specified, a placeholder is written to prometheus.yml.
+  --local-tarballs-dir <p> Directory containing pre-staged release tarballs.
+                           Skips all downloads - for air-gapped environments.
+                           Files must match GitHub release asset names exactly.
+  -push                    Install Pushgateway (not installed by default).
 
 "
 }
@@ -79,6 +111,11 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         (-h) usage -h && exit 1;;
         (-push) InstallPushgateway=1;;
+        (-d) data_root=$2; shiftArgs=1;;
+        (-b) bin_dir=$2; shiftArgs=1;;
+        (-r) retention_months=$2; shiftArgs=1;;
+        (-target) scrape_targets+=("$2"); shiftArgs=1;;
+        (--local-tarballs-dir) local_tarballs_dir=$2; shiftArgs=1;;
         # (-man) usage -man;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
     esac
@@ -107,21 +144,49 @@ fi
 download_and_untar () {
     local fname=$1
     local url=$2
-    
+
     TEMP_FILES+=("$fname")
-    
-    if [[ -f "$fname" ]]; then
-        msg "File $fname already exists, removing..."
-        rm -f "$fname"
+
+    if [[ -n "$local_tarballs_dir" ]]; then
+        local local_file="${local_tarballs_dir}/${fname}"
+        if [[ ! -f "$local_file" ]]; then
+            bail "Air-gap mode: expected tarball not found: $local_file"
+        fi
+        msg "Using local tarball: $local_file"
+        cp "$local_file" "$fname"
+    else
+        if [[ -f "$fname" ]]; then
+            msg "File $fname already exists, removing..."
+            rm -f "$fname"
+        fi
+        msg "Downloading $url"
+        if ! wget -q --show-progress "$url"; then
+            bail "Failed to download $url"
+        fi
     fi
-    
-    msg "Downloading $url"
-    if ! wget -q --show-progress "$url"; then
-        bail "Failed to download $url"
-    fi
-    
+
     msg "Extracting $fname"
     tar zxf "$fname" || bail "Failed to untar $fname"
+}
+
+write_state_file () {
+    mkdir -p "$(dirname "$state_file")"
+    cat << EOF > "$state_file"
+# p4prometheus monitoring stack - install state
+# Written by install_prom_graf.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ)
+# This file is read by update_prom_graf.sh to preserve install choices across upgrades.
+# CLI flags always override these values.
+DATA_ROOT=${data_root}
+BIN_DIR=${bin_dir}
+RETENTION_MONTHS=${retention_months}
+VER_NODE_EXPORTER=${VER_NODE_EXPORTER}
+VER_PROMETHEUS=${VER_PROMETHEUS}
+VER_ALERTMANAGER=${VER_ALERTMANAGER}
+VER_VICTORIA_METRICS=${VER_VICTORIA_METRICS}
+VER_PUSHGATEWAY=${VER_PUSHGATEWAY}
+EOF
+    chmod 644 "$state_file"
+    msg "Install state written to: $state_file"
 }
 
 check_os () {
@@ -161,7 +226,7 @@ check_os () {
 
 install_grafana () {
     msg "Installing Grafana..."
-    
+
     # Check if already installed
     if check_service_exists grafana-server; then
         msg "Grafana already installed"
@@ -170,10 +235,10 @@ install_grafana () {
     if [[ $isubuntu -eq 0 ]]; then
         # Modern approach for Ubuntu/Debian - no deprecated apt-key
         apt-get install -y apt-transport-https software-properties-common wget gnupg
-        
+
         # Add GPG key the modern way
         wget -q -O - https://packages.grafana.com/gpg.key | gpg --dearmor | sudo tee /usr/share/keyrings/grafana-archive-keyring.gpg > /dev/null
-        
+
         # Add repository with signed-by
         echo "deb [signed-by=/usr/share/keyrings/grafana-archive-keyring.gpg] https://packages.grafana.com/oss/deb stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
 
@@ -197,6 +262,26 @@ EOF
         yum install -y grafana
     fi
 
+    # Redirect Grafana data directory if a custom data_root was requested
+    if [[ "$data_root" != "/var/lib" ]]; then
+        local grafana_data_dir="${data_root}/grafana"
+        mkdir -p "$grafana_data_dir"
+        chown grafana:grafana "$grafana_data_dir" 2>/dev/null || true
+        local grafana_ini="/etc/grafana/grafana.ini"
+        if [[ -f "$grafana_ini" ]]; then
+            # Set paths.data if not already customized
+            if grep -q '^\s*;*\s*data\s*=' "$grafana_ini"; then
+                sed -i "s|^\s*;*\s*data\s*=.*|data = ${grafana_data_dir}|" "$grafana_ini"
+            else
+                # Inject under [paths] section
+                sed -i "/^\[paths\]/a data = ${grafana_data_dir}" "$grafana_ini"
+            fi
+            msg "Grafana data directory set to: $grafana_data_dir"
+        else
+            msg "Warning: /etc/grafana/grafana.ini not found - Grafana data dir not redirected"
+        fi
+    fi
+
     systemctl daemon-reload
     systemctl start grafana-server
     systemctl status grafana-server --no-pager
@@ -205,7 +290,7 @@ EOF
 
 install_alertmanager () {
     msg "Installing Alertmanager..."
-    
+
     # Check if already installed and stop if running
     if check_service_exists alertmanager && systemctl is-active --quiet alertmanager; then
         msg "Stopping existing alertmanager service..."
@@ -218,9 +303,9 @@ install_alertmanager () {
     fi
 
     mkdir -p /etc/alertmanager
-    mkdir -p /var/lib/alertmanager
+    mkdir -p "${data_root}/alertmanager"
     chown "$userid:$userid" /etc/alertmanager
-    chown "$userid:$userid" /var/lib/alertmanager
+    chown "$userid:$userid" "${data_root}/alertmanager"
 
     cd /tmp || bail "failed to cd"
     PVER="$VER_ALERTMANAGER"
@@ -231,8 +316,8 @@ install_alertmanager () {
     mv alertmanager-$PVER.linux-${arch} alertmanager-files
 
     for base_file in alertmanager amtool; do
-        bin_file=/usr/local/bin/$base_file
-        cp alertmanager-files/$base_file /usr/local/bin/
+        bin_file="${bin_dir}/$base_file"
+        cp alertmanager-files/$base_file "${bin_dir}/"
         chown "$userid:$userid" "$bin_file"
         chmod 755 "$bin_file"
         if [[ $SELinuxEnabled -eq 1 ]]; then
@@ -251,8 +336,8 @@ After=network-online.target
 User=$userid
 Group=$userid
 Type=simple
-ExecStart=/usr/local/bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml \
-    --storage.path=/var/lib/alertmanager --log.level=debug
+ExecStart=${bin_dir}/alertmanager --config.file=/etc/alertmanager/alertmanager.yml \
+    --storage.path=${data_root}/alertmanager --log.level=debug
 
 [Install]
 WantedBy=multi-user.target
@@ -299,7 +384,7 @@ restart: validate
 
 install_node_exporter () {
     msg "Installing Node Exporter..."
-    
+
     # Check if already installed and stop if running
     if check_service_exists node_exporter && systemctl is-active --quiet node_exporter; then
         msg "Stopping existing node_exporter service..."
@@ -317,12 +402,12 @@ install_node_exporter () {
     download_and_untar "$fname" "https://github.com/prometheus/node_exporter/releases/download/v$PVER/$fname"
     TEMP_FILES+=("node_exporter-$PVER.linux-${arch}")
 
-    mv "node_exporter-$PVER.linux-${arch}/node_exporter" /usr/local/bin/
-    chown "$userid:$userid" /usr/local/bin/node_exporter
-    chmod 755 /usr/local/bin/node_exporter
-    
+    mv "node_exporter-$PVER.linux-${arch}/node_exporter" "${bin_dir}/"
+    chown "$userid:$userid" "${bin_dir}/node_exporter"
+    chmod 755 "${bin_dir}/node_exporter"
+
     if [[ $SELinuxEnabled -eq 1 ]]; then
-        bin_file=/usr/local/bin/node_exporter
+        local bin_file="${bin_dir}/node_exporter"
         semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
         restorecon -vF "$bin_file"
     fi
@@ -337,7 +422,7 @@ After=network-online.target
 User=$userid
 Group=$userid
 Type=simple
-ExecStart=/usr/local/bin/node_exporter --collector.systemd \
+ExecStart=${bin_dir}/node_exporter --collector.systemd \
   --collector.systemd.unit-include=(p4.*|node_exporter)\.service
 
 [Install]
@@ -352,7 +437,7 @@ EOF
 
 install_victoria_metrics () {
     msg "Installing Victoria Metrics..."
-    
+
     # Check if already installed and stop if running
     if check_service_exists victoria-metrics && systemctl is-active --quiet victoria-metrics; then
         msg "Stopping existing victoria-metrics service..."
@@ -373,8 +458,8 @@ install_victoria_metrics () {
 
     for base_file in victoria-metrics-prod vmagent-prod vmalert-prod vmauth-prod vmbackup-prod vmrestore-prod vmctl-prod; do
         if [[ -f "$base_file" ]]; then
-            bin_file=/usr/local/bin/$base_file
-            mv "$base_file" /usr/local/bin/
+            local bin_file="${bin_dir}/$base_file"
+            mv "$base_file" "${bin_dir}/"
             chown "$userid:$userid" "$bin_file"
             chmod 755 "$bin_file"
             if [[ $SELinuxEnabled -eq 1 ]]; then
@@ -383,6 +468,9 @@ install_victoria_metrics () {
             fi
         fi
     done
+
+    mkdir -p "${data_root}/victoria-metrics"
+    chown -R "$userid:$userid" "${data_root}/victoria-metrics"
 
     cat << EOF > /etc/systemd/system/victoria-metrics.service
 [Unit]
@@ -394,16 +482,13 @@ After=network-online.target
 User=prometheus
 Group=prometheus
 Type=simple
-ExecStart=/usr/local/bin/victoria-metrics-prod \
-    -storageDataPath /var/lib/victoria-metrics/ \
-    -retentionPeriod=6
+ExecStart=${bin_dir}/victoria-metrics-prod \
+    -storageDataPath ${data_root}/victoria-metrics/ \
+    -retentionPeriod=${retention_months}
 
 [Install]
 WantedBy=multi-user.target
 EOF
-
-    mkdir -p /var/lib/victoria-metrics
-    chown -R "$userid:$userid" /var/lib/victoria-metrics
 
     systemctl daemon-reload
     systemctl enable victoria-metrics
@@ -413,7 +498,7 @@ EOF
 
 install_prometheus () {
     msg "Installing Prometheus..."
-    
+
     # Check if already installed and stop if running
     if check_service_exists prometheus && systemctl is-active --quiet prometheus; then
         msg "Stopping existing prometheus service..."
@@ -426,9 +511,9 @@ install_prometheus () {
     fi
 
     mkdir -p /etc/prometheus
-    mkdir -p /var/lib/prometheus
+    mkdir -p "${data_root}/prometheus"
     chown "$userid:$userid" /etc/prometheus
-    chown "$userid:$userid" /var/lib/prometheus
+    chown "$userid:$userid" "${data_root}/prometheus"
 
     cd /tmp || bail "failed to cd"
     PVER="$VER_PROMETHEUS"
@@ -439,8 +524,8 @@ install_prometheus () {
     mv prometheus-$PVER.linux-${arch} prometheus-files
 
     for base_file in prometheus promtool; do
-        bin_file=/usr/local/bin/$base_file
-        cp "prometheus-files/$base_file" /usr/local/bin/
+        local bin_file="${bin_dir}/$base_file"
+        cp "prometheus-files/$base_file" "${bin_dir}/"
         chown "$userid:$userid" "$bin_file"
         chmod 755 "$bin_file"
         if [[ $SELinuxEnabled -eq 1 ]]; then
@@ -465,9 +550,10 @@ After=network-online.target
 User=$userid
 Group=$userid
 Type=simple
-ExecStart=/usr/local/bin/prometheus \
+ExecStart=${bin_dir}/prometheus \
  --config.file /etc/prometheus/prometheus.yml \
- --storage.tsdb.path /var/lib/prometheus/ \
+ --storage.tsdb.path ${data_root}/prometheus/ \
+ --storage.tsdb.retention.time=$(( retention_months * 30 ))d \
  --web.console.templates=/etc/prometheus/consoles \
  --web.console.libraries=/etc/prometheus/console_libraries
 
@@ -475,11 +561,29 @@ ExecStart=/usr/local/bin/prometheus \
 WantedBy=multi-user.target
 EOF
 
+    # Build the node_exporter targets block
+    local targets_block=""
+    if [[ ${#scrape_targets[@]} -gt 0 ]]; then
+        targets_block="    - targets:"$'\n'
+        for t in "${scrape_targets[@]}"; do
+            targets_block+="        - ${t}"$'\n'
+        done
+    else
+        targets_block="    # ==========================================================\n"
+        targets_block+="    # CONFIGURE THESE VALUES AS APPROPRIATE FOR YOUR SERVERS!\n"
+        targets_block+="    # Note: names appear as labels in metrics - avoid raw IPs.\n"
+        targets_block+="    # Default port for node_exporter is 9100.\n"
+        targets_block+="    # Re-run with -target flags to populate this automatically.\n"
+        targets_block+="    # ==========================================================\n"
+        targets_block+="    - targets:\n"
+        targets_block+="        - localhost:9100\n"
+        targets_block+="        - my_p4_server:9100\n"
+    fi
+
     cat << EOF > /etc/prometheus/prometheus.yml
 global:
-  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
-  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
-  # scrape_timeout is set to the global default (10s).
+  scrape_interval:     15s
+  evaluation_interval: 15s
 
 # Alertmanager configuration - optional
 alerting:
@@ -488,12 +592,11 @@ alerting:
     - targets:
         - localhost:9093
 
-# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+# Alert rules - see https://github.com/perforce/p4prometheus for perforce_rules.yml
 # rule_files:
-  # - "perforce_rules.yml"
+#   - "perforce_rules.yml"
+#   - "perforce_rules_local.yml"  # local customizations - never overwritten by updates
 
-# A scrape configuration containing exactly one endpoint to scrape:
-# Here it's Prometheus itself.
 scrape_configs:
   - job_name: 'prometheus'
     static_configs:
@@ -501,25 +604,12 @@ scrape_configs:
 
   - job_name: 'node_exporter'
     static_configs:
-    # ==========================================================
-    # CONFIGURE THESE VALUES AS APPROPRIATE FOR YOUR SERVERS!!!!
-    # Note that the names here will appear as labels in your metrics.
-    # So recommend not using IP address as not very user friendly!
-    # The port is going to be 9100 by default for node_exporter unless using Windows Exporter targets are specified
-    # ==========================================================
-    - targets:
-        - localhost:9100
-        - my_p4_server:9100
-
+$(echo -e "$targets_block")
   # ==========================================================
   # This section SHOULD BE DELETED if pushgateway not in use
   # ==========================================================
   - job_name: 'pushgateway'
     honor_labels: true
-    # Optional auth settings if this is configured for security
-    # basic_auth:
-    #   username: admin
-    #   password: SomeSecurePassword
     static_configs:
       - targets:
           - localhost:9091
@@ -551,7 +641,7 @@ restart: validate
 
 install_pushgateway () {
     msg "Installing Pushgateway..."
-    
+
     # Check if already installed and stop if running
     if check_service_exists pushgateway && systemctl is-active --quiet pushgateway; then
         msg "Stopping existing pushgateway service..."
@@ -569,19 +659,18 @@ install_pushgateway () {
     download_and_untar "$fname" "https://github.com/prometheus/pushgateway/releases/download/v$PVER/$fname"
     TEMP_FILES+=("pushgateway-$PVER.linux-${arch}")
 
-    mv "pushgateway-$PVER.linux-${arch}/pushgateway" /usr/local/bin/
-    chown "$userid:$userid" /usr/local/bin/pushgateway
-    chmod 755 /usr/local/bin/pushgateway
-    
+    mv "pushgateway-$PVER.linux-${arch}/pushgateway" "${bin_dir}/"
+    chown "$userid:$userid" "${bin_dir}/pushgateway"
+    chmod 755 "${bin_dir}/pushgateway"
+
     if [[ $SELinuxEnabled -eq 1 ]]; then
-        bin_file=/usr/local/bin/pushgateway
+        local bin_file="${bin_dir}/pushgateway"
         semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
         restorecon -vF "$bin_file"
     fi
-    
-    # Create directory for persistence file
-    mkdir -p /var/lib/pushgateway
-    chown "$userid:$userid" /var/lib/pushgateway
+
+    mkdir -p "${data_root}/pushgateway"
+    chown "$userid:$userid" "${data_root}/pushgateway"
 
     cat << EOF > /etc/systemd/system/pushgateway.service
 [Unit]
@@ -593,10 +682,10 @@ After=network-online.target
 User=$userid
 Group=$userid
 Type=simple
-ExecStart=/usr/local/bin/pushgateway \
+ExecStart=${bin_dir}/pushgateway \
  --web.listen-address=:9091 \
  --web.telemetry-path=/metrics \
- --persistence.file=/var/lib/pushgateway/metric.store \
+ --persistence.file=${data_root}/pushgateway/metric.store \
  --persistence.interval=15m \
  --log.level=info
 
@@ -610,8 +699,63 @@ EOF
     systemctl status pushgateway --no-pager
 }
 
+check_health () {
+    msg ""
+    msg "Running health checks..."
+    local all_ok=1
+
+    # Service status checks
+    local services=(node_exporter alertmanager victoria-metrics prometheus grafana-server)
+    [[ $InstallPushgateway -eq 1 ]] && services+=(pushgateway)
+
+    for service in "${services[@]}"; do
+        if systemctl is-active --quiet "$service" 2>/dev/null; then
+            msg "  ✓ $service is running"
+        else
+            msg "  ✗ $service is NOT running - check logs with: journalctl -u $service"
+            all_ok=0
+        fi
+    done
+
+    # HTTP endpoint checks
+    msg ""
+    msg "Checking HTTP endpoints (allow a few seconds for startup)..."
+    sleep 3
+    local endpoints=(
+        "Prometheus:localhost:9090/-/healthy"
+        "VictoriaMetrics:localhost:8428/health"
+        "Alertmanager:localhost:9093/-/healthy"
+        "Grafana:localhost:3000/api/health"
+        "NodeExporter:localhost:9100/metrics"
+    )
+    [[ $InstallPushgateway -eq 1 ]] && endpoints+=("Pushgateway:localhost:9091/-/healthy")
+
+    for entry in "${endpoints[@]}"; do
+        local name="${entry%%:*}"
+        local url="http://${entry#*:}"
+        if curl -sf --max-time 5 "$url" > /dev/null 2>&1; then
+            msg "  ✓ $name responding at $url"
+        else
+            msg "  ✗ $name not responding at $url"
+            all_ok=0
+        fi
+    done
+
+    if [[ $all_ok -eq 1 ]]; then
+        msg ""
+        msg "All health checks passed."
+    else
+        msg ""
+        msg "One or more health checks failed. Review the output above."
+    fi
+}
+
 msg "Starting installation process..."
 msg "Architecture: $arch"
+msg "Data root:    $data_root"
+msg "Bin dir:      $bin_dir"
+msg "Retention:    ${retention_months} months"
+[[ -n "$local_tarballs_dir" ]] && msg "Air-gap mode: using tarballs from $local_tarballs_dir"
 
 check_os
 
@@ -623,38 +767,38 @@ install_prometheus
 [[ $InstallPushgateway -eq 1 ]] && install_pushgateway
 install_grafana
 
-msg ""
-msg "Verifying installations..."
-for service in node_exporter alertmanager victoria-metrics prometheus grafana-server; do
-    if systemctl is-active --quiet "$service" 2>/dev/null; then
-        msg "✓ $service is running"
-    else
-        msg "✗ $service is NOT running - check logs with: journalctl -u $service"
-    fi
-done
+write_state_file
 
-if [[ $InstallPushgateway -eq 1 ]]; then
-    if systemctl is-active --quiet pushgateway 2>/dev/null; then
-        msg "✓ pushgateway is running"
-    else
-        msg "✗ pushgateway is NOT running - check logs with: journalctl -u pushgateway"
-    fi
-fi
+check_health
 
 echo "
+======================================================================
+Installation complete.
 
-Should have installed node_exporter, prometheus and friends.
+Data directories:
+  Prometheus:        ${data_root}/prometheus/
+  VictoriaMetrics:   ${data_root}/victoria-metrics/
+  Alertmanager:      ${data_root}/alertmanager/
+  Grafana:           ${data_root}/grafana/  (if -d was specified)
+  Pushgateway:       ${data_root}/pushgateway/  (if installed)
 
-Please review the following config files, and adjust as necessary (reloading/restarting services as appropriate):
+Config files to review:
+  /etc/prometheus/prometheus.yml     (scrape targets, rule files)
+  /etc/alertmanager/alertmanager.yml (email/slack notifications)
 
-AT THE VERY LEAST YOU WILL NEED TO CHANGE THE TARGETS PROMETHEUS IS SCRAPING!!!
+$(if [[ ${#scrape_targets[@]} -eq 0 ]]; then echo "  ⚠  No -target flags were specified.
+  Edit /etc/prometheus/prometheus.yml to set your actual scrape targets:
+    cd /etc/prometheus && vi prometheus.yml && make && make restart
+"; fi)
+Ports that may need to be opened in your firewall:
+  9090  Prometheus UI
+  9093  Alertmanager UI
+  8428  VictoriaMetrics
+  9100  Node Exporter (metrics)
+  3000  Grafana UI
+$(if [[ $InstallPushgateway -eq 1 ]]; then echo "  9091  Pushgateway"; fi)
 
-    cd /etc/prometheus
-    vi prometheus.yml
-    make
-    make restart
+Install state saved to: $state_file
+  (Future upgrades via update_prom_graf.sh will use these paths automatically)
+======================================================================"
 
-    # Ditto for alertmanager config file if you are using it
-    /etc/alertmanager/alertmanager.yml
-
-"
