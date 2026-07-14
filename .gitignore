@@ -6,8 +6,6 @@
 *.log
 *.out
 p4prometheus
-test/
-bin/
 testmon/
 
 # AI session logs and generated planning files
