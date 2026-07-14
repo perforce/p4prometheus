@@ -1,7 +1,10 @@
 #!/bin/bash
 # Updates the following: p4prometheus, node_exporter.
 #
-# First version assumes SDP environment.
+# Reads install state from p4prom_install.env (written by install_p4prom.sh)
+# so previously-chosen paths are preserved automatically across upgrades.
+# Automatically migrates config files from /p4/common/config/ to
+# /p4/common/site/config/ for SDP installs upgrading from older versions.
 #
 
 # shellcheck disable=SC2128
@@ -19,6 +22,8 @@ metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
 # To avoid issues with SELinux, install service config files into /var/vmagent
 vmagent_config_dir="/var/vmagent"
+# Air-gap: set to a directory of pre-staged release tarballs to skip downloads
+local_tarballs_dir=""
 
 
 VER_NODE_EXPORTER="1.3.1"
@@ -70,24 +75,31 @@ function usage
 
    echo "USAGE for update_p4prom.sh:
 
-update_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>] [-u <osuser>] [-c <p4prom_config_dir>]
+update_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>]
+                 [-u <osuser>] [-c <p4prom_config_dir>] [-b <bin_dir>]
+                 [--local-tarballs-dir <path>]
 
    or
 
 update_p4prom.sh -h
 
-    <metrics_root> is the directory where metrics will be written - default: $metrics_root
-    <metrics_link> is an alternative link to metrics_root where metrics will be written - default: $metrics_link
-                Typically only used for SDP installations.
-    <osuser>    Operating system user, e.g. perforce, under which p4d process is running
-    <p4prom_config_dir> Specify directory to install p4prometheus/p4metrics config files - useful for nonsdp installs
-    -vmagent    Means install vmagent as replacement for legacy push_metrics/report_instance_data cron jobs and config file.
-                Not relevant for most installations - intended for P4RA installations only.
+    <metrics_root>        Directory where metrics are written - default: $metrics_root
+    <metrics_link>        Symlink to metrics_root (SDP installs only) - default: $metrics_link
+    <osuser>              OS user running p4d (e.g. perforce)
+    <p4prom_config_dir>   Config file directory (non-SDP installs) - default: /etc/p4prometheus
+    -b <bin_dir>          Binary installation directory - default: $local_bin_dir
+    --local-tarballs-dir  Directory of pre-staged release tarballs (air-gap installs).
+                          Skips all downloads; file names must match GitHub release assets.
+    -vmagent              Install vmagent to replace legacy push_metrics cron jobs.
+                          Not relevant for most installations - intended for P4RA only.
 
 Specify either the SDP instance (e.g. 1), or -nosdp
 
-WARNING: If using -nosdp, then please ensure P4PORT and P4USER are appropriately set in the environment and that you can connect
-    to your server (e.g. you have done a 'p4 trust' if required, and are logged in already)
+WARNING: If using -nosdp, ensure P4PORT and P4USER are set and you can connect
+    (e.g. 'p4 trust' done, already logged in)
+
+Note: If a p4prom_install.env state file exists from a prior install_p4prom.sh
+    run, paths are loaded from it automatically. CLI flags always override.
 
 Examples:
 
@@ -107,6 +119,9 @@ declare -i InstallVMAgent=0
 declare OsUser=""
 declare P4LOG=""
 declare p4prom_config_dir=""
+# Track whether CLI explicitly overrode path defaults (to avoid state file clobbering)
+declare -i cli_bin_dir_set=0
+declare -i cli_config_dir_set=0
 
 set +u
 while [[ $# -gt 0 ]]; do
@@ -118,7 +133,9 @@ while [[ $# -gt 0 ]]; do
         (-nosdp) UseSDP=0;;
         (-vmagent) InstallVMAgent=1;;
         (-l) P4LOG="$2"; shiftArgs=1;;
-        (-c) p4prom_config_dir="$2"; shiftArgs=1;;
+        (-c) p4prom_config_dir="$2"; cli_config_dir_set=1; shiftArgs=1;;
+        (-b) local_bin_dir="$2"; cli_bin_dir_set=1; shiftArgs=1;;
+        (--local-tarballs-dir) local_tarballs_dir="$2"; shiftArgs=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
     esac
@@ -170,8 +187,46 @@ if [[ $UseSDP -eq 1 ]]; then
     OSGROUP=$(id -gn "$OSUSER")
     p4="$P4BIN -u $P4USER -p $P4PORT"
     $p4 info -s || bail "Can't connect to P4PORT: $P4PORT"
-    p4prom_config_dir="/p4/common/config"
+
+    # New default: site/config (SDP-upgrade safe). Will migrate from old location if needed.
+    [[ $cli_config_dir_set -eq 0 ]] && p4prom_config_dir="/p4/common/site/config"
     p4prom_bin_dir="/p4/common/site/bin"
+
+    # Load state file to restore previously-chosen paths (CLI flags already override defaults)
+    local_state_file="${p4prom_config_dir}/p4prom_install.env"
+    legacy_state_file="/p4/common/config/p4prom_install.env"
+    for sf in "$local_state_file" "$legacy_state_file"; do
+        if [[ -f "$sf" ]]; then
+            msg "Loading install state from: $sf"
+            saved_bin=$(grep '^LOCAL_BIN_DIR=' "$sf" 2>/dev/null | cut -d= -f2)
+            [[ $cli_bin_dir_set -eq 0 && -n "$saved_bin" ]] && local_bin_dir="$saved_bin"
+            break
+        fi
+    done
+
+    # Automatically migrate config files from /p4/common/config/ to site/config/
+    # for installs upgrading from versions before this feature was added.
+    old_config_dir="/p4/common/config"
+    migrate_count=0
+    for conf in p4prometheus.yaml p4metrics.yaml monitor_metrics.yaml; do
+        old_file="${old_config_dir}/${conf}"
+        new_file="${p4prom_config_dir}/${conf}"
+        if [[ -f "$old_file" ]] && [[ ! -f "$new_file" ]]; then
+            mkdir -p "$p4prom_config_dir"
+            cp "$old_file" "$new_file"
+            chown "$OSUSER:$OSGROUP" "$new_file" 2>/dev/null || true
+            # Annotate old file so operators know what happened
+            printf '\n# NOTICE: This file was automatically copied to %s\n' "$new_file" >> "$old_file"
+            printf '# by update_p4prom.sh on %s.\n' "$(date)" >> "$old_file"
+            printf '# The active configuration is now at the location above.\n' >> "$old_file"
+            msg "  Migrated: $old_file → $new_file"
+            migrate_count=$(( migrate_count + 1 ))
+        fi
+    done
+    if [[ $migrate_count -gt 0 ]]; then
+        msg "Auto-migrated $migrate_count config file(s) to SDP-upgrade-safe location: $p4prom_config_dir"
+        msg "Original files preserved at $old_config_dir with deprecation notices."
+    fi
 else
     SDP_INSTANCE=""
     p4port=${Port:-$P4PORT}
@@ -180,8 +235,18 @@ else
     OSGROUP=$(id -gn "$OSUSER")
     p4="p4 -u $p4user -p $p4port"
     $p4 info -s || bail "Can't connect to P4PORT: $p4port"
-    p4prom_config_dir=${p4prom_config_dir:-"/etc/p4prometheus"}
+    [[ $cli_config_dir_set -eq 0 ]] && p4prom_config_dir=${p4prom_config_dir:-"/etc/p4prometheus"}
     p4prom_bin_dir="$p4prom_config_dir"
+
+    # Load state file for non-SDP installs
+    nosdp_state_file="${p4prom_config_dir}/p4prom_install.env"
+    if [[ -f "$nosdp_state_file" ]]; then
+        msg "Loading install state from: $nosdp_state_file"
+        saved_bin=$(grep '^LOCAL_BIN_DIR=' "$nosdp_state_file" 2>/dev/null | cut -d= -f2)
+        [[ $cli_bin_dir_set -eq 0 && -n "$saved_bin" ]] && local_bin_dir="$saved_bin"
+        saved_metrics=$(grep '^METRICS_ROOT=' "$nosdp_state_file" 2>/dev/null | cut -d= -f2)
+        [[ -n "$saved_metrics" ]] && metrics_root="$saved_metrics"
+    fi
 fi
 
 p4prom_config_file="$p4prom_config_dir/p4prometheus.yaml"
@@ -252,32 +317,40 @@ update_p4prometheus () {
             systemd_enable_and_restart "${service_file}" "${service_name}"
         fi
         msg "Current version $curr_ver of $progname is up-to-date"
-        return
+    else
+        systemctl stop $service_name
+
+        cd /tmp || bail "Failed to cd to /tmp"
+        PVER="$VER_P4PROMETHEUS"
+        fname="${progname}.linux-${arch}.gz"
+        url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
+        [[ -e ${progname}.linux-${arch} ]] && rm -f ${progname}.linux-${arch}
+        download_gz "$fname" "$url"
+
+        gunzip "$fname"
+        chmod +x ${progname}.linux-${arch}
+        mv ${progname}.linux-${arch} ${local_bin_dir}/${progname}
+        if [[ $SELinuxEnabled -eq 1 ]]; then
+            bin_file=${local_bin_dir}/${progname}
+            semanage fcontext -a -t bin_t $bin_file
+            restorecon -vF $bin_file
+        fi
+
+        msg "Creating service file for $service_name"
+        write_p4prometheus_service_file "${service_file}"
+        systemd_enable_and_restart "${service_file}" "${service_name}"
     fi
 
-    systemctl stop $service_name
-
-    PVER="$VER_P4PROMETHEUS"
-    fname="${progname}.linux-${arch}.gz"
-    url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
-    msg "downloading and extracting $url"
-    [[ -e ${progname}.linux-${arch} ]] && rm -f ${progname}.linux-${arch}
-    wget -q "$url"
-
-    gunzip "$fname"
-    chmod +x ${progname}.linux-${arch}
-    mv ${progname}.linux-${arch} ${local_bin_dir}/${progname}
-    if [[ $SELinuxEnabled -eq 1 ]]; then
-        bin_file=${local_bin_dir}/${progname}
-        semanage fcontext -a -t bin_t $bin_file
-        restorecon -vF $bin_file
+    # Refresh or create HMS wrapper script for SDP installs
+    if [[ ${UseSDP:-0} -eq 1 ]]; then
+        local wrapper="${p4prom_bin_dir}/p4prometheus-start.sh"
+        msg "Refreshing HMS config-resolver wrapper: $wrapper"
+        write_p4prometheus_wrapper_script "$wrapper" "$p4prom_config_dir" "/p4/common/config"
+        if [[ $SELinuxEnabled -eq 1 ]]; then
+            semanage fcontext -a -t bin_t "$wrapper" 2>/dev/null || true
+            restorecon -vF "$wrapper"
+        fi
     fi
-
-    msg "Creating service file for $service_name"
-    write_p4prometheus_service_file "${service_file}"
-
-    systemd_enable_and_restart "${service_file}" "${service_name}"
-
 }
 
 update_p4metrics () {
@@ -294,11 +367,11 @@ update_p4metrics () {
     if [[ "$up_to_date" != "true" ]]; then
         systemctl stop $service_name
 
+        cd /tmp || bail "Failed to cd to /tmp"
         PVER="$VER_P4PROMETHEUS"
         fname="${progname}.linux-${arch}.gz"
         url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
-        msg "downloading and extracting $url"
-        wget -q "$url"
+        download_gz "$fname" "$url"
 
         gunzip "$fname"
         chmod +x "${progname}.linux-${arch}"
@@ -322,6 +395,17 @@ update_p4metrics () {
     write_p4metrics_service_file "${service_file}"
 
     systemd_enable_and_restart "${service_file}" "${service_name}"
+
+    # Refresh or create HMS wrapper script for SDP installs
+    if [[ ${UseSDP:-0} -eq 1 ]]; then
+        local wrapper="${p4prom_bin_dir}/p4metrics-start.sh"
+        msg "Refreshing HMS config-resolver wrapper: $wrapper"
+        write_p4metrics_wrapper_script "$wrapper" "$p4prom_config_dir" "/p4/common/config"
+        if [[ $SELinuxEnabled -eq 1 ]]; then
+            semanage fcontext -a -t bin_t "$wrapper" 2>/dev/null || true
+            restorecon -vF "$wrapper"
+        fi
+    fi
 
     # Update the crontab of the specified user - to comment out entries relating to previous installs of monitoring
     # These are replaced by the systemd timers or p4metrics service.
@@ -399,17 +483,33 @@ fi
 # update_monitor_locks
 systemctl list-timers | grep -E "^NEXT|monitor"
 
-echo "
+# Write updated state file so future upgrades stay on the same paths
+if [[ $UseSDP -eq 1 ]]; then
+    p4d_state_file="${p4prom_config_dir}/p4prom_install.env"
+else
+    p4d_state_file="${p4prom_config_dir}/p4prom_install.env"
+fi
+write_p4d_state_file "$p4d_state_file"
 
-Have updated node_exporter and p4prometheus.
-"
+echo "
+======================================================================
+Update complete.
+
+Config dir:    ${p4prom_config_dir}
+Binaries dir:  ${local_bin_dir}
+Metrics dir:   ${metrics_root}
+
+Install state saved to: ${p4d_state_file}
+  (Future upgrades will use these paths automatically)
+======================================================================"
 
 if [[ $InstallVMAgent -eq 1 ]]; then
-    echo "Please start the  vmagent service when you have checked its configuration...
+    echo "
+Please start the vmagent service when you have checked its configuration:
 
     systemctl start vmagent
     systemctl status vmagent --no-pager
-    "
+"
 fi
 
 if [[ $NewP4MetricsConfig -eq 1 ]]; then
@@ -422,10 +522,10 @@ Please edit this file to set any required parameters and consider re-starting th
 fi
 
 if [[ -f "$p4metrics_config_file" ]] || [[ -f "$monitor_metrics_config_file" ]]; then
-        echo "
-Manual review required:
+    echo "
+Manual review recommended:
 
-If p4metrics/monitor_metrics were installed or updated, please manually review and update these files as needed:
+If p4metrics/monitor_metrics were installed or updated, please review these files:
     - $p4metrics_config_file
     - $monitor_metrics_config_file
 "
