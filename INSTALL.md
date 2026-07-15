@@ -28,12 +28,12 @@ On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc,
   - [Metrics Available](#metrics-available)
   - [Automated Script Installation](#automated-script-installation)
   - [Enterprise Deployment Options](#enterprise-deployment-options)
-    - [Dedicated Data Volume](#dedicated-data-volume--d-)
-    - [Migrating existing data to a new volume](#migrating-existing-data-to-a-new-volume)
-    - [Retention Period](#retention-period--r-)
-    - [Custom Binary Directory](#custom-binary-directory--b-)
-    - [Additional Prometheus Scrape Targets](#additional-prometheus-scrape-targets--target-)
-    - [Air-Gap / Offline Installation](#air-gap--offline-installation---local-tarballs-dir-)
+    - [Dedicated Data Volume (`-d`)](#dedicated-data-volume--d)
+      - [Migrating existing data to a new volume](#migrating-existing-data-to-a-new-volume)
+    - [Retention Period (`-r`)](#retention-period--r)
+    - [Custom Binary Directory (`-b`)](#custom-binary-directory--b)
+    - [Additional Prometheus Scrape Targets (`-target`)](#additional-prometheus-scrape-targets--target)
+    - [Air-Gap / Offline Installation (`--local-tarballs-dir`)](#air-gap--offline-installation---local-tarballs-dir)
     - [Install State Files](#install-state-files)
     - [SDP-Upgrade Compatibility](#sdp-upgrade-compatibility)
     - [HMS Fleet Compatibility (Hostname-Based Config)](#hms-fleet-compatibility-hostname-based-config)
@@ -54,6 +54,7 @@ On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc,
   - [Alerting](#alerting)
     - [Alertmanager config](#alertmanager-config)
     - [Alerting rules](#alerting-rules)
+      - [Split-file alerting rules (recommended)](#split-file-alerting-rules-recommended)
     - [Prometheus config to reference alertmanager rules](#prometheus-config-to-reference-alertmanager-rules)
   - [Troubleshooting](#troubleshooting)
     - [p4prometheus](#p4prometheus)
@@ -83,7 +84,7 @@ Checkout  following files:
 - [update_p4prom.sh](scripts/update_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/update_p4prom.sh) - the updater for servers hosting a p4d instance
 - [install_prom_graf.sh](scripts/install_prom_graf.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for the monitoring server hosting Grafana and Prometheus (and Victoria Metrics)
 - [update_prom_graf.sh](scripts/update_prom_graf.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/update_prom_graf.sh) - the updater for the monitoring server
-- [migrate_p4prom_data.sh](scripts/migrate_p4prom_data.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/migrate_p4prom_data.sh) - migrate monitoring server data to a new base directory (e.g. a dedicated `/data` volume) without a full reinstall
+- [migrate_prom_graf_data.sh](scripts/migrate_prom_graf_data.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/migrate_prom_graf_data.sh) - migrate monitoring server data to a new base directory (e.g. a dedicated `/data` volume) without a full reinstall
 - [install_node.sh](scripts/install_node.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_node.sh) - the installer for monitoring a server hosting other tools such as Swarm, Hansoft, HTH (Helix TeamHub) etc. Just installs `node_exporter`
 
 Standalone script just to install the `lslocks` monitoring (normally covered by `install_p4prom.sh` above):
@@ -127,13 +128,13 @@ If you have an existing install and want to move the data to a new volume withou
 
 ```bash
 # 1. Preview what would happen (no changes made):
-sudo ./migrate_p4prom_data.sh -d /data --dry-run
+sudo ./migrate_prom_graf_data.sh -d /data --dry-run
 
 # 2. Perform the migration (stops services briefly, moves data, restarts):
-sudo ./migrate_p4prom_data.sh -d /data
+sudo ./migrate_prom_graf_data.sh -d /data
 
 # 3. Confirm all services are healthy, then remove the old directories:
-sudo ./migrate_p4prom_data.sh -d /data --cleanup-old
+sudo ./migrate_prom_graf_data.sh -d /data --cleanup-old
 ```
 
 Preflight checks are run before any service is stopped: sufficient free space (data size + 10% headroom), writable destination, no path overlap, and `rsync` availability for cross-device moves.
