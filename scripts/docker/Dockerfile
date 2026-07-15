@@ -41,12 +41,11 @@ RUN pip3 install pytest-testinfra p4python
 FROM p4promtestbase AS p4promtest-sdp
 
 ADD docker/setup_sdp.sh /root/
-# ADD docker/bin.linuxarm64/p4 /tmp/
-# ADD docker/bin.linuxarm64/p4d /tmp/
 RUN /root/setup_sdp.sh
 ADD docker/run_p4prom_tests.sh /root/
 ADD tests/test_sdp.py /root/
 ADD install_p4prom.sh /root/
+ADD p4prom_common.sh /root/
 
 CMD ["/sbin/init"]
 

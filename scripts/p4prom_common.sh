@@ -120,18 +120,18 @@ write_p4prometheus_wrapper_script() {
 HOST=\$(hostname -s)
 
 for conf in \\
-    "${config_dir}/p4prometheus.\${HOST}.yml" \\
-    "${config_dir}/p4prometheus.yml" \\
-    "${fallback_config_dir}/p4prometheus.yml"; do
+    "${config_dir}/p4prometheus.\${HOST}.yaml" \\
+    "${config_dir}/p4prometheus.yaml" \\
+    "${fallback_config_dir}/p4prometheus.yaml"; do
     if [[ -f "\$conf" ]]; then
         exec ${local_bin_dir}/p4prometheus --config="\$conf" "\$@"
     fi
 done
 
 echo "ERROR: No p4prometheus config file found. Tried:" >&2
-echo "  ${config_dir}/p4prometheus.\${HOST}.yml" >&2
-echo "  ${config_dir}/p4prometheus.yml" >&2
-echo "  ${fallback_config_dir}/p4prometheus.yml" >&2
+echo "  ${config_dir}/p4prometheus.\${HOST}.yaml" >&2
+echo "  ${config_dir}/p4prometheus.yaml" >&2
+echo "  ${fallback_config_dir}/p4prometheus.yaml" >&2
 exit 1
 EOF
     chmod 755 "$wrapper_file"
@@ -151,18 +151,18 @@ write_p4metrics_wrapper_script() {
 HOST=\$(hostname -s)
 
 for conf in \\
-    "${config_dir}/p4metrics.\${HOST}.yml" \\
-    "${config_dir}/p4metrics.yml" \\
-    "${fallback_config_dir}/p4metrics.yml"; do
+    "${config_dir}/p4metrics.\${HOST}.yaml" \\
+    "${config_dir}/p4metrics.yaml" \\
+    "${fallback_config_dir}/p4metrics.yaml"; do
     if [[ -f "\$conf" ]]; then
         exec ${local_bin_dir}/p4metrics --config="\$conf" "\$@"
     fi
 done
 
 echo "ERROR: No p4metrics config file found. Tried:" >&2
-echo "  ${config_dir}/p4metrics.\${HOST}.yml" >&2
-echo "  ${config_dir}/p4metrics.yml" >&2
-echo "  ${fallback_config_dir}/p4metrics.yml" >&2
+echo "  ${config_dir}/p4metrics.\${HOST}.yaml" >&2
+echo "  ${config_dir}/p4metrics.yaml" >&2
+echo "  ${fallback_config_dir}/p4metrics.yaml" >&2
 exit 1
 EOF
     chmod 755 "$wrapper_file"
