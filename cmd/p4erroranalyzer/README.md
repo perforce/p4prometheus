@@ -120,7 +120,12 @@ Notes:
 - The integrated triage and Python helper both ask for strict JSON output with ranked findings.
 - Keep this as a triage/explainer layer; anomaly detection remains statistical in `p4erroranalyzer`.
 
+## Notes
+
+The list of all errors was generated from P4API *.cc in msgs:
 
 ```
 /p4/msgs$ ls *.cc | grep -v msghelp | grep -v msgconfig | grep -v msgspec | while read f; do perl -0777 -ne 'print "$1\n" while /(ErrorId\s+Msg.*?;)/sg' $f | grep -v DEPRECATED | grep -v E_INFO >> all.txt; done
 ```
+
+Then the script `generate_error_lookup_go.py` creates `error_lookup_generated.go`
