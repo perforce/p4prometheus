@@ -213,10 +213,10 @@ check_os () {
     # Set compatibility flags
     case "$OS_ID" in
         ubuntu|debian)
-            isubuntu=0
+            isubuntu=1
             ;;
         centos|rhel|rocky|almalinux|fedora)
-            isubuntu=1
+            isubuntu=0
             ;;
         *)
             bail "Unsupported OS: $OS_ID. This script supports Ubuntu, Debian, CentOS, RHEL, Rocky Linux, AlmaLinux, and Fedora."
