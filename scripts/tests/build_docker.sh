@@ -11,7 +11,7 @@ set -u
 # Goes together with run_docker_tests.sh
 # This is provided as a useful tool for testing!
 
-# We calculate dir relative to directory of script
+# We calculate p4prometheus project root dir relative to directory of script
 script_dir="${0%/*}"
 root_dir="$(cd "$script_dir/.."; pwd -P)"
 

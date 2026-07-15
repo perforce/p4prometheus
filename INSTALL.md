@@ -9,6 +9,7 @@ On monitoring server, install:
 - victoria metrics (recommended due to performance and more efficient data storage - can store data for 6 months or as long as required)
 - node_exporter
 - alertmanager (optional)
+- pint (optional rules linter for more reliable monitoring)
 
 On your commit/master or any perforce edge/replica server machines, install:
 
@@ -943,6 +944,8 @@ Checking perforce_rules.yml
 ```
 
 For an example of a good starter alertmanager rules file see: [example prometheus_rules.yml file](examples/prometheus/perforce_rules.yml)
+
+See also the [example pint configuration](examples/pint/README.md) - this is a very valuable linter/validator for alerting rules!
 
 ## Troubleshooting
 

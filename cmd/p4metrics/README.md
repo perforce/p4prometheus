@@ -227,3 +227,122 @@ A: Memory tracking is Linux-only (uses /proc filesystem). On Windows/macOS, the 
 **Q: What happens if `p4 monitor terminate` fails?**
 
 A: The failure is logged at WARN level with error details, but processing continues. The process is not counted as successfully killed, so the `p4_memlimit_kills_total` counter won't increment.
+
+## P4DAM/Search Metrics
+
+Notes for future implementation!
+
+```bash
+$ p4 property -l | grep Search
+P4.P4Search.URL = https://p4search.das.perforce.com:443
+
+$ curl https://p4search.das.perforce.com:443/api/v1/status
+{
+  "status": {
+    "code": 200,
+    "message": "OK"
+  },
+  "data": [
+    {
+      "name": "license",
+      "title": "Helix Core Search license",
+      "status": "SUCCESS",
+      "description": "License valid."
+    },
+    {
+      "name": "p4-status",
+      "title": "Helix Core server connection",
+      "status": "SUCCESS",
+      "description": "P4PORT: ssl:p4poke.perforce.com:1667"
+    },
+    {
+      "name": "p4-auth",
+      "title": "Helix Core Service authentication",
+      "status": "SUCCESS",
+      "description": "P4USER: svc-p4poke-p4search-auth"
+    },
+    {
+      "name": "p4-index",
+      "title": "Helix Core Index authentication",
+      "status": "SUCCESS",
+      "description": "P4USER: svc-p4poke-p4search-auth"
+    },
+    {
+      "name": "es-status",
+      "title": "Elasticsearch Hosts",
+      "status": "WARNING",
+      "description": "Using insecure Elasticsearch."
+    },
+    {
+      "name": "es-plugin",
+      "title": "Elasticsearch Protect plugin",
+      "status": "SUCCESS",
+      "description": "Plugin: p4search-filter(enabled)"
+    },
+    {
+      "name": "auto-detect",
+      "title": "Image detection service",
+      "status": "SUCCESS",
+      "description": "Azure Computer Vision - Content tagging"
+    },
+    {
+      "name": "OCR",
+      "title": "Optical Character Recognition service",
+      "status": "SUCCESS",
+      "description": "Azure Computer Vision - Optical Character Recognition"
+    },
+    {
+      "name": "Speech",
+      "title": "Speech to Text service",
+      "status": "SUCCESS",
+      "description": "Azure Speech to Text"
+    },
+    {
+      "name": "tess-status",
+      "title": "Tesseract",
+      "status": "SUCCESS",
+      "description": "Tesseract installed and enabled"
+    },
+    {
+      "name": "url-status",
+      "title": "Helix Search External Url",
+      "status": "SUCCESS",
+      "description": "OK: 200"
+    },
+    {
+      "name": "render-status",
+      "title": "Render Service Status",
+      "status": "FAIL",
+      "description": "Local - Rendering service. No workers registered."
+    }
+  ]
+}%
+
+$ curl https://p4search.das.perforce.com:443/api/v1/build
+{
+  "status": {
+    "code": 200,
+    "message": "OK"
+  },
+  "data": "2024.3.2686736"
+}%
+```
+
+## Swarm Redis metrics
+
+Possible for future:
+
+```bash
+$ redis-cli -p 7379 --scan --pattern 'Swarm^dev:*' | cut -d^ -f 2 | sort | uniq -c | grep -vE 'status$'
+    136 dev:group
+      1 dev:GroupsModelGroup
+      2 dev:includes
+ 116790 dev:path
+    135 dev:project
+      1 dev:ProjectsModelProject
+      2 dev:starts_with
+   5166 dev:user
+      1 dev:UsersModelUser
+      2 dev:workflow
+      1 dev:WorkflowModelWorkflow
+```

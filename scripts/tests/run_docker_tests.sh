@@ -1,6 +1,7 @@
 #!/bin/bash
 # Run the docker tests
-
+# Goes together with build_docker.sh in the same directory, which builds the Docker containers for testing.
+# This is provided as a useful tool for testing!
 set -ux
 
 script_dir="${0%/*}"

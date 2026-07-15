@@ -7,6 +7,9 @@
 *.out
 p4prometheus
 testmon/
+go.work.sum
+misc/
+test/
 
 # AI session logs and generated planning files
 ai/
@@ -25,3 +28,4 @@ ai/
 /AIDER.md
 /CODEIUM.md
 /TABNINE.md
+

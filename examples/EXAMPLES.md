@@ -5,8 +5,9 @@ This directory contains some sample files which you may wish to build on, includ
 * Sample [perforce_rules.yml](prometheus/perforce_rules.yml) which is referenced from [prometheus.yml](prometheus/prometheus.yml)
 * Sample [alertmanager.yml](alertmanager/alertmanager.yml)
 * Sample [alertmanager templates for use with Slack messages](alertmanager/templates/perforce.tmpl)
+* Sample [pint configuration - rules linter for validation](pint/README.md) - **makes much more reliable**
 
-The above includes a link to a runbook, and direct to grafana relevant dashboards.
+The above includes a link to a runbook, and directions to grafana relevant dashboards.
 
 Note that in the alertmanager example there are a couple of `test*.json` files which can be used to test template formatting
 (which is a bit fiddly/finicky to say the least!).

@@ -450,23 +450,23 @@ func TestJournalLineParsing(t *testing.T) {
 	p4m.parseJournalLine("@nx@ 2 1783328428 @62@ 1 0 0 0 0")    // ignored: not rv/pv/dv
 	p4m.parseJournalLine("@rv@ 2 @serverlog.file.3@ @ignored@") // ignored: not db.* table
 
-	assert.Equal(t, 1, p4m.journalMetrics[JournalMetric{Table: "domain", Record: "rv"}])
-	assert.Equal(t, 1, p4m.journalMetrics[JournalMetric{Table: "revsx", Record: "pv"}])
-	assert.Equal(t, 1, p4m.journalMetrics[JournalMetric{Table: "have", Record: "dv"}])
+	assert.Equal(t, 1, p4m.journalMetrics[JournalMetric{Table: "domain", Action: "rv"}])
+	assert.Equal(t, 1, p4m.journalMetrics[JournalMetric{Table: "revsx", Action: "pv"}])
+	assert.Equal(t, 1, p4m.journalMetrics[JournalMetric{Table: "have", Action: "dv"}])
 
 	longLine := "@rv@ 8 @db.domain@ @jenkins-master-squish-mac-suite_confirmation_bookmark_dialog@ 99 @@ @/var/jenkins_home/workspace/squish-mac-suite_confirmation_bookmark_dialog%40script@ @@ @@ @qtdev@"
 	p4m.parseJournalLine(longLine)
-	assert.Equal(t, 2, p4m.journalMetrics[JournalMetric{Table: "domain", Record: "rv"}])
+	assert.Equal(t, 2, p4m.journalMetrics[JournalMetric{Table: "domain", Action: "rv"}])
 }
 
-func TestMonitorJournalRecordsMetrics(t *testing.T) {
+func TestMonitorJournalActionsMetrics(t *testing.T) {
 	cfg := config.Config{}
 	initLogger()
 	env := map[string]string{}
 	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
 	p4m.dryrun = true
-	p4m.journalMetrics[JournalMetric{Table: "domain", Record: "rv"}] = 4
-	p4m.journalMetrics[JournalMetric{Table: "revsx", Record: "pv"}] = 3
+	p4m.journalMetrics[JournalMetric{Table: "domain", Action: "rv"}] = 4
+	p4m.journalMetrics[JournalMetric{Table: "revsx", Action: "pv"}] = 3
 
 	p4m.monitorJournalRecords()
 
@@ -500,7 +500,7 @@ func TestMonitorJournalRecordsSkippedForStandby(t *testing.T) {
 	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
 	p4m.dryrun = true
 	p4m.p4info["Server services"] = "standby"
-	p4m.journalMetrics[JournalMetric{Table: "domain", Record: "rv"}] = 4
+	p4m.journalMetrics[JournalMetric{Table: "domain", Action: "rv"}] = 4
 
 	p4m.monitorJournalRecords()
 
