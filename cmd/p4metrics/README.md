@@ -328,3 +328,21 @@ $ curl https://p4search.das.perforce.com:443/api/v1/build
 }%
 ```
 
+## Swarm Redis metrics
+
+Possible for future:
+
+```bash
+$ redis-cli -p 7379 --scan --pattern 'Swarm^dev:*' | cut -d^ -f 2 | sort | uniq -c | grep -vE 'status$'
+    136 dev:group
+      1 dev:GroupsModelGroup
+      2 dev:includes
+ 116790 dev:path
+    135 dev:project
+      1 dev:ProjectsModelProject
+      2 dev:starts_with
+   5166 dev:user
+      1 dev:UsersModelUser
+      2 dev:workflow
+      1 dev:WorkflowModelWorkflow
+```

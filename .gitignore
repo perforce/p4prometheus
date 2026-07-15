@@ -9,3 +9,5 @@ p4prometheus
 test/
 bin/
 testmon/
+go.work.sum
+misc/
