@@ -7,6 +7,7 @@
 #   -b <bin_dir>              Set directory for installed binaries (default: /usr/local/bin)
 #   -r <months>               Set metrics retention period in months (default: 6)
 #   -target <host:port>       Add a Prometheus scrape target (repeatable)
+#   -grafana-setup            Provision Grafana datasource and import recommended dashboards
 #   --local-tarballs-dir <p>  Use pre-staged local tarballs instead of downloading from GitHub
 
 set -e  # Exit on error
@@ -76,28 +77,38 @@ function usage
    echo "USAGE for install_prom_graf.sh:
 
     install_prom_graf.sh [-d <data_root>] [-b <bin_dir>] [-r <months>]
-                         [-target <host:port>] [--local-tarballs-dir <path>]
+                         [-target <host:port>] [-grafana-setup]
+                         [--local-tarballs-dir <path>]
                          [-push]
 
 or
 
     install_prom_graf.sh -h
 
-  -d <data_root>           Base directory for all runtime data.
-                           Default: /var/lib
-                           Example: -d /data  (puts all data under /data/)
-  -b <bin_dir>             Directory for installed binaries.
-                           Default: /usr/local/bin
-  -r <months>              Metrics retention period in months.
-                           Default: 6
-  -target <host:port>      Prometheus scrape target. Repeatable.
-                           Example: -target myserver:9100 -target otherserver:9100
-                           If not specified, a placeholder is written to prometheus.yml.
-  --local-tarballs-dir <p> Directory containing pre-staged release tarballs.
-                           Skips all downloads - for air-gapped environments.
-                           Files must match GitHub release asset names exactly.
-  -push                    Install Pushgateway (not installed by default).
+  -d <data_root>            Base directory for all runtime data.
+                            Default: /var/lib
+                            Example: -d /data  (puts all data under /data/)
+  -b <bin_dir>              Directory for installed binaries.
+                            Default: /usr/local/bin
+  -r <months>               Metrics retention period in months (for use with VictoriaMetrics).
+                            Not used by Prometheus itself, which has a short retention setting.
+                            Default: 6
+  -target <host:port>       Prometheus scrape target. Repeatable.
+                            Example: -target myserver:9100 -target otherserver:9100
+                            If not specified, a placeholder is written to prometheus.yml.
+  -grafana-setup            Create Grafana datasource for Victoria Metrics and
+                            import recommended dashboards from INSTALL.md.
+  --local-tarballs-dir <p>  Directory containing pre-staged release tarballs.
+                            Skips all downloads - for air-gapped environments.
+                            Files must match GitHub release asset names exactly.
+  -push                     Install Pushgateway (not installed by default).
+                            This is generally deprecated in favor of using VMAgent remotely.
 
+Example:
+
+    sudo ./install_prom_graf.sh -d /data -b /opt/bin -r 12 -target myserver:9100 -grafana-setup
+    sudo ./install_prom_graf.sh -grafana-setup
+    sudo ./install_prom_graf.sh -d /data -target myp4:9100 -target myreplica:9100 -grafana-setup
 "
 }
 
@@ -105,12 +116,14 @@ or
 
 declare -i shiftArgs=0
 declare -i InstallPushgateway=0
+declare -i SetupGrafanaProvisioning=0
 
 set +u
 while [[ $# -gt 0 ]]; do
     case $1 in
         (-h) usage -h && exit 1;;
         (-push) InstallPushgateway=1;;
+        (-grafana-setup) SetupGrafanaProvisioning=1;;
         (-d) data_root=$2; shiftArgs=1;;
         (-b) bin_dir=$2; shiftArgs=1;;
         (-r) retention_months=$2; shiftArgs=1;;
@@ -287,6 +300,68 @@ EOF
     systemctl start grafana-server
     systemctl status grafana-server --no-pager
 
+}
+
+setup_grafana_datasource_and_dashboards () {
+    msg "Setting up Grafana datasource and dashboards..."
+
+    local ds_dir="/etc/grafana/provisioning/datasources"
+    local dash_provider_dir="/etc/grafana/provisioning/dashboards"
+    local dash_json_dir="/var/lib/grafana/dashboards/p4prometheus"
+    local ds_file="${ds_dir}/p4prometheus-victoria-metrics.yaml"
+    local provider_file="${dash_provider_dir}/p4prometheus-dashboards.yaml"
+
+    mkdir -p "$ds_dir" "$dash_provider_dir" "$dash_json_dir"
+
+    cat << EOF > "$ds_file"
+apiVersion: 1
+
+datasources:
+  - name: Victoria Metrics
+    type: prometheus
+    access: proxy
+    url: http://localhost:8428
+    isDefault: true
+    editable: true
+EOF
+
+    cat << EOF > "$provider_file"
+apiVersion: 1
+
+providers:
+  - name: p4prometheus-dashboards
+    orgId: 1
+    folder: P4Prometheus
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 60
+    allowUiUpdates: true
+    options:
+      path: ${dash_json_dir}
+EOF
+
+    local ids=(12278 15509 405 1860)
+    local id=""
+    for id in "${ids[@]}"; do
+        local dash_url="https://grafana.com/api/dashboards/${id}/revisions/latest/download"
+        local dash_file="${dash_json_dir}/${id}.json"
+        if curl -fsSL "$dash_url" -o "$dash_file"; then
+            msg "  Downloaded dashboard ${id}"
+        else
+            msg "  Warning: failed to download dashboard ${id} from ${dash_url}"
+            rm -f "$dash_file"
+        fi
+    done
+
+    chown -R grafana:grafana "$dash_json_dir" 2>/dev/null || true
+    chmod 644 "$ds_file" "$provider_file"
+    find "$dash_json_dir" -type f -name '*.json' -exec chmod 644 {} \;
+
+    systemctl daemon-reload
+    systemctl restart grafana-server
+    systemctl status grafana-server --no-pager
+
+    msg "Grafana provisioning complete: datasource 'Victoria Metrics' and dashboards imported."
 }
 
 install_alertmanager () {
@@ -540,6 +615,9 @@ install_prometheus () {
     chown -R "$userid:$userid" /etc/prometheus/consoles
     chown -R "$userid:$userid" /etc/prometheus/console_libraries
 
+    # Note that we don't retain much data in Prometheus itself - we use VictoriaMetrics for long-term storage.
+    # So only 7 days
+    prometheus_retention="7d"
     cat << EOF > /etc/systemd/system/prometheus.service
 [Unit]
 Description=Prometheus
@@ -554,7 +632,7 @@ Type=simple
 ExecStart=${bin_dir}/prometheus \
  --config.file /etc/prometheus/prometheus.yml \
  --storage.tsdb.path ${data_root}/prometheus/ \
- --storage.tsdb.retention.time=$(( retention_months * 30 ))d \
+ --storage.tsdb.retention.time=$prometheus_retention \
  --web.console.templates=/etc/prometheus/consoles \
  --web.console.libraries=/etc/prometheus/console_libraries
 
@@ -581,7 +659,19 @@ EOF
         targets_block+="        - my_p4_server:9100\n"
     fi
 
-    cat << EOF > /etc/prometheus/prometheus.yml
+        local pushgateway_scrape_block=""
+        if [[ $InstallPushgateway -eq 1 ]]; then
+                pushgateway_scrape_block=$(cat <<'EOF'
+    - job_name: 'pushgateway'
+        honor_labels: true
+        static_configs:
+            - targets:
+                    - localhost:9091
+EOF
+)
+        fi
+
+        cat << EOF > /etc/prometheus/prometheus.yml
 global:
   scrape_interval:     15s
   evaluation_interval: 15s
@@ -606,14 +696,8 @@ scrape_configs:
   - job_name: 'node_exporter'
     static_configs:
 $(echo -e "$targets_block")
-  # ==========================================================
-  # This section SHOULD BE DELETED if pushgateway not in use
-  # ==========================================================
-  - job_name: 'pushgateway'
-    honor_labels: true
-    static_configs:
-      - targets:
-          - localhost:9091
+
+$(echo -e "$pushgateway_scrape_block")
 
 # Send to VictoriaMetrics - better for performance and long term storage
 remote_write:
@@ -767,6 +851,7 @@ install_victoria_metrics
 install_prometheus
 [[ $InstallPushgateway -eq 1 ]] && install_pushgateway
 install_grafana
+[[ $SetupGrafanaProvisioning -eq 1 ]] && setup_grafana_datasource_and_dashboards
 
 write_state_file
 

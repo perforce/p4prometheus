@@ -13,6 +13,6 @@ podman rm -f $cname
 sleep 1
 
 podman ps -q --filter name=$cname | grep -q . && podman kill $cname
-podman run --cap-add=SYS_RESOURCE,AUDIT_WRITE -d --rm --name $cname perforce/p4promgraftest
+podman run --cap-add=SYS_RESOURCE,AUDIT_WRITE -d --rm -p 127.0.0.1:3000:3000 --name $cname perforce/p4promgraftest
 sleep 1
 podman exec -it $cname /root/run_prom_graf_tests.sh
