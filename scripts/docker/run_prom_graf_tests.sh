@@ -67,6 +67,6 @@ if [[ $(id -u) -ne 0 ]]; then
 fi
 
 cd /root
-./install_prom_graf.sh -d /data -target localhost:9100 -target myp4:9100 -target myreplica:9100 -grafana-setup
+./install_prom_graf.sh -d /data -target localhost:9100 -target myp4:9100 -target myreplica:9100 -grafana-setup -pint
 
 py.test -v test_prom_graf.py

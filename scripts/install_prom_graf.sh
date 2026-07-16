@@ -7,6 +7,7 @@
 #   -b <bin_dir>              Set directory for installed binaries (default: /usr/local/bin)
 #   -r <months>               Set metrics retention period in months (default: 6)
 #   -target <host:port>       Add a Prometheus scrape target (repeatable)
+#   -pint                     Install Pint (Prometheus linter) and create systemd service
 #   -grafana-setup            Provision Grafana datasource and import recommended dashboards
 #   --local-tarballs-dir <p>  Use pre-staged local tarballs instead of downloading from GitHub
 
@@ -27,6 +28,7 @@ VER_PROMETHEUS="2.54.1"
 VER_ALERTMANAGER="0.27.0"
 VER_PUSHGATEWAY="1.9.0"
 VER_VICTORIA_METRICS="1.105.0"
+VER_PINT="0.87.0"
 
 # Configurable paths - override with CLI flags
 data_root="/var/lib"
@@ -79,7 +81,7 @@ function usage
     install_prom_graf.sh [-d <data_root>] [-b <bin_dir>] [-r <months>]
                          [-target <host:port>] [-grafana-setup]
                          [--local-tarballs-dir <path>]
-                         [-push]
+                         [-push] [-pint]
 
 or
 
@@ -103,12 +105,15 @@ or
                             Files must match GitHub release asset names exactly.
   -push                     Install Pushgateway (not installed by default).
                             This is generally deprecated in favor of using VMAgent remotely.
+    -pint                     Install Pint linter and create pint.service
+                                                        for continuous validation of /etc/prometheus/perforce_rules.yml.
 
 Example:
 
     sudo ./install_prom_graf.sh -d /data -b /opt/bin -r 12 -target myserver:9100 -grafana-setup
     sudo ./install_prom_graf.sh -grafana-setup
     sudo ./install_prom_graf.sh -d /data -target myp4:9100 -target myreplica:9100 -grafana-setup
+    sudo ./install_prom_graf.sh -pint
 "
 }
 
@@ -116,6 +121,7 @@ Example:
 
 declare -i shiftArgs=0
 declare -i InstallPushgateway=0
+declare -i InstallPint=0
 declare -i SetupGrafanaProvisioning=0
 
 set +u
@@ -123,6 +129,7 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         (-h) usage -h && exit 1;;
         (-push) InstallPushgateway=1;;
+        (-pint) InstallPint=1;;
         (-grafana-setup) SetupGrafanaProvisioning=1;;
         (-d) data_root=$2; shiftArgs=1;;
         (-b) bin_dir=$2; shiftArgs=1;;
@@ -815,6 +822,85 @@ EOF
     systemctl status pushgateway --no-pager
 }
 
+install_pint () {
+    msg "Installing Pint..."
+
+    if check_service_exists pint && systemctl is-active --quiet pint; then
+            msg "Stopping existing pint service..."
+            systemctl stop pint
+    fi
+
+    local userid="prometheus"
+    local pint_arch="$arch"
+    local pint_file="pint-linux-${pint_arch}"
+    local pint_url="https://github.com/rcowham/pint/releases/download/v${VER_PINT}/${pint_file}"
+    local pint_bin="${bin_dir}/pint"
+    local pint_cfg="/etc/prometheus/pint_vm.hcl"
+
+    cd /tmp || bail "failed to cd"
+    msg "Downloading ${pint_url}"
+    if ! wget -q -O "$pint_file" "$pint_url"; then
+            bail "Failed to download $pint_url"
+    fi
+    TEMP_FILES+=("$pint_file")
+
+    mv "$pint_file" "$pint_bin"
+    chown "$userid:$userid" "$pint_bin"
+    chmod 755 "$pint_bin"
+
+    if [[ $SELinuxEnabled -eq 1 ]]; then
+            semanage fcontext -a -t bin_t "$pint_bin" 2>/dev/null || true
+            restorecon -vF "$pint_bin"
+    fi
+
+    cat << EOF > "$pint_cfg"
+# Point pint at VictoriaMetrics
+prometheus "monitor" {
+    uri     = "http://localhost:8428"
+    timeout = "60s"
+}
+
+# Enable VictoriaMetrics mode to report syntax errors as warnings
+# instead of fatal errors when MetricsQL extensions are used.
+parser {
+    victoria_metrics = true
+}
+
+# Disable smelly selectors warning in promql/regexp check.
+check "promql/regexp" {
+    smelly = false
+}
+
+# Disable checks that don't work with VictoriaMetrics.
+checks {
+    disabled = ["promql/rate", "promql/range_query"]
+}
+EOF
+        chown "$userid:$userid" "$pint_cfg"
+        chmod 644 "$pint_cfg"
+
+        cat << EOF > /etc/systemd/system/pint.service
+[Unit]
+Description=Prometheus Pint validation tool
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+ExecStart=${bin_dir}/pint watch glob /etc/prometheus/perforce_rules.yml --config ${pint_cfg}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+        systemctl daemon-reload
+        systemctl enable pint
+        systemctl start pint
+        systemctl status pint --no-pager
+}
+
 check_health () {
     msg ""
     msg "Running health checks..."
@@ -823,6 +909,7 @@ check_health () {
     # Service status checks
     local services=(node_exporter alertmanager victoria-metrics prometheus grafana-server)
     [[ $InstallPushgateway -eq 1 ]] && services+=(pushgateway)
+    [[ $InstallPint -eq 1 ]] && services+=(pint)
 
     for service in "${services[@]}"; do
         if systemctl is-active --quiet "$service" 2>/dev/null; then
@@ -881,6 +968,7 @@ install_alertmanager
 install_victoria_metrics
 install_prometheus
 [[ $InstallPushgateway -eq 1 ]] && install_pushgateway
+[[ $InstallPint -eq 1 ]] && install_pint
 install_grafana
 [[ $SetupGrafanaProvisioning -eq 1 ]] && setup_grafana_datasource_and_dashboards
 
@@ -898,6 +986,7 @@ Data directories:
   Alertmanager:      ${data_root}/alertmanager/
   Grafana:           ${data_root}/grafana/  (if -d was specified)
   Pushgateway:       ${data_root}/pushgateway/  (if installed)
+    Pint config:       /etc/prometheus/pint_vm.hcl  (if -pint)
 
 Config files to review:
   /etc/prometheus/prometheus.yml     (scrape targets, rule files)

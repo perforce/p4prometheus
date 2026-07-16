@@ -18,6 +18,30 @@ For compatibility with VictoriaMetrics, we have a fork of the original project (
 
 The above allows us to use VictoriaMetrics' MetricsQL syntax and functions - which would cause errors with base PromQL as used by Prometheus.
 
+## Automated install with install_prom_graf.sh
+
+You can install Pint and create a `systemd` service automatically via:
+
+```bash
+sudo ./scripts/install_prom_graf.sh -pint
+```
+
+This installs Pint from:
+
+- https://github.com/rcowham/pint/releases/tag/v0.87.0
+
+and creates:
+
+- Binary: `/usr/local/bin/pint` (or custom `-b` directory)
+- Config: `/etc/prometheus/pint_vm.hcl`
+- Service: `/etc/systemd/system/pint.service`
+
+The service runs:
+
+```bash
+pint watch glob /etc/prometheus/perforce_rules.yml --config /etc/prometheus/pint_vm.hcl
+```
+
 ## Basic Configuration files
 
 ### Prometheus version - pint.hcl
