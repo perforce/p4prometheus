@@ -26,7 +26,8 @@ On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc,
 
 - [Installation Details for P4Prometheus and Other Components](#installation-details-for-p4prometheus-and-other-components)
   - [Metrics Available](#metrics-available)
-  - [Automated Script Installation](#automated-script-installation)
+  - [Automated Script Installation/Upgrade](#automated-script-installationupgrade)
+    - [Upgrading from earlier versions](#upgrading-from-earlier-versions)
   - [Enterprise Deployment Options](#enterprise-deployment-options)
     - [Dedicated Data Volume (`-d`)](#dedicated-data-volume--d)
       - [Migrating existing data to a new volume](#migrating-existing-data-to-a-new-volume)
@@ -73,9 +74,9 @@ On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc,
 
 The metrics available within Grafana are documented in [P4Prometheus README](README.md#metrics-available)
 
-## Automated Script Installation
+## Automated Script Installation/Upgrade
 
-There are scripts which automate the manual installation steps listed below. The scripts can be used with SDP
+There are scripts which automate the manual installation/upgrade steps listed below. The scripts can be used with SDP
 structure or not - as desired.
 
 Checkout  following files:
@@ -96,9 +97,31 @@ Example of use (as root):
     chmod +x install_p4prom.sh
     ./install_p4prom.sh -h
 
+### Upgrading from earlier versions
+
+In an SDP environment (as user perforce or equivalent):
+
+    cd /p4/common/site/bin
+    ./check_for_updates.sh
+
+If the above has not downloaded `update_p4prom.sh` (because it is a very old version) then:
+
+    rm .update_config
+    ./check_for_updates.sh
+
+Now execute (for SDP instance 1):
+
+    sudo ./update_p4prom.sh 1
+
+The direct way is (as root):
+
     wget https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/update_p4prom.sh
     chmod +x update_p4prom.sh
     ./update_p4prom.sh -h
+
+For SDP instance 1:
+
+    ./update_p4prom.sh 1
 
 ## Enterprise Deployment Options
 

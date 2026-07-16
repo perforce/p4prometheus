@@ -15,7 +15,7 @@ a specified Prometheus compatible metrics file which can be handled via the `nod
 textfile collector module. Other components of this package collect related metrics by interrogating p4d server
 and other associated logs.
 
-The install scripts support a wide range of deployment scenarios:
+The install/upgrade scripts support a wide range of deployment scenarios:
 
 - **Standard installs** – single command installs all components with sensible defaults
 - **Dedicated data volumes** – `-d /data` places all runtime data on a separate volume for enterprise deployments
