@@ -232,7 +232,7 @@ install_grafana () {
         msg "Grafana already installed"
     fi
 
-    if [[ $isubuntu -eq 0 ]]; then
+    if [[ $isubuntu -eq 1 ]]; then
         # Modern approach for Ubuntu/Debian - no deprecated apt-key
         apt-get install -y apt-transport-https software-properties-common wget gnupg
 
@@ -283,6 +283,7 @@ EOF
     fi
 
     systemctl daemon-reload
+    systemctl enable grafana-server
     systemctl start grafana-server
     systemctl status grafana-server --no-pager
 

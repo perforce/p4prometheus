@@ -1,4 +1,3 @@
-# FROM ubi8-init AS p4promtestbase
 FROM rockylinux/rockylinux:9-ubi-init AS p4promtestbase
 LABEL maintainer="rcowham@perforce.com"
 ENV PATH="/root/.local/bin:/root/.venv/bin:/home/perforce/.local/bin:/home/perforce/.venv/bin:${PATH}"
@@ -9,7 +8,6 @@ RUN yum update -y; \
     echo "postfix postfix/main_mailer_type string 'No configuration'" | debconf-set-selections; \
     yum install -y openssh-server; \
     yum install -y wget; \
-    yum install -y libssl-dev; \
     yum install -y sudo; \
     yum install -y curl; \
     yum install -y vim; \
@@ -34,6 +32,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
 
 # -----------------------------
 # FROM p4promtestbase AS p4promtest-nonsdp
+# Only possible when we have a p4d package available for the base OS, which is not the case for Rocky Linux 9 on ARM. So this is commented out for now.
 
 # RUN apt-get -y install helix-p4d
 
@@ -42,6 +41,20 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
 # ADD tests/test_nosdp.py /root/
 
 # -----------------------------
+# This is the Prometheus/Grafana test container - no P4
+FROM p4promtestbase AS p4promgraftest
+
+ADD docker/run_prom_graf_tests.sh /root/
+ADD tests/test_prom_graf.py /root/
+ADD install_p4prom.sh /root/
+ADD update_p4prom.sh /root/
+ADD p4prom_common.sh /root/
+ADD install_prom_graf.sh /root/
+ADD update_prom_graf.sh /root/
+ADD migrate_prom_graf_data.sh /root/
+
+# -----------------------------
+# This is the SDP version of the P4Prometheus test container.
 FROM p4promtestbase AS p4promtest-sdp
 
 ADD docker/setup_sdp.sh /root/
