@@ -21,6 +21,8 @@ metrics_link=/p4/metrics
 local_bin_dir=/usr/local/bin
 # To avoid issues with SELinux, install service config files into /var/vmagent
 vmagent_config_dir="/var/vmagent"
+# Air-gap: set to a directory of pre-staged release tarballs to skip downloads
+local_tarballs_dir=""
 
 VER_NODE_EXPORTER="1.3.1"
 VER_P4PROMETHEUS="0.11.1"
@@ -66,25 +68,30 @@ function usage
  
    echo "USAGE for install_p4prom.sh:
 
-install_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-osuser <osuser>] 
-        [-p <P4PORT>] [-u <p4user>] [-c <p4prom_config_dir>] [-push]
+install_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-osuser <osuser>]
+        [-p <P4PORT>] [-u <p4user>] [-c <p4prom_config_dir>]
+        [-b <bin_dir>] [--local-tarballs-dir <path>] [-push]
 
    or
 
 install_p4prom.sh -h
 
-    <metrics_root>  is the directory where metrics will be written - default: $metrics_root
-    <osuser>        Operating system user, e.g. perforce, under which p4d process is running and to install crontab
-    <P4PORT>        P4PORT to use within any installed scripts
-    <P4USER>        P4USER to use within any installed scripts
-    <p4prom_config_dir> Specify directory to install p4prometheus config file - useful for nonsdp installs
-    -push           Means install vmagent service/configuration in /var/vmagent.
-                    Not relevant for most installations.
+    <metrics_root>        Directory where metrics will be written - default: $metrics_root
+    <osuser>              OS user running p4d; used for file ownership and crontab
+    <P4PORT>              P4PORT to use within installed scripts
+    <P4USER>              P4USER to use within installed scripts
+    <p4prom_config_dir>   Directory for p4prometheus config files (non-SDP installs)
+                          Default: /etc/p4prometheus
+    -b <bin_dir>          Directory for installed binaries - default: $local_bin_dir
+    --local-tarballs-dir  Directory of pre-staged release tarballs (air-gap installs).
+                          Skips all downloads; file names must match GitHub release assets.
+    -push                 Install vmagent service/configuration in /var/vmagent.
+                          Not relevant for most installations.
 
 IMPORTANT: Specify either the installed SDP instance (e.g. 1), or -nosdp and other parameters
 
-WARNING: If using -nosdp, then please ensure P4PORT and P4USER are provided or are appropriately set and that you can connect
-    to your server (e.g. you have done a 'p4 trust' if required, and logged in already)
+WARNING: If using -nosdp, ensure P4PORT and P4USER are provided or set in environment,
+    and that you can connect (e.g. 'p4 trust' done, already logged in)
 
 Examples:
 
@@ -120,6 +127,8 @@ while [[ $# -gt 0 ]]; do
         (-u) p4user="$2"; shiftArgs=1;;
         (-push) InstallVMAgent=1;;
         (-c) p4prom_config_dir="$2"; shiftArgs=1;;
+        (-b) local_bin_dir="$2"; shiftArgs=1;;
+        (--local-tarballs-dir) local_tarballs_dir="$2"; shiftArgs=1;;
         (-*) usage -h "Unknown command line option ($1)." && exit 1;;
         (*) export SDP_INSTANCE=$1;;
     esac
@@ -172,7 +181,8 @@ if [[ $UseSDP -eq 1 ]]; then
 
     p4="$P4BIN -u $P4USER -p $P4PORT"
     $p4 info -s || bail "Can't connect to P4PORT: $P4PORT"
-    p4prom_config_dir="/p4/common/config"
+    # site/config is guaranteed not to be touched by SDP upgrades (unlike common/config)
+    p4prom_config_dir="/p4/common/site/config"
     p4prom_bin_dir="/p4/common/site/bin"
 else
     SDP_INSTANCE=""
@@ -220,16 +230,7 @@ install_node_exporter () {
         restorecon -vF $bin_file
     fi
 
-    mkdir -p "$metrics_root"
-    chown "$OSUSER:$OSGROUP" "$metrics_root"
-    chmod 755 "$metrics_root"
-    f=$(readlink -f "$metrics_root")
-    while [[ $f != / ]]; do chmod 755 "$f"; f=$(dirname "$f"); done;
-
-    if [[ $UseSDP -eq 1 ]] && [[ ! -L "$metrics_link" ]]; then
-        ln -sf "$metrics_root" "$metrics_link"
-        chown -h "$OSUSER:$OSGROUP" "$metrics_link"
-    fi
+    ensure_metrics_root_and_link
 
     service_name="node_exporter"
     service_file="/etc/systemd/system/${service_name}.service"
@@ -244,8 +245,7 @@ install_p4prometheus () {
     progname="p4prometheus"
     fname="${progname}.linux-${arch}.gz"
     url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
-    msg "downloading and extracting $url"
-    wget -q "$url"
+    download_gz "$fname" "$url"
 
     gunzip "$fname"
     chmod +x "${progname}.linux-${arch}"
@@ -259,6 +259,9 @@ install_p4prometheus () {
 
     mkdir -p "$p4prom_config_dir" "$p4prom_bin_dir"
     chown "$OSUSER:$OSGROUP" "$p4prom_config_dir" "$p4prom_bin_dir"
+
+    # Generate HMS-aware wrapper script for SDP fleet environments
+    ensure_hms_wrapper_script p4prometheus "Generating"
 
 cat << EOF > "$p4prom_config_file"
 # ----------------------
@@ -340,8 +343,7 @@ install_p4metrics () {
     progname="p4metrics"
     fname="${progname}.linux-${arch}.gz"
     url="https://github.com/perforce/p4prometheus/releases/download/v$PVER/$fname"
-    msg "downloading and extracting $url"
-    wget -q "$url"
+    download_gz "$fname" "$url"
 
     gunzip "$fname"
     chmod +x "${progname}.linux-${arch}"
@@ -356,192 +358,10 @@ install_p4metrics () {
     mkdir -p "$p4prom_config_dir" "$p4prom_bin_dir"
     chown "$OSUSER:$OSGROUP" "$p4prom_config_dir" "$p4prom_bin_dir"
 
-cat << EOF > "$p4metrics_config_file"
-# ----------------------
-# metrics_root: REQUIRED! Directory into which to write metrics files for processing by node_exporter.
-# Ensure that node_exporter user has read access to this folder (and any parent directories)!
-metrics_root: $metrics_root
+    # Generate HMS-aware wrapper script for SDP fleet environments
+    ensure_hms_wrapper_script p4metrics "Generating"
 
-# ----------------------
-# sdp_instance: SDP instance - typically integer, but can be alphanumeric
-# See: https://swarm.workshop.perforce.com/projects/perforce-software-sdp for more
-# If this value is blank then it is assumed to be a non-SDP instance, and you will want
-# to set other values with a prefix of p4 below.
-sdp_instance:   $SDP_INSTANCE
-
-# ----------------------
-# p4port: The value of P4PORT to use
-# IGNORED if sdp_instance is non-blank!
-p4port:         $p4port
-
-# ----------------------
-# p4user: The value of P4USER to use
-# IGNORED if sdp_instance is non-blank!
-p4user:         $p4user
-
-# ----------------------
-# p4config: The value of a P4CONFIG to use
-# This is very useful and should be set to an absolute path if you need values like P4TRUST/P4TICKETS etc
-# IGNORED if sdp_instance is non-blank!
-p4config:      
-
-# ----------------------
-# p4bin: The absolute path to the p4 binary to be used - important if not available in your PATH
-# E.g. /some/path/to/p4
-# IGNORED if sdp_instance is non-blank! (Will use /p4/<instance>/bin/p4_<instance>)
-p4bin:      p4
-
-# ----------------------
-# p4dbin: The absolute path to the p4d binary to be used - important if not available in your PATH
-# E.g. /some/path/to/p4d
-# IGNORED if sdp_instance is non-blank! (Will use /p4/<instance>/bin/p4d_<instance>)
-p4dbin:     p4d
-
-# ----------------------
-# update_interval: how frequently metrics should be written - defaults to 1m
-# Values are as parsed by Go, e.g. 1m or 30s etc.
-update_interval:    1m
-
-# ----------------------
-# cmds_by_user: true/false - Whether to output metrics p4_monitor_by_user
-# Normally this should be set to true as the metrics are useful.
-# If you have a p4d instance with hundreds/thousands of users you may find the number
-# of metrics labels is too great (one per distinct user), so set this to false.
-# Or set it to false if any personal information concerns
-cmds_by_user:   true
-
-# ----------------------
-# monitor_swarm: true/false - Whether to monitor status and version of swarm
-# Normally this should be set to true - won't run if there is no Swarm property
-monitor_swarm:   true
-
-# ----------------------
-# swarm_url: URL of the Swarm instance to monitor
-# Normally this is blank, and p4metrics reads the p4 property value
-# Sometimes (e.g. due to VPN setup) that value is not correct - so set this instead
-# swarm_url: https://swarm.example.com
-swarm_url:
-
-# ----------------------
-# swarm_secure: true/false - Whether to validate SSL for swarm
-# Defaults to true, but if you have a self-signed certificate or similar set to false
-swarm_secure: true
-
-# ----------------------
-# max_journal_size: Maximum size of journal file to monitor, e.g. 10G, 0 means no limit
-# Units are K/M/G/T/P (powers of 1024), e.g. 10M, 1.5G etc
-# If the journal file is larger than this value it will be rotated using: p4 admin journal
-# This is useful to avoid sudden large journal growth causing disk space issues (often a sign of automation problems).
-# Note that this is only actioned if the p4d server is a "standard" or "commit-server" (so no replicas or edge servers).
-# The system will only rotate the journal if the user is a super user and the journalPrefix volume has sufficient free space.
-# Leave blank or set to 0 to disable (see max_journal_percent below for alternative).
-max_journal_size:
-
-# ----------------------
-# max_journal_percent: Maximum size of journal as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
-# Values are integers 0-99
-# Volume information is read using: p4 diskspace
-# If the journal file is larger than this percentag value it will be rotated using: p4 admin journal
-# This is useful to avoid sudden large journal growth causing disk space issues (often a sign of automation problems).
-# Note that this is only actioned if the p4d server is a "standard" or "commit-server" (so no replicas or edge servers).
-# The system will only rotate the journal if the journalPrefix volume has sufficient free space.
-# Leave blank or set to 0 to disable (see max_journal_size above for alternative).
-max_journal_percent: 	30
-
-# ----------------------
-# max_log_size: Maximum size of P4LOG file to monitor - similar to max_journal_size above
-# Units are K/M/G/T/P (powers of 1024), e.g. 10M, 1.5G etc
-# If the log file is larger than this value it will be rotated and compressed (using rename + gzip)
-max_log_size:
-
-# ----------------------
-# max_log_percent: Maximum size of log as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
-# Values are integers 0-99
-# Volume information is read using: p4 diskspace
-# If the log file is larger than this percentage value it will be rotated and compressed (using rename + gzip)
-max_log_percent: 		30
-
-# ----------------------
-# monitor_ignore: Monitor commmands to ignore - e.g. long running background tasks
-# Values are a Go regex pattern - e.g. "admin resource-monitor|ldapsync"
-monitor_ignore: "admin resource-monitor|ldapsync"
-
-# ----------------------
-# monitor_groups: Optional (but recommended) grouping of commands for monitor entries (useful for spotting slow commands).
-# Each entry has:
-#   commands: a Go regex pattern matching command names
-#   label: a name for this group of commands - used as a label value in the p4_monitor_commands metric, so should be a valid label value (see reLabelName in config.go for details)
-# These values are ignored if monitor_ignore matches (first match wins), 
-# and then the command is checked against the patterns in order, with the first match winning (so more specific patterns should come first).
-# Note that only Running commands (state 'R') are counted for these groups, not Background ('B') or Idle ('I'), 
-# as typically you want to monitor the runtime of active commands (and some IDLE commands can be long running and skew the metrics).
-# Example:
-# monitor_groups:
-# - commands: "^rmt.*"
-#   label:    rmt
-# - commands: "sync|transmit"
-#   label: sync_transmit
-# - commands: ".*"
-#   label:    other
-monitor_groups:
-  - commands: "^rmt.*"
-    label:    rmt
-  - commands: "sync|transmit"
-    label:    sync_transmit
-  - commands: ".*"
-    label:    other
-
-# ----------------------
-# memory_by_user: true/false - Whether to output metric p4_active_memory_by_user
-# Normally this should be set to true as the metric is useful.
-# If you have a p4d instance with hundreds/thousands of users you may find the number
-# of metrics labels is too great (one per distinct user), so set this to false.
-# Or set it to false if any personal information concerns
-memory_by_user:   true
-
-# ----------------------
-# memlimits: Optional (but recommended) way to define which users and commands to monitor for memory limits 
-#   (useful for inadvertently high memory usage). Some users run commands on inappropriate paths such as the entire repository,
-#   or a huge depot. Commands which exceed these settings have 'p4 monitor terminate' run on them, which will ask the command to terminate.
-#   This is related to the MaxMemory setting for p4 groups but has some more flexibility for cumulative limits across multiple commands for a user.
-# candidate_cmds: A Go regex pattern matching command names to be considered for memory monitoring - e.g. "sync|transmit|print|fstat|files|changes"
-#   We default to reporting commands only.
-# enabled: true/false - whether to enable this memory monitoring functionality (if false will report the metrics but not take any action, 
-#   so you can monitor the metrics and adjust settings before enabling the termination functionality).
-# enforce_kills: true/false - whether to actually enforce kills when limits are exceeded (if false, will only report)
-# Groups:
-#   Each entry has:
-#     description: Name for this group of settings - used for logging and debugging, so should be unique and descriptive
-#     users:       Go regex pattern matching user names
-#     cmd_max_percentage:             0-99, where 0 means no limit
-#     cmd_max_value:                  Units are M/G (powers of 1024), e.g. 10M, 1.5G etc, if blank or 0 then no limit
-#     user_cumulative_max_percentage: For all commands for a user, 0-99, where 0 means no limit
-#     user_cumulative_max_value:      Units are M/G (powers of 1024), e.g. 10M, 1.5G etc, if blank or 0 then no limit
-# THE ORDER OF THE GROUPS IS IMPORTANT - the first match wins, so more specific patterns should come first (e.g. admin users should be first, 
-# with no limits, and then (optionally) a group for build users with higher limits, followed by a catch-all for other users with limits).
-# Note that only Running commands (state 'R') and Idle ('I') are counted for these groups, not Background ('B'), 
-# since Background commands are things like replication and resource monitoring
-# Example:
-memlimits:
-  candidate_cmds:  "annotate|changes|changelists|describe|diff|diff2|filelog|files|fstat|grep|integrated|interchanges|istat|opened|print|sync|transmit|IDLE"
-  enabled:         true
-  enforce_kills:   false
-  groups:
-  - description: "No limits for super users (as they hopefully know what they are doing!)"
-    users: "super|perforce|p4admin"
-    cmd_max_percentage:             
-    cmd_max_value:                  
-    user_cumulative_max_percentage: 
-    user_cumulative_max_value:      
-  - description: "Default limits for all other users"
-    users: ".*"
-    cmd_max_percentage:             40%
-    cmd_max_value:                  
-    user_cumulative_max_percentage: 60%
-    user_cumulative_max_value:      
-
-EOF
-
+    write_or_update_p4metrics_config_file
     chown "$OSUSER:$OSGROUP" "$p4metrics_config_file"
 
     service_name="${progname}"
@@ -550,22 +370,7 @@ EOF
     write_p4metrics_service_file "${service_file}"
     systemd_enable_and_restart "${service_file}" "${service_name}"
 
-    # Update the crontab of the specified user - to comment out entries relating to previous installs of monitoring
-    # These are replaced by the systemd timers or p4metrics service.
-    TEMP_FILE=$(mktemp)
-    crontab -u "$OSUSER" -l > "$TEMP_FILE" 2>/dev/null || echo "" > "$TEMP_FILE"
-    COMMENT="# This script has been replaced by systemd services/timers (p4metrics)"
-    CHANGES_MADE=false
-    for f in monitor_metrics.sh monitor_wrapper.sh; do
-        if grep -v "^#" "$TEMP_FILE" | grep -q "${f}"; then
-            cp "$TEMP_FILE" "${TEMP_FILE}.bak"
-            sed -i "/^[^#].*\/${f}/ s|^|# ${COMMENT}\n# |" "$TEMP_FILE"
-            CHANGES_MADE=true
-        fi
-    done
-    if [ "$CHANGES_MADE" = true ]; then # Load up new crontab
-        crontab -u "$OSUSER" "$TEMP_FILE"
-    fi
+    comment_out_legacy_monitor_cron "$OSUSER"
 }
 
 install_monitor_locks () {
@@ -685,25 +490,47 @@ install_monitor_locks
 check_aws_cli_version
 systemctl list-timers | grep -E "^NEXT|monitor"
 
+# Write install state file for use by future update_p4prom.sh runs
+p4d_state_file="${p4prom_config_dir}/p4prom_install.env"
+write_p4d_state_file "$p4d_state_file"
+
 echo "
+======================================================================
+Installation complete.
 
-Should have installed node_exporter, p4prometheus and friends.
+Config files:
+  p4prometheus:  ${p4prom_config_file}
+  p4metrics:     ${p4metrics_config_file}
+  monitor_metrics: ${monitor_metrics_config_file}
 
-"
+Metrics directory: ${metrics_root}
+$(if [[ $UseSDP -eq 1 ]]; then echo "Metrics symlink:   ${metrics_link}"; fi)
+
+$(if [[ $UseSDP -eq 1 ]]; then
+echo "HMS note: hostname-specific config files are supported.
+  To use a per-host config, create:
+    ${p4prom_config_dir}/p4prometheus.\$(hostname -s).yml
+    ${p4prom_config_dir}/p4metrics.\$(hostname -s).yml
+  These take priority over the site-wide config files."
+fi)
+
+Verify metrics are flowing:
+    curl localhost:9100/metrics | grep ^p4_
+
+$(if [[ $UseSDP -eq 1 ]]; then echo "    ls -al ${metrics_link}/"; fi)
+
+Ports that may need to be opened in your firewall:
+  9100  Node Exporter (metrics - scraped by Prometheus on monitoring server)
+
+Install state saved to: ${p4d_state_file}
+  (Future upgrades via update_p4prom.sh will use these paths automatically)
+======================================================================"
 
 if [[ $InstallVMAgent -eq 1 ]]; then
-echo "Please start the vmagent service when you have checked its configuration...
+echo "
+Please start the vmagent service when you have checked its configuration:
 
     systemctl start vmagent
     systemctl status vmagent --no-pager
 "
 fi
-
-echo "
-
-To review further, please:
-
-    ls -al $metrics_link/
-
-    curl localhost:9100/metrics | grep ^p4_
-"

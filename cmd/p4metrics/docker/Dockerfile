@@ -1,5 +1,6 @@
 FROM rockylinux/rockylinux:9-ubi-init AS p4metricstestbase
 LABEL maintainer="Robert Cowham <rcowham@perforce.com>"
+ENV PATH="/root/.local/bin:/root/.venv/bin:/home/perforce/.local/bin:/home/perforce/.venv/bin:${PATH}"
 
 RUN yum update -y; \
     echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections; \
@@ -7,10 +8,6 @@ RUN yum update -y; \
     echo "postfix postfix/main_mailer_type string 'No configuration'" | debconf-set-selections; \
     yum install -y openssh-server; \
     yum install -y wget; \
-    yum install -y python3; \
-    yum install -y python3-dev; \
-    yum install -y python3-pip; \
-    yum install -y libssl-dev; \
     yum install -y sudo; \
     yum install -y curl; \
     yum install -y vim; \
@@ -26,7 +23,12 @@ RUN yum update -y; \
     yum autoremove; \
     yum clean all
 
-RUN pip3 install pytest-testinfra p4python
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    export PATH="/root/.local/bin:$PATH" && \
+    uv python install 3.14 && \
+    uv venv --python 3.14 /root/.venv && \
+    . /root/.venv/bin/activate && \
+    uv pip install pytest-testinfra p4python
 
 # -----------------------------
 # FROM p4metricstestbase AS p4metricstest-nonsdp
@@ -42,6 +44,12 @@ FROM p4metricstestbase AS p4metricstest-sdp
 
 ADD cmd/p4metrics/docker/setup_sdp.sh /root/
 RUN /root/setup_sdp.sh
+RUN sudo -u perforce bash -lc 'curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    export PATH="$HOME/.local/bin:$PATH" && \
+    uv python install 3.14 && \
+    uv venv --python 3.14 "$HOME/.venv" && \
+    . "$HOME/.venv/bin/activate" && \
+    uv pip install pytest-testinfra p4python'
 # ADD cmd/p4metrics/docker/run_setup_p4metrics_tests.sh /root/
 # ADD cmd/p4metrics/docker/run_p4metrics_tests.sh /root/
 # ADD cmd/p4metrics/tests/test_sdp.py /root/

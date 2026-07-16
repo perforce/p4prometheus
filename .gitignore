@@ -6,8 +6,26 @@
 *.log
 *.out
 p4prometheus
-test/
-bin/
 testmon/
 go.work.sum
 misc/
+test/
+
+# AI session logs and generated planning files
+ai/
+
+# AI agent instruction files in repo root (agent-specific names / symlinks)
+# .github/copilot-instructions.md is intentionally NOT ignored (proper location)
+/copilot-instructions.md
+/CLAUDE.md
+/AGENTS.md
+/GEMINI.md
+/COPILOT.md
+/CURSOR.md
+/.cursorrules
+/WINDSURF.md
+/.windsurfrules
+/AIDER.md
+/CODEIUM.md
+/TABNINE.md
+

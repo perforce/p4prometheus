@@ -26,7 +26,18 @@ On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc,
 
 - [Installation Details for P4Prometheus and Other Components](#installation-details-for-p4prometheus-and-other-components)
   - [Metrics Available](#metrics-available)
-  - [Automated Script Installation](#automated-script-installation)
+  - [Automated Script Installation/Upgrade](#automated-script-installationupgrade)
+    - [Upgrading from earlier versions](#upgrading-from-earlier-versions)
+  - [Enterprise Deployment Options](#enterprise-deployment-options)
+    - [Dedicated Data Volume (`-d`)](#dedicated-data-volume--d)
+      - [Migrating existing data to a new volume](#migrating-existing-data-to-a-new-volume)
+    - [Retention Period (`-r`)](#retention-period--r)
+    - [Custom Binary Directory (`-b`)](#custom-binary-directory--b)
+    - [Additional Prometheus Scrape Targets (`-target`)](#additional-prometheus-scrape-targets--target)
+    - [Air-Gap / Offline Installation (`--local-tarballs-dir`)](#air-gap--offline-installation---local-tarballs-dir)
+    - [Install State Files](#install-state-files)
+    - [SDP-Upgrade Compatibility](#sdp-upgrade-compatibility)
+    - [HMS Fleet Compatibility (Hostname-Based Config)](#hms-fleet-compatibility-hostname-based-config)
   - [Package Install of Grafana](#package-install-of-grafana)
     - [Create your first Data Source](#create-your-first-data-source)
     - [Setup of Grafana dashboards](#setup-of-grafana-dashboards)
@@ -44,6 +55,7 @@ On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc,
   - [Alerting](#alerting)
     - [Alertmanager config](#alertmanager-config)
     - [Alerting rules](#alerting-rules)
+      - [Split-file alerting rules (recommended)](#split-file-alerting-rules-recommended)
     - [Prometheus config to reference alertmanager rules](#prometheus-config-to-reference-alertmanager-rules)
   - [Troubleshooting](#troubleshooting)
     - [p4prometheus](#p4prometheus)
@@ -62,16 +74,18 @@ On other related servers, e.g. running Swarm, Hansoft, Helix TeamHub (HTH), etc,
 
 The metrics available within Grafana are documented in [P4Prometheus README](README.md#metrics-available)
 
-## Automated Script Installation
+## Automated Script Installation/Upgrade
 
-There are scripts which automate the manual installation steps listed below. The scripts can be used with SDP
+There are scripts which automate the manual installation/upgrade steps listed below. The scripts can be used with SDP
 structure or not - as desired.
 
 Checkout  following files:
 - [install_p4prom.sh](scripts/install_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh) - the installer for servers hosting a p4d instance (`node_exporter`, `p4prometheus`, `p4metrics`, monitoring scripts)
   - **the above requires also**: [p4prom_common.sh](scripts/p4prom_common.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/p4prom_common.sh)
-- [update_p4prom.sh](scripts/update_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/update_p4prom.sh) - the installer/updater for servers hosting a p4d instance (`node_exporter`, `p4prometheus`, `p4metrics`, monitoring scripts)
-- [install_prom_graf.sh](scripts/install_prom_graf.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for the monitoring server hosting Grafana and Prometheus (and Victoria Metrics).
+- [update_p4prom.sh](scripts/update_p4prom.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/update_p4prom.sh) - the updater for servers hosting a p4d instance
+- [install_prom_graf.sh](scripts/install_prom_graf.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh) - the installer for the monitoring server hosting Grafana and Prometheus (and Victoria Metrics)
+- [update_prom_graf.sh](scripts/update_prom_graf.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/update_prom_graf.sh) - the updater for the monitoring server
+- [migrate_prom_graf_data.sh](scripts/migrate_prom_graf_data.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/migrate_prom_graf_data.sh) - migrate monitoring server data to a new base directory (e.g. a dedicated `/data` volume) without a full reinstall
 - [install_node.sh](scripts/install_node.sh) or for use with wget, download raw file: [*right click this link > copy link address*](https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_node.sh) - the installer for monitoring a server hosting other tools such as Swarm, Hansoft, HTH (Helix TeamHub) etc. Just installs `node_exporter`
 
 Standalone script just to install the `lslocks` monitoring (normally covered by `install_p4prom.sh` above):
@@ -83,9 +97,158 @@ Example of use (as root):
     chmod +x install_p4prom.sh
     ./install_p4prom.sh -h
 
+### Upgrading from earlier versions
+
+In an SDP environment (as user perforce or equivalent):
+
+    cd /p4/common/site/bin
+    ./check_for_updates.sh
+
+If the above has not downloaded `update_p4prom.sh` (because it is a very old version) then:
+
+    rm .update_config
+    ./check_for_updates.sh
+
+Now execute (for SDP instance 1):
+
+    sudo ./update_p4prom.sh 1
+
+The direct way is (as root):
+
     wget https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/update_p4prom.sh
     chmod +x update_p4prom.sh
     ./update_p4prom.sh -h
+
+For SDP instance 1:
+
+    ./update_p4prom.sh 1
+
+## Enterprise Deployment Options
+
+All install and update scripts support a common set of flags for enterprise environments. Pass `-h` to any script to see the full option list.
+
+### Dedicated Data Volume (`-d`)
+
+By default the monitoring server stores all runtime data under `/var/lib` (Prometheus TSDB, VictoriaMetrics, Alertmanager, Grafana, Pushgateway). Enterprise deployments typically run these on a separate volume to keep OS/data disks separate and to simplify backup/retention.
+
+Pass `-d <path>` to any install or update script to place all data under that root:
+
+```bash
+# First, create/mount the volume at the desired path, e.g. /data, then:
+sudo ./install_prom_graf.sh -d /data
+
+# Subsequent updates pick up the saved path automatically:
+sudo ./update_prom_graf.sh
+# or override at update time:
+sudo ./update_prom_graf.sh -d /data
+```
+
+The chosen path is recorded in the install state file (`/etc/p4prometheus-monitoring/install.env`) and read automatically on every future update run, so the flag need only be specified once.
+
+#### Migrating existing data to a new volume
+
+If you have an existing install and want to move the data to a new volume without reinstalling:
+
+```bash
+# 1. Preview what would happen (no changes made):
+sudo ./migrate_prom_graf_data.sh -d /data --dry-run
+
+# 2. Perform the migration (stops services briefly, moves data, restarts):
+sudo ./migrate_prom_graf_data.sh -d /data
+
+# 3. Confirm all services are healthy, then remove the old directories:
+sudo ./migrate_prom_graf_data.sh -d /data --cleanup-old
+```
+
+Preflight checks are run before any service is stopped: sufficient free space (data size + 10% headroom), writable destination, no path overlap, and `rsync` availability for cross-device moves.
+
+### Retention Period (`-r`)
+
+Set the metrics retention period in months (default: 6):
+
+```bash
+sudo ./install_prom_graf.sh -d /data -r 12
+```
+
+### Custom Binary Directory (`-b`)
+
+Override the directory where binaries are installed (default: `/usr/local/bin`):
+
+```bash
+sudo ./install_prom_graf.sh -d /data -b /opt/monitoring/bin
+```
+
+### Additional Prometheus Scrape Targets (`-target`)
+
+Register additional hosts to scrape at install time (repeatable):
+
+```bash
+sudo ./install_prom_graf.sh -target myp4server:9100 -target replica1:9100
+```
+
+Targets can also be added manually to `/etc/prometheus/prometheus.yml` after install.
+
+### Air-Gap / Offline Installation (`--local-tarballs-dir`)
+
+For environments with no internet access, pre-stage the release tarballs from GitHub and pass the directory:
+
+```bash
+# On an internet-connected machine, download the required assets:
+#   node_exporter-<ver>.linux-amd64.tar.gz
+#   prometheus-<ver>.linux-amd64.tar.gz
+#   alertmanager-<ver>.linux-amd64.tar.gz
+#   victoria-metrics-linux-amd64-<ver>.tar.gz
+#   pushgateway-<ver>.linux-amd64.tar.gz
+#   p4prometheus.linux-amd64.gz
+#   p4metrics.linux-amd64.gz
+# Transfer them to the target machine, then:
+
+sudo ./install_prom_graf.sh -d /data --local-tarballs-dir /opt/installers
+
+sudo ./install_p4prom.sh --local-tarballs-dir /opt/installers
+```
+
+Filenames must match the GitHub release asset names exactly (the scripts check the local directory before attempting any download).
+
+Note: `p4prom_common.sh` must also be present alongside `install_p4prom.sh` / `update_p4prom.sh` when installing on air-gapped p4d servers.
+
+### Install State Files
+
+After every install or update run, the script writes a state file recording the chosen paths, versions, and configuration:
+
+| Script | State file |
+|--------|-----------|
+| `install_prom_graf.sh` / `update_prom_graf.sh` | `/etc/p4prometheus-monitoring/install.env` |
+| `install_p4prom.sh` / `update_p4prom.sh` | SDP: `/p4/common/site/config/p4prom_install.env`<br>Non-SDP: `/etc/p4prometheus/p4prom_install.env` |
+
+State files are plain `KEY=VALUE` text and are human-readable. They are read automatically on every subsequent update run so you never need to re-specify paths.
+
+### SDP-Upgrade Compatibility
+
+When installed with SDP, `install_p4prom.sh` and `update_p4prom.sh` now write config files to `/p4/common/site/config/` (previously `/p4/common/config/`). The `site/` directory is guaranteed not to be overwritten by future SDP upgrades.
+
+`update_p4prom.sh` automatically detects and migrates any config files still at the old location on first run, preserving their content and leaving a deprecation notice at the old path. No manual action is required.
+
+### HMS Fleet Compatibility (Hostname-Based Config)
+
+When running multiple p4d servers managed by HMS (Helix Management System), the `/p4/common/` tree is shared across machines. Since `p4prometheus.yml` may differ per machine, the install scripts generate a wrapper script that checks for a host-specific config file first:
+
+```
+/p4/common/site/config/p4prometheus.<ShortHostname>.yml  ← host-specific (if present)
+/p4/common/site/config/p4prometheus.yml                  ← shared default
+/p4/common/config/p4prometheus.yml                       ← legacy fallback
+```
+
+The wrapper script is placed at `/p4/common/site/bin/p4prometheus-start.sh` and the systemd service calls it instead of the binary directly. This means the same service file works on every machine in the fleet. An equivalent wrapper is generated for `p4metrics`.
+
+To use a host-specific config, simply copy and customize the shared default:
+
+```bash
+cp /p4/common/site/config/p4prometheus.yml \
+   /p4/common/site/config/p4prometheus.$(hostname -s).yml
+# edit the copy as needed
+systemctl restart p4prometheus
+```
 
 ## Package Install of Grafana
 
@@ -738,7 +901,28 @@ This is an example, assuming simple email and local postfix or equivalent have b
 
 See the version in: [EXAMPLES.md](examples/EXAMPLES.md)
 
-It would be setup as `/etc/prometheus/perforce_rules.yml` 
+It would be setup as `/etc/prometheus/perforce_rules.yml`
+
+#### Split-file alerting rules (recommended)
+
+`update_prom_graf.sh` manages two separate rules files to avoid overwriting your customizations on each update:
+
+| File | Managed by | Description |
+|------|-----------|-------------|
+| `/etc/prometheus/perforce_rules.yml` | Script (auto-updated) | Upstream rules from this project. Overwritten when upstream changes. |
+| `/etc/prometheus/perforce_rules_local.yml` | You | Your site-specific rules. Never touched by the script. Created with helpful comments on first run. |
+
+On each `update_prom_graf.sh` run:
+- If the upstream `perforce_rules.yml` has changed and you have not modified it locally, it is silently overwritten.
+- If both the upstream has changed **and** you have local edits, the script backs up your version as `perforce_rules.yml.YYYYMMDD` before installing the new upstream, then prints a warning reminding you to review and merge any new upstream rules into your `perforce_rules_local.yml`.
+
+To activate both files, reference them in `prometheus.yml`:
+
+```yaml
+rule_files:
+  - "perforce_rules.yml"
+  - "perforce_rules_local.yml"
+```
 
 Then uncomment the relevant section in `prometheus.yml`:
 
