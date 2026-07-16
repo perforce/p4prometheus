@@ -379,9 +379,20 @@ install_alertmanager () {
     fi
 
     mkdir -p /etc/alertmanager
+    mkdir -p /etc/alertmanager/templates
     mkdir -p "${data_root}/alertmanager"
     chown "$userid:$userid" /etc/alertmanager
+    chown "$userid:$userid" /etc/alertmanager/templates
     chown "$userid:$userid" "${data_root}/alertmanager"
+
+    local perforce_alert_tmpl_file="/etc/alertmanager/templates/perforce.tmpl"
+    local perforce_alert_tmpl_url="https://raw.githubusercontent.com/perforce/p4prometheus/master/examples/alertmanager/templates/perforce.tmpl"
+    msg "Downloading default Alertmanager template to ${perforce_alert_tmpl_file}"
+    if ! wget -q -O "$perforce_alert_tmpl_file" "$perforce_alert_tmpl_url"; then
+        bail "Failed to download Alertmanager template from $perforce_alert_tmpl_url"
+    fi
+    chown "$userid:$userid" "$perforce_alert_tmpl_file"
+    chmod 644 "$perforce_alert_tmpl_file"
 
     cd /tmp || bail "failed to cd"
     PVER="$VER_ALERTMANAGER"
@@ -421,11 +432,14 @@ EOF
 
     cat << EOF > /etc/alertmanager/alertmanager.yml
 global:
+  # Configure these according to alertmanager docs
   smtp_from: alertmanager@example.com
   smtp_smarthost: localhost:25
   smtp_require_tls: false
   # Hello is the local machine name
   smtp_hello: localhost
+  #smtp_hello: localhost
+  # slack_api_url: 'https://hooks.slack.com/services/XXX/XXX/XXX'
 
 route:
   group_by: ['alertname']
@@ -438,6 +452,15 @@ receivers:
 - name: mail
   email_configs:
   - to: p4-group@example.com
+
+# - name: Slack
+#   slack_configs:
+#   - channel: '#p4d-alerts'
+#     # Set to false for now - to avoid unnecessary posts
+#     send_resolved: false
+
+templates:
+  - templates/*.tmpl
 EOF
 
     echo -e "
@@ -615,6 +638,15 @@ install_prometheus () {
     chown -R "$userid:$userid" /etc/prometheus/consoles
     chown -R "$userid:$userid" /etc/prometheus/console_libraries
 
+    local perforce_rules_file="/etc/prometheus/perforce_rules.yml"
+    local perforce_rules_url="https://raw.githubusercontent.com/perforce/p4prometheus/master/examples/prometheus/perforce_rules.yml"
+    msg "Downloading default Perforce alert rules to ${perforce_rules_file}"
+    if ! wget -q -O "$perforce_rules_file" "$perforce_rules_url"; then
+        bail "Failed to download Perforce alert rules from $perforce_rules_url"
+    fi
+    chown "$userid:$userid" "$perforce_rules_file"
+    chmod 644 "$perforce_rules_file"
+
     # Note that we don't retain much data in Prometheus itself - we use VictoriaMetrics for long-term storage.
     # So only 7 days
     prometheus_retention="7d"
@@ -683,10 +715,9 @@ alerting:
     - targets:
         - localhost:9093
 
-# Alert rules - see https://github.com/perforce/p4prometheus for perforce_rules.yml
-# rule_files:
-#   - "perforce_rules.yml"
-#   - "perforce_rules_local.yml"  # local customizations - never overwritten by updates
+# Alert rules - default Perforce rules are downloaded by this installer
+rule_files:
+    - "/etc/prometheus/perforce_rules.yml"
 
 scrape_configs:
   - job_name: 'prometheus'
