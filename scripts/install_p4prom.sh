@@ -230,16 +230,7 @@ install_node_exporter () {
         restorecon -vF $bin_file
     fi
 
-    mkdir -p "$metrics_root"
-    chown "$OSUSER:$OSGROUP" "$metrics_root"
-    chmod 755 "$metrics_root"
-    f=$(readlink -f "$metrics_root")
-    while [[ $f != / ]]; do chmod 755 "$f"; f=$(dirname "$f"); done;
-
-    if [[ $UseSDP -eq 1 ]] && [[ ! -L "$metrics_link" ]]; then
-        ln -sf "$metrics_root" "$metrics_link"
-        chown -h "$OSUSER:$OSGROUP" "$metrics_link"
-    fi
+    ensure_metrics_root_and_link
 
     service_name="node_exporter"
     service_file="/etc/systemd/system/${service_name}.service"
@@ -270,17 +261,7 @@ install_p4prometheus () {
     chown "$OSUSER:$OSGROUP" "$p4prom_config_dir" "$p4prom_bin_dir"
 
     # Generate HMS-aware wrapper script for SDP fleet environments
-    if [[ $UseSDP -eq 1 ]]; then
-        msg "Generating HMS config-resolver wrapper for p4prometheus"
-        write_p4prometheus_wrapper_script \
-            "${p4prom_bin_dir}/p4prometheus-start.sh" \
-            "$p4prom_config_dir" \
-            "/p4/common/config"
-        if [[ $SELinuxEnabled -eq 1 ]]; then
-            semanage fcontext -a -t bin_t "${p4prom_bin_dir}/p4prometheus-start.sh"
-            restorecon -vF "${p4prom_bin_dir}/p4prometheus-start.sh"
-        fi
-    fi
+    ensure_hms_wrapper_script p4prometheus "Generating"
 
 cat << EOF > "$p4prom_config_file"
 # ----------------------
@@ -378,17 +359,7 @@ install_p4metrics () {
     chown "$OSUSER:$OSGROUP" "$p4prom_config_dir" "$p4prom_bin_dir"
 
     # Generate HMS-aware wrapper script for SDP fleet environments
-    if [[ $UseSDP -eq 1 ]]; then
-        msg "Generating HMS config-resolver wrapper for p4metrics"
-        write_p4metrics_wrapper_script \
-            "${p4prom_bin_dir}/p4metrics-start.sh" \
-            "$p4prom_config_dir" \
-            "/p4/common/config"
-        if [[ $SELinuxEnabled -eq 1 ]]; then
-            semanage fcontext -a -t bin_t "${p4prom_bin_dir}/p4metrics-start.sh"
-            restorecon -vF "${p4prom_bin_dir}/p4metrics-start.sh"
-        fi
-    fi
+    ensure_hms_wrapper_script p4metrics "Generating"
 
     write_or_update_p4metrics_config_file
     chown "$OSUSER:$OSGROUP" "$p4metrics_config_file"
@@ -399,22 +370,7 @@ install_p4metrics () {
     write_p4metrics_service_file "${service_file}"
     systemd_enable_and_restart "${service_file}" "${service_name}"
 
-    # Update the crontab of the specified user - to comment out entries relating to previous installs of monitoring
-    # These are replaced by the systemd timers or p4metrics service.
-    TEMP_FILE=$(mktemp)
-    crontab -u "$OSUSER" -l > "$TEMP_FILE" 2>/dev/null || echo "" > "$TEMP_FILE"
-    COMMENT="# This script has been replaced by systemd services/timers (p4metrics)"
-    CHANGES_MADE=false
-    for f in monitor_metrics.sh monitor_wrapper.sh; do
-        if grep -v "^#" "$TEMP_FILE" | grep -q "${f}"; then
-            cp "$TEMP_FILE" "${TEMP_FILE}.bak"
-            sed -i "/^[^#].*\/${f}/ s|^|# ${COMMENT}\n# |" "$TEMP_FILE"
-            CHANGES_MADE=true
-        fi
-    done
-    if [ "$CHANGES_MADE" = true ]; then # Load up new crontab
-        crontab -u "$OSUSER" "$TEMP_FILE"
-    fi
+    comment_out_legacy_monitor_cron "$OSUSER"
 }
 
 install_monitor_locks () {
@@ -535,11 +491,7 @@ check_aws_cli_version
 systemctl list-timers | grep -E "^NEXT|monitor"
 
 # Write install state file for use by future update_p4prom.sh runs
-if [[ $UseSDP -eq 1 ]]; then
-    p4d_state_file="${p4prom_config_dir}/p4prom_install.env"
-else
-    p4d_state_file="${p4prom_config_dir}/p4prom_install.env"
-fi
+p4d_state_file="${p4prom_config_dir}/p4prom_install.env"
 write_p4d_state_file "$p4d_state_file"
 
 echo "

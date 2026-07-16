@@ -84,6 +84,82 @@ EOF
     fi
 }
 
+ensure_metrics_root_and_link() {
+    mkdir -p "$metrics_root"
+    chown "$OSUSER:$OSGROUP" "$metrics_root"
+    chmod 755 "$metrics_root"
+
+    local f
+    f=$(readlink -f "$metrics_root")
+    while [[ $f != / ]]; do
+        chmod 755 "$f"
+        f=$(dirname "$f")
+    done
+
+    if [[ "${UseSDP:-0}" -eq 1 ]]; then
+        if [[ -e "$metrics_link" ]] && [[ ! -L "$metrics_link" ]]; then
+            msg "Warning: metrics link path exists and is not a symlink: $metrics_link"
+            return 0
+        fi
+        ln -sfn "$metrics_root" "$metrics_link"
+        chown -h "$OSUSER:$OSGROUP" "$metrics_link"
+    fi
+}
+
+ensure_hms_wrapper_script() {
+    local component=$1
+    local mode=${2:-Refreshing}
+    local wrapper=""
+
+    if [[ "${UseSDP:-0}" -ne 1 ]]; then
+        return 0
+    fi
+
+    case "$component" in
+        p4prometheus)
+            wrapper="${p4prom_bin_dir}/p4prometheus-start.sh"
+            msg "${mode} HMS config-resolver wrapper for ${component}: ${wrapper}"
+            write_p4prometheus_wrapper_script "$wrapper" "$p4prom_config_dir" "/p4/common/config"
+            ;;
+        p4metrics)
+            wrapper="${p4prom_bin_dir}/p4metrics-start.sh"
+            msg "${mode} HMS config-resolver wrapper for ${component}: ${wrapper}"
+            write_p4metrics_wrapper_script "$wrapper" "$p4prom_config_dir" "/p4/common/config"
+            ;;
+        *)
+            bail "Unsupported HMS wrapper component: $component"
+            ;;
+    esac
+
+    if [[ ${SELinuxEnabled:-0} -eq 1 ]]; then
+        semanage fcontext -a -t bin_t "$wrapper" 2>/dev/null || true
+        restorecon -vF "$wrapper"
+    fi
+}
+
+comment_out_legacy_monitor_cron() {
+    local osuser=$1
+    local temp_file
+    local comment="# This script has been replaced by systemd services/timers (p4metrics)"
+    local changes_made=false
+
+    temp_file=$(mktemp)
+    crontab -u "$osuser" -l > "$temp_file" 2>/dev/null || echo "" > "$temp_file"
+
+    local f
+    for f in monitor_metrics.sh monitor_wrapper.sh; do
+        if grep -v "^#" "$temp_file" | grep -q "${f}"; then
+            cp "$temp_file" "${temp_file}.bak"
+            sed -i "/^[^#].*\/${f}/ s|^|# ${comment}\\n# |" "$temp_file"
+            changes_made=true
+        fi
+    done
+
+    if [[ "$changes_made" == "true" ]]; then
+        crontab -u "$osuser" "$temp_file"
+    fi
+}
+
 write_node_exporter_service_file() {
     local service_file=$1
     local userid=${2:-node_exporter}

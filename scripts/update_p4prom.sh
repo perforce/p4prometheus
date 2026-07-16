@@ -60,11 +60,6 @@ source "$COMMON_LIB" || { echo "Error: Failed to source common library $COMMON_L
 
 # ============================================================
 
-function check_service_exists() {
-    local service=$1
-    systemctl list-unit-files | grep -q "^${service}.service" && return 0 || return 1
-}
-
 function usage
 {
    declare errorMessage=${2:-Unset}
@@ -289,16 +284,7 @@ update_node_exporter () {
         restorecon -vF $bin_file
     fi
 
-    mkdir -p "$metrics_root"
-    chown "$OSUSER:$OSGROUP" "$metrics_root"
-    chmod 755 "$metrics_root"
-    f=$(readlink -f "$metrics_root")
-    while [[ $f != / ]]; do chmod 755 "$f"; f=$(dirname "$f"); done;
-
-    if [[ $UseSDP -eq 1 ]]; then
-        ln -s "$metrics_root" "$metrics_link"
-        chown -h "$OSUSER:$OSGROUP" "$metrics_link"
-    fi
+    ensure_metrics_root_and_link
 
     msg "Creating service file for ${service_name}"
     write_node_exporter_service_file "${service_file}" "$userid"
@@ -341,16 +327,7 @@ update_p4prometheus () {
         systemd_enable_and_restart "${service_file}" "${service_name}"
     fi
 
-    # Refresh or create HMS wrapper script for SDP installs
-    if [[ ${UseSDP:-0} -eq 1 ]]; then
-        local wrapper="${p4prom_bin_dir}/p4prometheus-start.sh"
-        msg "Refreshing HMS config-resolver wrapper: $wrapper"
-        write_p4prometheus_wrapper_script "$wrapper" "$p4prom_config_dir" "/p4/common/config"
-        if [[ $SELinuxEnabled -eq 1 ]]; then
-            semanage fcontext -a -t bin_t "$wrapper" 2>/dev/null || true
-            restorecon -vF "$wrapper"
-        fi
-    fi
+    ensure_hms_wrapper_script p4prometheus "Refreshing"
 }
 
 update_p4metrics () {
@@ -396,33 +373,9 @@ update_p4metrics () {
 
     systemd_enable_and_restart "${service_file}" "${service_name}"
 
-    # Refresh or create HMS wrapper script for SDP installs
-    if [[ ${UseSDP:-0} -eq 1 ]]; then
-        local wrapper="${p4prom_bin_dir}/p4metrics-start.sh"
-        msg "Refreshing HMS config-resolver wrapper: $wrapper"
-        write_p4metrics_wrapper_script "$wrapper" "$p4prom_config_dir" "/p4/common/config"
-        if [[ $SELinuxEnabled -eq 1 ]]; then
-            semanage fcontext -a -t bin_t "$wrapper" 2>/dev/null || true
-            restorecon -vF "$wrapper"
-        fi
-    fi
+    ensure_hms_wrapper_script p4metrics "Refreshing"
 
-    # Update the crontab of the specified user - to comment out entries relating to previous installs of monitoring
-    # These are replaced by the systemd timers or p4metrics service.
-    TEMP_FILE=$(mktemp)
-    crontab -u "$OSUSER" -l > "$TEMP_FILE" 2>/dev/null || echo "" > "$TEMP_FILE"
-    COMMENT="# This script has been replaced by systemd services/timers (p4metrics)"
-    CHANGES_MADE=false
-    for f in monitor_metrics.sh monitor_wrapper.sh; do
-        if grep -v "^#" "$TEMP_FILE" | grep -q "${f}"; then
-            cp "$TEMP_FILE" "${TEMP_FILE}.bak"
-            sed -i "/^[^#].*\/${f}/ s|^|# ${COMMENT}\n# |" "$TEMP_FILE"
-            CHANGES_MADE=true
-        fi
-    done
-    if [ "$CHANGES_MADE" = true ]; then # Load up new crontab
-        crontab -u "$OSUSER" "$TEMP_FILE"
-    fi
+    comment_out_legacy_monitor_cron "$OSUSER"
 }
 
 update_monitor_locks_service() {
@@ -484,11 +437,7 @@ fi
 systemctl list-timers | grep -E "^NEXT|monitor"
 
 # Write updated state file so future upgrades stay on the same paths
-if [[ $UseSDP -eq 1 ]]; then
-    p4d_state_file="${p4prom_config_dir}/p4prom_install.env"
-else
-    p4d_state_file="${p4prom_config_dir}/p4prom_install.env"
-fi
+p4d_state_file="${p4prom_config_dir}/p4prom_install.env"
 write_p4d_state_file "$p4d_state_file"
 
 echo "
