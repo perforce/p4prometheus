@@ -675,53 +675,54 @@ func (t *P4ProcessTerminator) TerminateProcess(pid int, user, cmd string) (bool,
 // P4MonitorMetrics structure
 
 type P4MonitorMetrics struct {
-	config              *config.Config
-	initialised         bool
-	loginError          bool
-	dryrun              bool
-	env                 *map[string]string
-	logger              *logrus.Logger
-	p4User              string
-	isSuper             bool // Is this user a super user?
-	serverID            string
-	p4port              string
-	p4root              string
-	logsDir             string
-	p4Cmd               string
-	sdpInstance         string
-	sdpInstanceLabel    string
-	sdpInstanceSuffix   string
-	p4info              map[string]string
-	p4license           map[string]string
-	p4log               string
-	p4journal           string
-	journalPrefix       string
-	p4errorsCSV         string
-	version             string
-	rotatedJournals     int       // Number of rotated journals
-	rotatedLogs         int       // Number of rotated logs
-	indErrSeverity      int       // Index of Severity in errors.csv
-	indErrSubsys        int       // Index of subsys
-	verifyLogModTime    time.Time // Time when last looked at verify
-	verifyErrsSubmitted int64
-	verifyErrsSpec      int64
-	verifyErrsUnload    int64
-	verifyErrsShelved   int64
-	verifyDuration      int
-	errorMetrics        map[ErrorMetric]int
-	errLock             sync.Mutex
-	journalMetrics      map[JournalMetric]int
-	journalLock         sync.Mutex
-	metricsFilePrefix   string
-	metricsFunction     string
-	metricsWritten      bool           // Set to true when metrics have been written
-	metricNames         map[string]int // Used when printing to avoid duplicate headers
-	metrics             []metricStruct
-	errTailer           *fswatcher.FileTailer
-	journalTailer       *fswatcher.FileTailer
-	memReader           MemReader         // Interface for reading process memory (Linux /proc)
-	memlimitKillCount   int               // Cumulative count of processes killed by memlimit enforcement
-	terminator          ProcessTerminator // Interface for terminating processes
+	config                 *config.Config
+	initialised            bool
+	loginError             bool
+	dryrun                 bool
+	env                    *map[string]string
+	logger                 *logrus.Logger
+	p4User                 string
+	isSuper                bool // Is this user a super user?
+	serverID               string
+	p4port                 string
+	p4root                 string
+	logsDir                string
+	p4Cmd                  string
+	sdpInstance            string
+	sdpInstanceLabel       string
+	sdpInstanceSuffix      string
+	p4info                 map[string]string
+	p4license              map[string]string
+	p4log                  string
+	p4journal              string
+	journalPrefix          string
+	p4errorsCSV            string
+	version                string
+	rotatedJournals        int       // Number of rotated journals
+	rotatedLogs            int       // Number of rotated logs
+	indErrSeverity         int       // Index of Severity in errors.csv
+	indErrSubsys           int       // Index of subsys
+	verifyLogModTime       time.Time // Time when last looked at verify
+	verifyErrsSubmitted    int64
+	verifyErrsSpec         int64
+	verifyErrsUnload       int64
+	verifyErrsShelved      int64
+	verifyDuration         int
+	errorMetrics           map[ErrorMetric]int
+	errLock                sync.Mutex
+	journalMetrics         map[JournalMetric]int
+	journalLock            sync.Mutex
+	metricsFilePrefix      string
+	metricsFunction        string
+	metricsWritten         bool           // Set to true when metrics have been written
+	metricNames            map[string]int // Used when printing to avoid duplicate headers
+	metrics                []metricStruct
+	errTailer              *fswatcher.FileTailer
+	journalTailer          *fswatcher.FileTailer
+	memReader              MemReader         // Interface for reading process memory (Linux /proc)
+	memlimitKillCandidates int               // Cumulative count of processes that would be killed by memlimit enforcement (if enabled)
+	memlimitKillCount      int               // Cumulative count of processes actually killed by memlimit enforcement
+	terminator             ProcessTerminator // Interface for terminating processes
 }
 
 func newP4MonitorMetrics(config *config.Config, envVars *map[string]string, logger *logrus.Logger) (p4m *P4MonitorMetrics) {
@@ -2177,10 +2178,11 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 				}
 
 				// Emit kill candidates metric
+				p4m.memlimitKillCandidates += len(eval.KillCandidates)
 				p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_memlimit_kill_candidates",
 					help:  "Number of processes exceeding memory limits",
 					mtype: "gauge",
-					value: fmt.Sprintf("%d", len(eval.KillCandidates))})
+					value: fmt.Sprintf("%d", p4m.memlimitKillCandidates)})
 
 				// Terminate violating processes if configured and not in dry-run
 				if p4m.config.MemLimits.EnforceKills && len(eval.KillCandidates) > 0 {
