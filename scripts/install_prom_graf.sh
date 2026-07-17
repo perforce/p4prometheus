@@ -50,15 +50,44 @@ cleanup() {
     if [[ ${#TEMP_FILES[@]} -gt 0 ]]; then
         echo "Cleaning up temporary files..."
         for f in "${TEMP_FILES[@]}"; do
-            [[ -f "$f" ]] && rm -f "$f"
-            [[ -d "$f" ]] && rm -rf "$f"
+            if [[ -f "$f" ]]; then
+                rm -f "$f"
+            fi
+            if [[ -d "$f" ]]; then
+                rm -rf "$f"
+            fi
         done
     fi
+    return 0
 }
 
 trap cleanup EXIT
 
 # ============================================================
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMMON_LIB="${SCRIPT_DIR}/p4prom_common.sh"
+if [[ ! -f "$COMMON_LIB" ]]; then
+    COMMON_LIB_URL="https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/p4prom_common.sh"
+    echo "Common library missing: $COMMON_LIB"
+    echo "Attempting download from $COMMON_LIB_URL"
+    if command -v wget >/dev/null 2>&1; then
+        wget -q -O "$COMMON_LIB" "$COMMON_LIB_URL" || {
+            echo "Error: Failed to download common library with wget"
+            exit 1
+        }
+    elif command -v curl >/dev/null 2>&1; then
+        curl -fsSL -o "$COMMON_LIB" "$COMMON_LIB_URL" || {
+            echo "Error: Failed to download common library with curl"
+            exit 1
+        }
+    else
+        echo "Error: Missing common library and neither wget nor curl is available"
+        exit 1
+    fi
+fi
+# shellcheck source=p4prom_common.sh
+source "$COMMON_LIB" || { echo "Error: Failed to source common library $COMMON_LIB"; exit 1; }
 
 function msg () { echo -e "$*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; cleanup; exit "${2:-1}"; }
@@ -160,34 +189,6 @@ if command -v getenforce > /dev/null; then
     selinux=$(getenforce)
     [[ "$selinux" == "Enforcing" ]] && SELinuxEnabled=1
 fi
-
-download_and_untar () {
-    local fname=$1
-    local url=$2
-
-    TEMP_FILES+=("$fname")
-
-    if [[ -n "$local_tarballs_dir" ]]; then
-        local local_file="${local_tarballs_dir}/${fname}"
-        if [[ ! -f "$local_file" ]]; then
-            bail "Air-gap mode: expected tarball not found: $local_file"
-        fi
-        msg "Using local tarball: $local_file"
-        cp "$local_file" "$fname"
-    else
-        if [[ -f "$fname" ]]; then
-            msg "File $fname already exists, removing..."
-            rm -f "$fname"
-        fi
-        msg "Downloading $url"
-        if ! wget -q --show-progress "$url"; then
-            bail "Failed to download $url"
-        fi
-    fi
-
-    msg "Extracting $fname"
-    tar zxf "$fname" || bail "Failed to untar $fname"
-}
 
 write_state_file () {
     mkdir -p "$(dirname "$state_file")"
@@ -414,10 +415,7 @@ install_alertmanager () {
         cp alertmanager-files/$base_file "${bin_dir}/"
         chown "$userid:$userid" "$bin_file"
         chmod 755 "$bin_file"
-        if [[ $SELinuxEnabled -eq 1 ]]; then
-            semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
-            restorecon -vF "$bin_file"
-        fi
+        apply_bin_selinux_context "$bin_file"
     done
 
     cat << EOF > /etc/systemd/system/alertmanager.service
@@ -481,10 +479,7 @@ restart: validate
 
     chown $userid:$userid /etc/alertmanager/alertmanager.yml /etc/alertmanager/Makefile
 
-    systemctl daemon-reload
-    systemctl enable alertmanager
-    systemctl start alertmanager
-    systemctl status alertmanager --no-pager
+    systemd_enable_and_restart /etc/systemd/system/alertmanager.service alertmanager
 
 }
 
@@ -512,11 +507,7 @@ install_node_exporter () {
     chown "$userid:$userid" "${bin_dir}/node_exporter"
     chmod 755 "${bin_dir}/node_exporter"
 
-    if [[ $SELinuxEnabled -eq 1 ]]; then
-        local bin_file="${bin_dir}/node_exporter"
-        semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
-        restorecon -vF "$bin_file"
-    fi
+    apply_bin_selinux_context "${bin_dir}/node_exporter"
 
     cat << EOF > /etc/systemd/system/node_exporter.service
 [Unit]
@@ -535,10 +526,7 @@ ExecStart=${bin_dir}/node_exporter --collector.systemd \
 WantedBy=multi-user.target
 EOF
 
-    systemctl daemon-reload
-    systemctl enable node_exporter
-    systemctl start node_exporter
-    systemctl status node_exporter --no-pager
+    systemd_enable_and_restart /etc/systemd/system/node_exporter.service node_exporter
 }
 
 install_victoria_metrics () {
@@ -568,10 +556,7 @@ install_victoria_metrics () {
             mv "$base_file" "${bin_dir}/"
             chown "$userid:$userid" "$bin_file"
             chmod 755 "$bin_file"
-            if [[ $SELinuxEnabled -eq 1 ]]; then
-                semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
-                restorecon -vF "$bin_file"
-            fi
+            apply_bin_selinux_context "$bin_file"
         fi
     done
 
@@ -596,10 +581,7 @@ ExecStart=${bin_dir}/victoria-metrics-prod \
 WantedBy=multi-user.target
 EOF
 
-    systemctl daemon-reload
-    systemctl enable victoria-metrics
-    systemctl start victoria-metrics
-    systemctl status victoria-metrics --no-pager
+    systemd_enable_and_restart /etc/systemd/system/victoria-metrics.service victoria-metrics
 }
 
 install_prometheus () {
@@ -634,10 +616,7 @@ install_prometheus () {
         cp "prometheus-files/$base_file" "${bin_dir}/"
         chown "$userid:$userid" "$bin_file"
         chmod 755 "$bin_file"
-        if [[ $SELinuxEnabled -eq 1 ]]; then
-            semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
-            restorecon -vF "$bin_file"
-        fi
+        apply_bin_selinux_context "$bin_file"
     done
 
     cp -r prometheus-files/consoles /etc/prometheus
@@ -755,10 +734,7 @@ restart: validate
 
     chown "$userid:$userid" /etc/prometheus/prometheus.yml /etc/prometheus/Makefile
 
-    systemctl daemon-reload
-    systemctl enable prometheus
-    systemctl start prometheus
-    systemctl status prometheus --no-pager
+    systemd_enable_and_restart /etc/systemd/system/prometheus.service prometheus
 }
 
 
@@ -786,11 +762,7 @@ install_pushgateway () {
     chown "$userid:$userid" "${bin_dir}/pushgateway"
     chmod 755 "${bin_dir}/pushgateway"
 
-    if [[ $SELinuxEnabled -eq 1 ]]; then
-        local bin_file="${bin_dir}/pushgateway"
-        semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
-        restorecon -vF "$bin_file"
-    fi
+    apply_bin_selinux_context "${bin_dir}/pushgateway"
 
     mkdir -p "${data_root}/pushgateway"
     chown "$userid:$userid" "${data_root}/pushgateway"
@@ -816,10 +788,7 @@ ExecStart=${bin_dir}/pushgateway \
 WantedBy=multi-user.target
 EOF
 
-    systemctl daemon-reload
-    systemctl enable pushgateway
-    systemctl start pushgateway
-    systemctl status pushgateway --no-pager
+    systemd_enable_and_restart /etc/systemd/system/pushgateway.service pushgateway
 }
 
 install_pint () {
@@ -848,10 +817,7 @@ install_pint () {
     chown "$userid:$userid" "$pint_bin"
     chmod 755 "$pint_bin"
 
-    if [[ $SELinuxEnabled -eq 1 ]]; then
-            semanage fcontext -a -t bin_t "$pint_bin" 2>/dev/null || true
-            restorecon -vF "$pint_bin"
-    fi
+        apply_bin_selinux_context "$pint_bin"
 
     cat << EOF > "$pint_cfg"
 # Point pint at VictoriaMetrics
@@ -895,10 +861,7 @@ ExecStart=${bin_dir}/pint watch glob /etc/prometheus/perforce_rules.yml --config
 WantedBy=multi-user.target
 EOF
 
-        systemctl daemon-reload
-        systemctl enable pint
-        systemctl start pint
-        systemctl status pint --no-pager
+        systemd_enable_and_restart /etc/systemd/system/pint.service pint
 }
 
 check_health () {

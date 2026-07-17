@@ -67,6 +67,10 @@ if [[ $(id -u) -ne 0 ]]; then
 fi
 
 cd /root
-./install_prom_graf.sh -d /data -target localhost:9100 -target myp4:9100 -target myreplica:9100 -grafana-setup -pint
+if ! ./install_prom_graf.sh -d /data -target localhost:9100 -target myp4:9100 -target myreplica:9100 -grafana-setup -pint; then
+    bail "install_prom_graf.sh failed, so tests were not run"
+fi
 
-py.test -v test_prom_graf.py
+echo "After install - about to run tests for Prometheus and Grafana"
+sleep 5
+pytest -v test_prom_graf.py

@@ -24,6 +24,12 @@ systemd_enable_and_restart() {
 download_and_untar () {
     local fname=$1
     local url=$2
+
+    # Optional integration with callers that track temporary artifacts.
+    if declare -p TEMP_FILES >/dev/null 2>&1; then
+        TEMP_FILES+=("$fname")
+    fi
+
     if [[ -n "${local_tarballs_dir:-}" ]]; then
         local local_file="${local_tarballs_dir}/${fname}"
         [[ -f "$local_file" ]] || bail "Air-gap mode: expected tarball not found: $local_file"
@@ -35,6 +41,14 @@ download_and_untar () {
         wget -q "$url" || bail "Failed to download $url"
     fi
     tar zxvf "$fname"
+}
+
+apply_bin_selinux_context() {
+    local bin_file=$1
+    if [[ ${SELinuxEnabled:-0} -eq 1 ]]; then
+        semanage fcontext -a -t bin_t "$bin_file" 2>/dev/null || true
+        restorecon -vF "$bin_file"
+    fi
 }
 
 # download_gz handles single .gz binaries (p4prometheus, p4metrics)

@@ -119,7 +119,7 @@ sleep 3
 su - perforce -c "p4 configure show"
 
 if [[ $UseSDP -eq 1 ]]; then
-    py.test -v test_sdp.py
+    pytest -v test_sdp.py
 else
-    py.test -v test_nosdp.py
+    pytest -v test_nosdp.py
 fi
