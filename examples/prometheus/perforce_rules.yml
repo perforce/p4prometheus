@@ -65,6 +65,16 @@ groups:
       description: "One or more processes were exceeding out-of-memory thresholds by p4metrics"
       runbook_id: _oom_p4metrics_issue_detected
 
+  - alert: OOM Kill made by p4metrics
+    expr: increase(p4_memlimit_kills_total[10m]) > 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "OOM kill on {{ $labels.instance }}"
+      description: "One or more processes were killed by p4metrics as over out-of-memory thresholds"
+      runbook_id: _oom_p4metrics_issue_detected
+
   - alert: OOM Kill Detected
     expr: increase(node_vmstat_oom_kill[10m]) > 0
     for: 1m
