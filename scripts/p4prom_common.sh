@@ -129,14 +129,15 @@ ensure_hms_wrapper_script() {
         return 0
     fi
 
+    # Note these are in local_bin_dir, not p4prom_bin_dir, in case of SELinux being required.
     case "$component" in
         p4prometheus)
-            wrapper="${p4prom_bin_dir}/p4prometheus-start.sh"
+            wrapper="${local_bin_dir}/p4prometheus-start.sh"
             msg "${mode} HMS config-resolver wrapper for ${component}: ${wrapper}"
             write_p4prometheus_wrapper_script "$wrapper" "$p4prom_config_dir" "/p4/common/config"
             ;;
         p4metrics)
-            wrapper="${p4prom_bin_dir}/p4metrics-start.sh"
+            wrapper="${local_bin_dir}/p4metrics-start.sh"
             msg "${mode} HMS config-resolver wrapper for ${component}: ${wrapper}"
             write_p4metrics_wrapper_script "$wrapper" "$p4prom_config_dir" "/p4/common/config"
             ;;
@@ -265,7 +266,7 @@ write_p4prometheus_service_file() {
     # config resolution works on shared /p4/common/ fleet environments.
     local exec_start
     if [[ "${UseSDP:-0}" -eq 1 ]]; then
-        exec_start="${p4prom_bin_dir}/p4prometheus-start.sh"
+        exec_start="${local_bin_dir}/p4prometheus-start.sh"
     else
         exec_start="${local_bin_dir}/p4prometheus --config=${p4prom_config_file}"
     fi
@@ -296,7 +297,7 @@ write_p4metrics_service_file() {
     # For SDP installs, use the HMS-aware wrapper script.
     local exec_start
     if [[ "${UseSDP:-0}" -eq 1 ]]; then
-        exec_start="${p4prom_bin_dir}/p4metrics-start.sh"
+        exec_start="${local_bin_dir}/p4metrics-start.sh"
     else
         exec_start="${local_bin_dir}/p4metrics --config=${p4metrics_config_file}"
     fi
