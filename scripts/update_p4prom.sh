@@ -210,17 +210,13 @@ if [[ $UseSDP -eq 1 ]]; then
             mkdir -p "$p4prom_config_dir"
             cp "$old_file" "$new_file"
             chown "$OSUSER:$OSGROUP" "$new_file" 2>/dev/null || true
-            # Annotate old file so operators know what happened
-            printf '\n# NOTICE: This file was automatically copied to %s\n' "$new_file" >> "$old_file"
-            printf '# by update_p4prom.sh on %s.\n' "$(date)" >> "$old_file"
-            printf '# The active configuration is now at the location above.\n' >> "$old_file"
-            msg "  Migrated: $old_file → $new_file"
+            # Remove old file - otherwise leads to confusion about which file is being used!
+            rm -f "${old_file}"
             migrate_count=$(( migrate_count + 1 ))
         fi
     done
     if [[ $migrate_count -gt 0 ]]; then
         msg "Auto-migrated $migrate_count config file(s) to SDP-upgrade-safe location: $p4prom_config_dir"
-        msg "Original files preserved at $old_config_dir with deprecation notices."
     fi
 else
     SDP_INSTANCE=""
