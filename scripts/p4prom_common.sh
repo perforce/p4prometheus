@@ -1001,6 +1001,14 @@ check_aws_cli_version() {
         ./aws/install || bail "Failed to install AWS CLI v2"
     fi
 
+    # Ensure non-root users can execute aws and traverse install directories.
+    if [[ -d /usr/local/aws-cli ]]; then
+        chmod -R a+rX /usr/local/aws-cli || true
+    fi
+    if [[ -L /usr/local/bin/aws ]] || [[ -f /usr/local/bin/aws ]]; then
+        chmod 755 /usr/local/bin/aws || true
+    fi
+
     version_output=$(aws --version 2>&1 || true)
     major_version=$(echo "$version_output" | sed -n 's/^aws-cli\/\([0-9]\+\)\..*/\1/p')
 
