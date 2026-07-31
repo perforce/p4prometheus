@@ -230,8 +230,16 @@ class Notifier:
             ("teams", self._send_teams),
             ("script", self._send_script),
         ):
-            cfg = self.config.get(channel, {})
-            if cfg and cfg.get("enabled"):
+            raw_cfg = self.config.get(channel, {})
+            if not raw_cfg:
+                continue
+            # A channel may be a single mapping (one destination) or a list of
+            # mappings (fan out to several destinations, e.g. multiple Slack
+            # webhooks pointing at different channels).
+            cfg_list = raw_cfg if isinstance(raw_cfg, list) else [raw_cfg]
+            for cfg in cfg_list:
+                if not cfg.get("enabled"):
+                    continue
                 if channel == "script":
                     method(payload, cfg)
                 elif channel == "slack":
