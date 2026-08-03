@@ -105,6 +105,26 @@ func compareOutput(t *testing.T, expected, actual []string) {
 	assert.Equal(t, nExpected, nActual)
 }
 
+func TestFilterHavePtTableLockMetrics(t *testing.T) {
+	input := strings.Join([]string{
+		"p4_total_read_held_seconds;table=have.pt%rcowham_part 12",
+		"p4_total_read_wait_seconds;table=have.pt 13",
+		"p4_total_write_held_seconds{table=\"have.pt%foo\"} 14",
+		"p4_total_write_wait_seconds{table=\"have.pt\"} 15",
+		"p4_total_read_held_seconds;table=other.pt 16",
+		"p4_some_other_metric;table=have.pt%rcowham_part 17",
+	}, "\n") + "\n"
+
+	output := string(filterMetrics([]byte(input)))
+
+	assert.NotContains(t, output, "p4_total_read_held_seconds;table=have.pt%rcowham_part")
+	assert.NotContains(t, output, "p4_total_read_wait_seconds;table=have.pt")
+	assert.NotContains(t, output, "p4_total_write_held_seconds{table=\"have.pt%foo\"}")
+	assert.NotContains(t, output, "p4_total_write_wait_seconds{table=\"have.pt\"}")
+	assert.Contains(t, output, "p4_total_read_held_seconds;table=other.pt 16")
+	assert.Contains(t, output, "p4_some_other_metric;table=have.pt%rcowham_part 17")
+}
+
 func basicTest(t *testing.T, cfg *config.Config, input string, historical bool) []string {
 	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
 	logger.SetReportCaller(true)

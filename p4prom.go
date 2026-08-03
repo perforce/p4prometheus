@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -52,6 +53,35 @@ func newP4Prometheus(config *config.Config, logger *logrus.Logger) (p4p *P4Prome
 	}
 }
 
+var filteredHavePtTableMetrics = []string{
+	"p4_total_read_held_seconds",
+	"p4_total_read_wait_seconds",
+	"p4_total_write_held_seconds",
+	"p4_total_write_wait_seconds",
+}
+
+func shouldFilterHavePtTableMetricLine(line string) bool {
+	for _, metric := range filteredHavePtTableMetrics {
+		if !strings.HasPrefix(line, metric) {
+			continue
+		}
+		return strings.Contains(line, ";table=have.pt") || strings.Contains(line, "table=\"have.pt")
+	}
+	return false
+}
+
+func filterMetrics(metrics []byte) []byte {
+	lines := bytes.Split(metrics, []byte{'\n'})
+	filtered := make([][]byte, 0, len(lines))
+	for _, line := range lines {
+		if shouldFilterHavePtTableMetricLine(string(line)) {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	return bytes.Join(filtered, []byte{'\n'})
+}
+
 // Reads server id for SDP instance or the server.id path
 func readServerID(logger *logrus.Logger, instance string, path string) string {
 	idfile := path
@@ -79,7 +109,8 @@ func (p4p *P4Prometheus) writeMetricsFile(metrics []byte) {
 		p4p.logger.Errorf("Error opening %s: %v", tmpFile, err)
 		return
 	}
-	f.Write(bytes.ToValidUTF8(metrics, []byte{'?'}))
+	filteredMetrics := filterMetrics(metrics)
+	f.Write(bytes.ToValidUTF8(filteredMetrics, []byte{'?'}))
 	err = f.Close()
 	if err != nil {
 		p4p.logger.Errorf("Error closing file: %v", err)
