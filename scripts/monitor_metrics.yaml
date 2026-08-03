@@ -28,6 +28,18 @@ notifications:
 
   # ---------------------------------------------------------------------------
   # Slack - post to an Incoming Webhook URL
+  #
+  # `slack` may be a single mapping (one destination, shown below) or a list
+  # of mappings to fan the same alert out to multiple Slack channels (e.g. an
+  # IT channel plus a dev-team channel), each with its own webhook and
+  # optional per-destination overrides:
+  #
+  # slack:
+  #   - enabled: true
+  #     webhook_url: "https://hooks.slack.com/services/T000/AAA/xxx"   # IT channel
+  #   - enabled: true
+  #     webhook_url: "https://hooks.slack.com/services/T000/BBB/yyy"   # dev-team channel
+  #     runbook_url: "https://wiki.example.com/lock-runbook"
   # ---------------------------------------------------------------------------
   slack:
     enabled: false

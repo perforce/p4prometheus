@@ -402,5 +402,65 @@ Server root: /p4/1/root
         notifier.maybe_notify(**kwargs)
         self.assertEqual(2, len(sent_payloads))
 
+    def testNotifierMultipleWebhooksFanOut(self):
+        """List-form config sends one notification per enabled entry."""
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            state_file = tmp.name
+        self.addCleanup(lambda: os.path.exists(state_file) and os.remove(state_file))
+
+        cfg = {
+            "min_blocked_commands": 1,
+            "cooldown_seconds": 0,
+            "state_file": state_file,
+            "script": [
+                {"enabled": True, "command": "dest_one"},
+                {"enabled": True, "command": "dest_two"},
+            ],
+        }
+        notifier = Notifier(cfg, logging.getLogger("test_monitor_metrics"))
+        sent = []
+
+        def fake_send_script(payload, channel_cfg):
+            sent.append(channel_cfg["command"])
+
+        notifier._send_script = fake_send_script
+
+        notifier.maybe_notify(
+            blocked_count=2,
+            blines=["blocking totals: 2"],
+            detail_msgs=["detail1"],
+            blocking_tree={"123 user cmd": {}},
+        )
+        self.assertEqual(["dest_one", "dest_two"], sent, "expected one send per list entry")
+
+    def testNotifierSingleMappingBackwardCompat(self):
+        """Single-mapping config (existing format) still sends exactly once."""
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            state_file = tmp.name
+        self.addCleanup(lambda: os.path.exists(state_file) and os.remove(state_file))
+
+        cfg = {
+            "min_blocked_commands": 1,
+            "cooldown_seconds": 0,
+            "state_file": state_file,
+            "script": {"enabled": True, "command": "only_dest"},
+        }
+        notifier = Notifier(cfg, logging.getLogger("test_monitor_metrics"))
+        sent = []
+
+        def fake_send_script(payload, channel_cfg):
+            sent.append(channel_cfg["command"])
+
+        notifier._send_script = fake_send_script
+
+        notifier.maybe_notify(
+            blocked_count=2,
+            blines=["blocking totals: 2"],
+            detail_msgs=["detail1"],
+            blocking_tree={"123 user cmd": {}},
+        )
+        self.assertEqual(["only_dest"], sent, "single mapping should send exactly once")
+
+
 if __name__ == '__main__':
     unittest.main()
