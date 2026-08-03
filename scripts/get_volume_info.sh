@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# get_volumes.sh — Retrieve EBS volume configuration for the current EC2 instance
+# get_volume_info.sh — Retrieve AWS EBS volume configuration for the current EC2 instance
 # Outputs a JSON object with instance metadata and attached volume details.
 
 set -euo pipefail
