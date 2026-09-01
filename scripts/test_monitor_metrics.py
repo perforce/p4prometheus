@@ -396,6 +396,56 @@ Server root: /p4/1/root
         self.assertIn("*Blocking Tree (full, untruncated)*", message)
         self.assertIn("```\ncmd: change -i", message)
 
+    def testParseTestFileIgnoresExtraOutputBlocks(self):
+        """parseTestFile() must skip unrelated Running:/Output: blocks (e.g. "info -s")
+        and self-produced debug JSON dumps (e.g. "Blocking tree:"), and only treat the
+        block following a "monitor show" command as monitor data."""
+        log_text = """DEBUG 2026-01-01 00:00:00,000 monitor_metrics.py 1: Running: sudo lslocks -o +BLOCKER -J
+DEBUG 2026-01-01 00:00:00,001 monitor_metrics.py 2: Output:
+{
+   "locks": [
+      {"command":"p4d_1", "pid":910, "mode":"WRITE*", "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":920}
+   ]
+}
+
+DEBUG 2026-01-01 00:00:00,002 monitor_metrics.py 3: Running: /p4/1/bin/p4_1 -u p4admin -p ssl:1666 info -s
+DEBUG 2026-01-01 00:00:00,003 monitor_metrics.py 4: Output:
+ServerID: p4d_edge_idc
+Server services: edge-server
+
+DEBUG 2026-01-01 00:00:00,004 monitor_metrics.py 5: Blocking tree:
+pid, user [table,] cmd, args
+{
+    "920": {
+        "910": {}
+    }
+}
+DEBUG 2026-01-01 00:00:00,005 monitor_metrics.py 6: Running: /p4/1/bin/p4_1 -u p4admin -p ssl:1666 -F "%id% %runstate% %user% %elapsed% %function% %args%" monitor show -al
+DEBUG 2026-01-01 00:00:00,006 monitor_metrics.py 7: Output:
+920 R teddkim    00:02:59 change -i
+910 R teddkim    00:02:51 fstat -Olhp //PUBG/Solar_D...
+
+"""
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".log") as tmp:
+            tmp.write(log_text)
+            test_file = tmp.name
+        self.addCleanup(lambda: os.path.exists(test_file) and os.remove(test_file))
+
+        obj = P4Monitor()
+        obj.options.test_file = test_file
+        calls = []
+        obj.process_entry = lambda locklines, monlines, timestamp, isJSON: calls.append(
+            (locklines, monlines, timestamp, isJSON))
+
+        obj.parseTestFile()
+
+        self.assertEqual(1, len(calls), "expected exactly one parsed entry")
+        locklines, monlines, timestamp, isJSON = calls[0]
+        self.assertTrue(isJSON)
+        self.assertIn('"pid":910', "\n".join(locklines))
+        self.assertEqual(["920 R teddkim    00:02:59 change -i",
+                          "910 R teddkim    00:02:51 fstat -Olhp //PUBG/Solar_D..."], monlines)
+
     def testNotifierSkipsDuplicateNotification(self):
         """Notifier should not resend exactly the same notification content."""
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
