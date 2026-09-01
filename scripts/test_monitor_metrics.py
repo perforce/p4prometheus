@@ -396,6 +396,32 @@ Server root: /p4/1/root
         self.assertIn("*Blocking Tree (full, untruncated)*", message)
         self.assertIn("```\ncmd: change -i", message)
 
+    def testSlackDetailedChunksSplitLargeTreeAcrossBlocks(self):
+        """A blocking tree too big for one Slack block should be split across several
+        chunks (each within the block text limit) instead of being truncated."""
+        notifier = Notifier({}, logging.getLogger("test_monitor_metrics"))
+        big_code_lines = ["├─ {} someuser, elapsed 00:00:{:02d}, fstat -Olhp //some/long/path/to/a/file{}...".format(
+            1000 + i, i % 60, i) for i in range(200)]
+        tree_context = {
+            "sections": [("910 someuser \u2014 clientEntityLock (blocks direct/indirect 200: total 200), elapsed 00:10:00",
+                         big_code_lines)],
+            "duration": "00:10:00",
+            "lock_start": None,
+            "detected_at": None,
+            "tzname": "",
+        }
+        limit = 500  # small limit to force splitting without needing huge fixtures
+        chunks = notifier._format_slack_detailed_chunks(1, tree_context, limit=limit)
+        self.assertGreater(len(chunks), 2, "expected the large tree to be split into multiple chunks")
+        for chunk in chunks:
+            self.assertLessEqual(len(chunk), limit + 100)
+        self.assertNotIn("truncated for Slack length limit", "\n".join(chunks))
+        # All 200 lines must still be present somewhere across the chunks.
+        joined = "\n".join(chunks)
+        for i in (0, 100, 199):
+            self.assertIn("someuser, elapsed 00:00:{:02d}, fstat -Olhp //some/long/path/to/a/file{}...".format(
+                i % 60, i), joined)
+
     def testParseTestFileIgnoresExtraOutputBlocks(self):
         """parseTestFile() must skip unrelated Running:/Output: blocks (e.g. "info -s")
         and self-produced debug JSON dumps (e.g. "Blocking tree:"), and only treat the

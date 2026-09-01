@@ -239,9 +239,9 @@ class Notifier:
                 elif channel == "slack":
                     style = str(cfg.get("style", "simple")).lower()
                     if style == "detailed" and tree_context:
-                        chat_message = self._format_slack_detailed_message(
+                        chat_chunks = self._format_slack_detailed_chunks(
                             blocked_count, tree_context, server_info_lines=server_info_lines)
-                        method(chat_message, cfg, pre_formatted=True)
+                        method(chat_chunks, cfg, pre_formatted=True)
                     else:
                         max_lines = int(cfg.get("max_lines", self.max_lines))
                         chat_message = self._format_chat_message(
@@ -294,46 +294,80 @@ class Notifier:
         return "\n".join(lines)
 
     def _format_slack_detailed_message(self, blocked_count, tree_context, server_info_lines=None):
-        """Format the 'detailed' Slack style: server info, timing, and a box-drawing tree
-        per root blocker, each in its own code block (see build_tree_context())."""
-        lines = []
+        """Format the 'detailed' Slack style as a single string (used by tests/other
+        channels). For Slack itself, prefer _format_slack_detailed_chunks() so large
+        trees are split across blocks instead of being truncated."""
+        return "\n\n".join(self._format_slack_detailed_chunks(blocked_count, tree_context, server_info_lines))
+
+    def _chunk_lines(self, lines, limit):
+        """Group lines into chunks whose joined length stays within limit chars."""
+        chunks = []
+        current = []
+        current_len = 0
+        for line in lines:
+            line_len = len(line) + 1
+            if current and current_len + line_len > limit:
+                chunks.append("\n".join(current))
+                current = []
+                current_len = 0
+            current.append(line)
+            current_len += line_len
+        if current:
+            chunks.append("\n".join(current))
+        return chunks
+
+    def _wrap_section_chunks(self, header_line, code_lines, limit):
+        """Render one root blocker's header + tree as one or more self-contained,
+        fenced code-block chunks, each within limit chars."""
+        overhead = len(header_line) + len("\n```\n\n```") + len(" (continued)")
+        body_limit = max(limit - overhead, 200)
+        code_chunks = self._chunk_lines(code_lines, body_limit) or [""]
+        chunks = []
+        for i, code_chunk in enumerate(code_chunks):
+            label = header_line if i == 0 else header_line[:-1] + " (continued)*"
+            chunks.append("{}\n```\n{}\n```".format(label, code_chunk))
+        return chunks
+
+    def _format_slack_detailed_chunks(self, blocked_count, tree_context, server_info_lines=None, limit=2900):
+        """Format the 'detailed' Slack style as a list of chunks, each within Slack's
+        per-block mrkdwn text limit (~3000 chars), so large blocking trees are split
+        across multiple blocks instead of being truncated (see build_tree_context())."""
+        preamble = []
         if server_info_lines:
             for raw in server_info_lines:
                 key, _, val = raw.partition(":")
-                lines.append("{:<16}: {}".format(key.strip(), val.strip()))
-            lines.append("")
+                preamble.append("{:<16}: {}".format(key.strip(), val.strip()))
+            preamble.append("")
 
         tzname = tree_context.get("tzname") or ""
         lock_start = tree_context.get("lock_start")
         detected_at = tree_context.get("detected_at")
         duration = tree_context.get("duration")
         if lock_start:
-            lines.append("Lock Start Time  : {} ({})".format(
+            preamble.append("Lock Start Time  : {} ({})".format(
                 lock_start.strftime("%Y-%m-%d %H:%M:%S"), tzname))
         if detected_at:
-            lines.append("Detected At      : {} ({})".format(
+            preamble.append("Detected At      : {} ({})".format(
                 detected_at.strftime("%Y-%m-%d %H:%M:%S"), tzname))
         if duration:
-            lines.append("Current Duration : {}  (:warning: ONGOING)".format(duration))
-        lines.append("")
+            preamble.append("Current Duration : {}  (:warning: ONGOING)".format(duration))
+        preamble.append("")
 
-        lines.append("Blocking threshold exceeded \u2014 total blocked commands: {}".format(blocked_count))
+        preamble.append("Blocking threshold exceeded \u2014 total blocked commands: {}".format(blocked_count))
         separator = "\u2500" * 30
-        lines.append(separator)
-        lines.append("*Blocking Tree (full, untruncated)*")
-        lines.append(separator)
+        preamble.append(separator)
+        preamble.append("*Blocking Tree (full, untruncated)*")
+        preamble.append(separator)
+
+        chunks = ["\n".join(preamble)]
 
         sections = tree_context.get("sections") or []
         if not sections:
-            lines.append("(no blocking tree data)")
+            chunks.append("(no blocking tree data)")
         for idx, (header, code_lines) in enumerate(sections, 1):
-            lines.append("")
-            lines.append("*[{}] {}*".format(idx, header))
-            lines.append("```")
-            lines.extend(code_lines)
-            lines.append("```")
-
-        return "\n".join(lines)
+            header_line = "*[{}] {}*".format(idx, header)
+            chunks.extend(self._wrap_section_chunks(header_line, code_lines, limit))
+        return chunks
 
     def _teams_indent_line(self, line):
         """Teams can flatten whitespace; render indentation using leading dots."""
@@ -354,7 +388,6 @@ class Notifier:
         if not webhook_url:
             self.logger.warning("Slack webhook_url not configured")
             return
-        message = self._truncate_slack_text(message)
         runbook_url = str(cfg.get("runbook_url", "")).strip() or self.runbook_url
         blocks = [
             {
@@ -373,13 +406,29 @@ class Notifier:
                     "text": self.notification_text
                 }
             })
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": message if pre_formatted else "```\n{}\n```".format(message)
-            }
-        })
+        # Slack allows up to 50 blocks per message; leave room for the header/actions
+        # blocks already added/pending, and split large payloads across several
+        # section blocks (each has its own ~3000 char limit) instead of truncating.
+        max_body_blocks = 47
+        chunks = message if isinstance(message, list) else [message]
+        for i, chunk in enumerate(chunks):
+            if len(blocks) >= max_body_blocks:
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "_{} further section(s) omitted (Slack block limit)_".format(len(chunks) - i)
+                    }
+                })
+                break
+            chunk = self._truncate_slack_text(chunk)
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": chunk if pre_formatted else "```\n{}\n```".format(chunk)
+                }
+            })
         if runbook_url:
             blocks.append({
                 "type": "actions",
