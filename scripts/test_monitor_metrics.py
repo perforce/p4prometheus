@@ -14,7 +14,7 @@ import tempfile
 curr_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(curr_dir))
 
-from monitor_metrics import P4Monitor, Notifier
+from monitor_metrics import P4Monitor, Notifier, build_slack_tree_sections
 
 # os.environ["LOGS"] = "."
 # LOGGER_NAME = "testMonitorMetrics"
@@ -235,7 +235,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
                          metrics.msgs[1])
         self.assertEqual(r"pid 921, user jteam, cmd sync, table metaLock, blocked by pid 900, user jteam, cmd sync, args ...",
                          metrics.msgs[2])
-        blines, _ = obj.findBlockers(metrics)
+        blines, _, _ = obj.findBlockers(metrics)
         print(json.dumps(obj.blocking_tree, indent=4))
         self.assertEqual(3, len(blines))
         self.assertEqual("Blocking commands by oldest, with count", blines[0])
@@ -253,7 +253,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         obj = P4Monitor()
         metrics = obj.findLocks(lockdata, mondata)
         self.assertEqual(2, len(metrics.msgs))
-        blines, _ = obj.findBlockers(metrics)
+        blines, _, _ = obj.findBlockers(metrics)
         # Pretty print the blocking tree
         print(json.dumps(obj.blocking_tree, indent=4))
         self.assertEqual(4, len(blines))
@@ -278,7 +278,7 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         obj = P4Monitor()
         metrics = obj.findLocks(lockdata, mondata)
         self.assertEqual(3, len(metrics.msgs))
-        blines, _ = obj.findBlockers(metrics)
+        blines, _, _ = obj.findBlockers(metrics)
         print(json.dumps(obj.blocking_tree, indent=4))
         self.assertEqual(3, len(blines))
         self.assertEqual("Blocking commands by oldest, with count", blines[0])
@@ -363,6 +363,38 @@ Server root: /p4/1/root
         self.assertEqual("ServerID: p4d_edge_CL1", lines[0])
         self.assertEqual("Server services: edge-server", lines[1])
         self.assertIn("Blocking threshold exceeded - total commands showing as blocked: 2", message)
+
+    def testSlackDetailedTreeSections(self):
+        """The 'detailed' Slack style renders each root blocker as a header plus a box-drawing tree."""
+        lockdata = """{
+   "locks": [
+      {"command":"p4d_1", "pid":910, "mode":"WRITE*", "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":920},
+      {"command":"p4d_1", "pid":920, "mode":"WRITE", "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":null}
+   ]
+}"""
+        mondata = """920 R teddkim    00:02:59 change -i
+910 R teddkim    00:02:51 fstat -Olhp //PUBG/Solar_D..."""
+        obj = P4Monitor()
+        metrics = obj.findLocks(lockdata, mondata)
+        blines, verbose_tree, tree_context = obj.findBlockers(metrics)
+        sections = tree_context["sections"]
+        self.assertEqual(1, len(sections))
+        header, code_lines = sections[0]
+        self.assertIn("920 teddkim", header)
+        self.assertIn("blocks direct/indirect 1: total 1", header)
+        self.assertEqual("cmd: change -i", code_lines[0])
+        self.assertEqual("└─ 910 teddkim, elapsed 00:02:51, fstat -Olhp //PUBG/Solar_D...", code_lines[1])
+        self.assertEqual(tree_context["duration"], "00:02:59")
+
+        notifier = Notifier({}, logging.getLogger("test_monitor_metrics"))
+        message = notifier._format_slack_detailed_message(
+            1, tree_context,
+            server_info_lines=["ServerID: p4d_edge_idc", "Server services: edge-server"])
+        self.assertIn("ServerID        : p4d_edge_idc", message)
+        self.assertIn("Current Duration : 00:02:59  (:warning: ONGOING)", message)
+        self.assertIn("Blocking threshold exceeded \u2014 total blocked commands: 1", message)
+        self.assertIn("*Blocking Tree (full, untruncated)*", message)
+        self.assertIn("```\ncmd: change -i", message)
 
     def testNotifierSkipsDuplicateNotification(self):
         """Notifier should not resend exactly the same notification content."""

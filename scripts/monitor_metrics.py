@@ -180,7 +180,7 @@ class Notifier:
         self._save_state(time.time(), signature)
 
     def maybe_notify(self, blocked_count, blines, detail_msgs, blocking_tree=None, force=False,
-                     server_info_lines=None):
+                     server_info_lines=None, tree_context=None):
         """Send notifications if threshold is exceeded and cooldown has passed.
 
         Args:
@@ -189,6 +189,8 @@ class Notifier:
             detail_msgs (list[str]): Per-lock detail messages from metrics.msgs.
             blocking_tree (dict|None): Blocking tree with metadata.
             force (bool): If True, bypass threshold and cooldown checks (for testing).
+            tree_context (dict|None): Rendered tree sections plus timing info, used when
+                notifications.slack.style is "detailed" (see build_tree_context()).
         """
         state = self._load_state()
         if not force and blocked_count < self.min_blocked:
@@ -235,11 +237,17 @@ class Notifier:
                 if channel == "script":
                     method(payload, cfg)
                 elif channel == "slack":
-                    max_lines = int(cfg.get("max_lines", self.max_lines))
-                    chat_message = self._format_chat_message(
-                        blocked_count, blocking_tree, max_lines, teams_style=False, include_intro=False,
-                        server_info_lines=server_info_lines)
-                    method(chat_message, cfg)
+                    style = str(cfg.get("style", "simple")).lower()
+                    if style == "detailed" and tree_context:
+                        chat_message = self._format_slack_detailed_message(
+                            blocked_count, tree_context, server_info_lines=server_info_lines)
+                        method(chat_message, cfg, pre_formatted=True)
+                    else:
+                        max_lines = int(cfg.get("max_lines", self.max_lines))
+                        chat_message = self._format_chat_message(
+                            blocked_count, blocking_tree, max_lines, teams_style=False, include_intro=False,
+                            server_info_lines=server_info_lines)
+                        method(chat_message, cfg)
                 elif channel == "teams":
                     max_lines = int(cfg.get("max_lines", self.max_lines))
                     chat_message = self._format_chat_message(
@@ -285,6 +293,48 @@ class Notifier:
 
         return "\n".join(lines)
 
+    def _format_slack_detailed_message(self, blocked_count, tree_context, server_info_lines=None):
+        """Format the 'detailed' Slack style: server info, timing, and a box-drawing tree
+        per root blocker, each in its own code block (see build_tree_context())."""
+        lines = []
+        if server_info_lines:
+            for raw in server_info_lines:
+                key, _, val = raw.partition(":")
+                lines.append("{:<16}: {}".format(key.strip(), val.strip()))
+            lines.append("")
+
+        tzname = tree_context.get("tzname") or ""
+        lock_start = tree_context.get("lock_start")
+        detected_at = tree_context.get("detected_at")
+        duration = tree_context.get("duration")
+        if lock_start:
+            lines.append("Lock Start Time  : {} ({})".format(
+                lock_start.strftime("%Y-%m-%d %H:%M:%S"), tzname))
+        if detected_at:
+            lines.append("Detected At      : {} ({})".format(
+                detected_at.strftime("%Y-%m-%d %H:%M:%S"), tzname))
+        if duration:
+            lines.append("Current Duration : {}  (:warning: ONGOING)".format(duration))
+        lines.append("")
+
+        lines.append("Blocking threshold exceeded \u2014 total blocked commands: {}".format(blocked_count))
+        separator = "\u2500" * 30
+        lines.append(separator)
+        lines.append("*Blocking Tree (full, untruncated)*")
+        lines.append(separator)
+
+        sections = tree_context.get("sections") or []
+        if not sections:
+            lines.append("(no blocking tree data)")
+        for idx, (header, code_lines) in enumerate(sections, 1):
+            lines.append("")
+            lines.append("*[{}] {}*".format(idx, header))
+            lines.append("```")
+            lines.extend(code_lines)
+            lines.append("```")
+
+        return "\n".join(lines)
+
     def _teams_indent_line(self, line):
         """Teams can flatten whitespace; render indentation using leading dots."""
         stripped = line.lstrip(" ")
@@ -299,7 +349,7 @@ class Notifier:
             return text
         return text[: limit - 40] + "\n... truncated for Slack length limit"
 
-    def _send_slack(self, message, cfg):
+    def _send_slack(self, message, cfg, pre_formatted=False):
         webhook_url = cfg.get("webhook_url", "")
         if not webhook_url:
             self.logger.warning("Slack webhook_url not configured")
@@ -327,7 +377,7 @@ class Notifier:
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "```\n{}\n```".format(message)
+                "text": message if pre_formatted else "```\n{}\n```".format(message)
             }
         })
         if runbook_url:
@@ -595,6 +645,78 @@ def tree_with_metadata(tree, blockingCommands, monitorCommands, blockingCounts):
         else:
             result[new_key] = tree_with_metadata(subtree, blockingCommands, monitorCommands, blockingCounts)
     return result
+
+
+def _parse_elapsed_seconds(elapsed):
+    """Parse a 'HH:MM:SS' style elapsed string into total seconds, or None if unparseable."""
+    if not elapsed:
+        return None
+    try:
+        parts = [int(p) for p in elapsed.strip().split(":")]
+    except ValueError:
+        return None
+    if not parts:
+        return None
+    seconds = 0
+    for p in parts:
+        seconds = seconds * 60 + p
+    return seconds
+
+
+def _pid_summary(pid, blockingCommands, monitorCommands):
+    """Return (user, cmd, args, elapsed, table) for a pid, using Blocker/MonitorPid data."""
+    b = blockingCommands.get(pid)
+    p = monitorCommands.get(pid)
+    user = b.user if b else (p.user if p else "unknown")
+    cmd = b.cmd if b else (p.cmd if p else "unknown")
+    table = b.table if b else ""
+    elapsed = "unknown"
+    if p and p.elapsed:
+        elapsed = p.elapsed
+    elif b and b.elapsed:
+        elapsed = b.elapsed
+    args = ""
+    if p and p.args:
+        args = p.args
+        if len(args) > 20:
+            args = f"{args[:20]}..."
+    return user, cmd, args, elapsed, table
+
+
+def build_slack_tree_sections(blocking_tree, blockingCommands, monitorCommands, blockingCounts):
+    """Render the blocking tree using box-drawing characters, one section per root blocker.
+
+    Returns a list of (header, code_lines) tuples suitable for a Slack detailed notification,
+    where header is a one-line summary of the root blocker and code_lines is the list of lines
+    to render inside a code block (starting with the root's own command).
+    """
+    def render_children(subtree, prefix=""):
+        lines = []
+        items = list(subtree.items())
+        for i, (pid, children) in enumerate(items):
+            is_last = (i == len(items) - 1)
+            connector = "└─ " if is_last else "├─ "
+            user, cmd, args, elapsed, _table = _pid_summary(pid, blockingCommands, monitorCommands)
+            text = f"{pid} {user}, elapsed {elapsed}, {cmd} {args}".rstrip()
+            lines.append(f"{prefix}{connector}{text}")
+            if children:
+                extension = "    " if is_last else "│   "
+                lines.extend(render_children(children, prefix + extension))
+        return lines
+
+    sections = []
+    for pid, children in blocking_tree.items():
+        user, cmd, args, elapsed, table = _pid_summary(pid, blockingCommands, monitorCommands)
+        blocking_suffix = ""
+        if pid in blockingCounts:
+            ratio = "/".join(map(str, blockingCounts[pid]))
+            total = sum(blockingCounts[pid])
+            blocking_suffix = f" (blocks direct/indirect {ratio}: total {total})"
+        header = f"{pid} {user} \u2014 {table}{blocking_suffix}, elapsed {elapsed}"
+        code_lines = [f"cmd: {cmd} {args}".rstrip()]
+        code_lines.extend(render_children(children))
+        sections.append((header, code_lines))
+    return sections
 
 
 class P4Monitor(object):
@@ -953,6 +1075,7 @@ class P4Monitor(object):
         blockingCounts = count_blocking(self.blocking_tree)
         verbose_tree = tree_with_metadata(self.blocking_tree, metrics.blockingCommands, metrics.monitorCommands, blockingCounts)
         self.logger.debug("Blocking tree:\npid, user [table,] cmd, args\n" + json.dumps(verbose_tree, indent=4))
+        tree_context = self.build_tree_context(metrics, blockingCounts)
         lblockers.sort(key=lambda x: x.elapsed, reverse=True)  # Oldest first
         for b in lblockers:
             if not b.pid in blockingCounts:
@@ -962,7 +1085,34 @@ class P4Monitor(object):
             blines.append("blocking cmd: elapsed %s, pid %s, user %s, cmd %s, blocking directly/indirectly: %s, total %d" % (
                 b.elapsed, b.pid, b.user, b.cmd, blocking_str, bcount))
         blines.append("blocking totals: %d" % (metrics.blockedCommands))
-        return blines, verbose_tree
+        return blines, verbose_tree, tree_context
+
+    def build_tree_context(self, metrics, blockingCounts):
+        """Build the context used for the Slack 'detailed' notification style.
+
+        Includes rendered tree sections plus timing info (oldest lock start time,
+        detection time, and current duration) for the longest-running root blocker.
+        """
+        sections = build_slack_tree_sections(
+            self.blocking_tree, metrics.blockingCommands, metrics.monitorCommands, blockingCounts)
+        oldest_elapsed = None
+        max_seconds = -1
+        for pid in self.blocking_tree:
+            b = metrics.blockingCommands.get(pid)
+            secs = _parse_elapsed_seconds(b.elapsed if b else None)
+            if secs is not None and secs > max_seconds:
+                max_seconds = secs
+                oldest_elapsed = b.elapsed
+        lock_start = None
+        if max_seconds >= 0:
+            lock_start = self.now - datetime.timedelta(seconds=max_seconds)
+        return {
+            "sections": sections,
+            "duration": oldest_elapsed,
+            "lock_start": lock_start,
+            "detected_at": self.now,
+            "tzname": time.strftime("%Z"),
+        }
 
     def parseTestFile(self):
         # Parses test file and outputs result
@@ -977,25 +1127,43 @@ class P4Monitor(object):
         # DEBUG 2024-04-03 23:57:02,313 monitor_metrics.py 144: Output:
         # 2030 B svc_master-1666 05:24:42 ldapsync -g -i 1800
         # 162476 I svc_p4d_fs_brk 00:00:01 IDLE none
+        #
+        # Real (DEBUG-level) log files also contain other "Running:"/"Output:" blocks
+        # (e.g. "info -s") and self-produced debug dumps (e.g. the "Blocking tree:" JSON
+        # dump), which are not lock/monitor data and must be ignored rather than
+        # mistaken for the start of a new block just because a line happens to start
+        # with "{" or "COMMAND".
         locklines = []
         monlines = []
         timestamp = ""
         isJSON = True
+        last_running_cmd = ""
+        # stage: 0 = idle/skipping, waiting for the lslocks Output: block
+        #        1 = accumulating lock output
+        #        2 = idle/skipping, waiting for the monitor show Output: block
+        #        3 = accumulating monitor output
+        stage = 0
         with open(self.options.test_file, "r") as f:
-            stage = 0   # 1 = processing locks, 2 = processing monitor data
             for line in f:
                 line = line.rstrip()
-                if stage == 0 and line.startswith("{"):
-                    stage = 1
-                    locklines.append(line)
+                if "Running:" in line:
+                    last_running_cmd = line
                     continue
-                if stage == 0 and line.startswith("COMMAND"): # Non-JSON
-                    stage = 1
-                    isJSON = False
-                    locklines.append(line)
+                if stage in (0, 2) and line.endswith("Output:"):
+                    if stage == 0 and "+BLOCKER" in last_running_cmd:
+                        stage = 1
+                        locklines = []
+                        isJSON = True
+                    elif stage == 2 and "monitor show" in last_running_cmd:
+                        stage = 3
+                        monlines = []
+                        timestamp = line[6:25] + " "
+                    # else: output of some other command (e.g. "info -s"); ignore it
                     continue
                 if stage == 1:
                     locklines.append(line)
+                    if line.startswith("COMMAND"): # Non-JSON
+                        isJSON = False
                     if isJSON and line == "}":
                         stage = 2
                     if not isJSON and "parsed TextLockInfo:" in line:
@@ -1006,10 +1174,6 @@ class P4Monitor(object):
                     if not isJSON and line == "":
                         stage = 2
                     continue
-                if stage == 2 and line.endswith("Output:"):
-                    stage = 3
-                    timestamp = line[6:25] + " "
-                    continue
                 if stage == 3:
                     if line == "":
                         self.process_entry(locklines, monlines, timestamp, isJSON)
@@ -1018,6 +1182,9 @@ class P4Monitor(object):
                         stage = 0
                     else:
                         monlines.append(line)
+                    continue
+                # stage 0 or 2 with no matching Output: trigger: ignore the line
+                # (e.g. content of an unrelated command's output, or a debug JSON dump)
         if monlines or locklines:
             self.process_entry(locklines, monlines, timestamp, isJSON)
 
@@ -1027,13 +1194,13 @@ class P4Monitor(object):
         else:
             metrics = self.findLocks(locklines, "\n".join(monlines))
         self.writeLog(self.formatLog(metrics))
-        blines, verbose_tree = self.findBlockers(metrics)
+        blines, verbose_tree, tree_context = self.findBlockers(metrics)
         self.writeLog([timestamp + x for x in blines])
         self.writeMetrics(self.formatMetrics(metrics))
         if self.notifier:
             force = getattr(self.options, 'notify_test', False)
             self.notifier.maybe_notify(metrics.blockedCommands, blines, metrics.msgs,
-                                       blocking_tree=verbose_tree, force=force,
+                                       blocking_tree=verbose_tree, tree_context=tree_context, force=force,
                                        server_info_lines=self.server_info_lines)
 
     def run(self):
@@ -1064,12 +1231,12 @@ class P4Monitor(object):
         metrics = self.findLocks(lockdata, mondata)
         self.writeLog(self.formatLog(metrics))
         timestamp = self.now.strftime("%Y-%m-%d %H:%M:%S ")
-        blines, verbose_tree = self.findBlockers(metrics)
+        blines, verbose_tree, tree_context = self.findBlockers(metrics)
         self.writeLog([timestamp + x for x in blines])
         self.writeMetrics(self.formatMetrics(metrics))
         if self.notifier:
             self.notifier.maybe_notify(metrics.blockedCommands, blines, metrics.msgs,
-                                       blocking_tree=verbose_tree,
+                                       blocking_tree=verbose_tree, tree_context=tree_context,
                                        server_info_lines=self.server_info_lines)
 
 

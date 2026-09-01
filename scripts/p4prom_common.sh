@@ -615,6 +615,7 @@ notifications:
         # Optional overrides:
         # max_lines: 40
         # runbook_url: ""
+        # style: "detailed"  # "simple" (default, JSON tree) or "detailed" (box-drawing tree)
 
     email:
         enabled: false

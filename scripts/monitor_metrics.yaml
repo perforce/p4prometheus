@@ -35,6 +35,9 @@ notifications:
     webhook_url: "https://<some>/<webhook>/<url>"
     # Optional override of notifications.max_lines for Slack only.
     # max_lines: 40
+    # Message style: "simple" (default, JSON tree) or "detailed" (server info,
+    # lock start/detected/duration timing, and a box-drawing tree per root blocker).
+    # style: "detailed"
 
   # ---------------------------------------------------------------------------
   # Email - send via SMTP
