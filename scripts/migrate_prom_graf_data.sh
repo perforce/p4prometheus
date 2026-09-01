@@ -1,5 +1,5 @@
 #!/bin/bash
-# migrate_p4prom_data.sh
+# migrate_prom_graf_data.sh
 #
 # Migrates the monitoring server's runtime data directories to a new base path.
 # Reads the current install state from /etc/p4prometheus-monitoring/install.env
@@ -12,7 +12,7 @@
 #   - You want to migrate without a full reinstall
 #
 # Usage:
-#   migrate_p4prom_data.sh -d <new_data_root> [--dry-run] [--cleanup-old]
+#   migrate_prom_graf_data.sh -d <new_data_root> [--dry-run] [--cleanup-old]
 #
 # Flags:
 #   -d <new_data_root>   REQUIRED. New base directory (e.g. /data or /hxdata)
@@ -39,7 +39,7 @@
 #
 # Recovery:
 #   If this script is interrupted, old data is still in place.  Simply run
-#   migrate_p4prom_data.sh again; it will skip components whose data has
+#   migrate_prom_graf_data.sh again; it will skip components whose data has
 #   already been moved.
 
 set -euo pipefail
@@ -312,7 +312,7 @@ for svc in "${active_services[@]}"; do
     # Leave a breadcrumb at the old path so stale service configs don't silently fail
     if [[ ! -e "$src" ]] && [[ "$cleanup_old" -eq 0 ]]; then
         mkdir -p "${src}.migrated-${today}"
-        echo "Data moved to ${dst} on ${today} by migrate_p4prom_data.sh" \
+        echo "Data moved to ${dst} on ${today} by migrate_prom_graf_data.sh" \
             > "${src}.migrated-${today}/README.txt"
         info "Breadcrumb left at: ${src}.migrated-${today}"
     fi
