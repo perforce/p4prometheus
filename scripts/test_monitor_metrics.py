@@ -545,5 +545,47 @@ DEBUG 2026-01-01 00:00:00,006 monitor_metrics.py 7: Output:
         notifier.maybe_notify(**kwargs)
         self.assertEqual(2, len(sent_payloads))
 
+    def testSlackBotRepliesWhenBlocksAreReduced(self):
+        """A later lower block count replies in the original Slack alert thread."""
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            state_file = tmp.name
+        self.addCleanup(lambda: os.path.exists(state_file) and os.remove(state_file))
+
+        notifier = Notifier({
+            "min_blocked_commands": 5,
+            "cooldown_seconds": 0,
+            "state_file": state_file,
+            "slack": {
+                "enabled": True,
+                "mode": "bot",
+                "bot_token": "xoxb-test",
+                "channel_id": "C123",
+            },
+        }, logging.getLogger("test_monitor_metrics"))
+        requests = []
+
+        def fake_api_request(token, payload):
+            requests.append(payload)
+            return {"ok": True, "ts": "123.456"} if len(requests) == 1 else {"ok": True}
+
+        notifier._slack_api_request = fake_api_request
+        notifier.maybe_notify(5, ["blocking totals: 5"], [], {"2001": {"2002": {}}})
+        notifier.maybe_notify(3, ["blocking totals: 3"], [], {"2001": {"2002": {}, "2003": {}}})
+
+        self.assertEqual(2, len(requests))
+        self.assertEqual("123.456", requests[1]["thread_ts"])
+        self.assertIn("Blocks reduced", requests[1]["text"])
+        self.assertIn('"2003"', requests[1]["text"])
+        with open(state_file, "r") as state_handle:
+            self.assertEqual("", json.load(state_handle)["last_slack_ts"])
+
+        notifier.maybe_notify(6, ["blocking totals: 6"], [], {"2001": {"2002": {}}})
+        self.assertEqual(3, len(requests))
+        self.assertNotIn("thread_ts", requests[2])
+
+        notifier.maybe_notify(6, ["blocking totals: 6"], [], {"2001": {"2002": {}}})
+        self.assertEqual(4, len(requests))
+        self.assertNotIn("thread_ts", requests[3])
+
 if __name__ == '__main__':
     unittest.main()

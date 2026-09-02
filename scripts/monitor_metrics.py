@@ -129,7 +129,12 @@ class Notifier:
 
     def _load_state(self):
         """Load notification state; supports legacy timestamp-only files."""
-        state = {"last_time": None, "last_signature": ""}
+        state = {
+            "last_time": None,
+            "last_signature": "",
+            "last_blocked_count": None,
+            "last_slack_ts": "",
+        }
         try:
             with open(self.state_file, "r") as f:
                 raw = f.read().strip()
@@ -140,6 +145,9 @@ class Notifier:
                 if isinstance(data, dict):
                     state["last_time"] = float(data.get("last_time", 0) or 0)
                     state["last_signature"] = str(data.get("last_signature", "") or "")
+                    if data.get("last_blocked_count") is not None:
+                        state["last_blocked_count"] = int(data["last_blocked_count"])
+                    state["last_slack_ts"] = str(data.get("last_slack_ts", "") or "")
                     return state
             except ValueError:
                 pass
@@ -149,10 +157,15 @@ class Notifier:
         except (OSError, ValueError, TypeError):
             return state
 
-    def _save_state(self, last_time, last_signature):
+    def _save_state(self, last_time, last_signature, last_blocked_count=None, last_slack_ts=""):
         try:
             with open(self.state_file, "w") as f:
-                json.dump({"last_time": float(last_time), "last_signature": last_signature}, f)
+                json.dump({
+                    "last_time": float(last_time),
+                    "last_signature": last_signature,
+                    "last_blocked_count": last_blocked_count,
+                    "last_slack_ts": last_slack_ts,
+                }, f)
         except OSError as e:
             self.logger.warning("Could not write notification state file: %s", e)
 
@@ -176,8 +189,31 @@ class Notifier:
             return True
         return (time.time() - float(last_time)) >= self.cooldown
 
-    def _record_notification(self, signature):
-        self._save_state(time.time(), signature)
+    def _record_notification(self, signature, blocked_count=None, slack_ts=None, state=None):
+        if slack_ts is None:
+            slack_ts = (state or {}).get("last_slack_ts", "")
+        self._save_state(
+            time.time(), signature, blocked_count,
+            slack_ts)
+
+    def _send_slack_reduction_reply(self, blocked_count, blocking_tree, server_info_lines, cfg, state):
+        thread_ts = state.get("last_slack_ts", "")
+        if not thread_ts:
+            return False
+        tree_text = json.dumps(blocking_tree or {}, indent=2, sort_keys=True)
+        message = "Blocks reduced\n\nBlocking tree:\n{}".format(tree_text)
+        response = self._slack_api_request(str(cfg.get("bot_token", "")).strip(), {
+            "channel": str(cfg.get("channel_id", "")).strip(),
+            "text": message,
+            "thread_ts": thread_ts,
+        })
+        if response:
+            self.logger.info("Slack blocks-reduced reply sent")
+            signature = self._payload_signature(
+                blocked_count, [], [], blocking_tree, server_info_lines)
+            self._record_notification(signature, blocked_count, slack_ts="", state=state)
+            return True
+        return False
 
     def maybe_notify(self, blocked_count, blines, detail_msgs, blocking_tree=None, force=False,
                      server_info_lines=None, tree_context=None):
@@ -193,6 +229,14 @@ class Notifier:
                 notifications.slack.style is "detailed" (see build_tree_context()).
         """
         state = self._load_state()
+        slack_cfg = self.config.get("slack", {})
+        if (not force and slack_cfg.get("enabled") and
+            str(slack_cfg.get("mode", "webhook")).lower() == "bot" and
+            state.get("last_blocked_count") is not None and
+            blocked_count < state["last_blocked_count"]):
+            if self._send_slack_reduction_reply(
+                blocked_count, blocking_tree, server_info_lines, slack_cfg, state):
+                return
         if not force and blocked_count < self.min_blocked:
             self.logger.debug(
                 "Blocked commands %d below threshold %d, skipping notification",
@@ -206,7 +250,14 @@ class Notifier:
 
         signature = self._payload_signature(
             blocked_count, blines, detail_msgs, blocking_tree, server_info_lines)
-        if not force and signature == state.get("last_signature", ""):
+        repeat_bot_alert = (
+            slack_cfg.get("enabled") and
+            str(slack_cfg.get("mode", "webhook")).lower() == "bot" and
+            state.get("last_blocked_count") is not None and
+            blocked_count >= state["last_blocked_count"])
+        if (not force and not repeat_bot_alert and
+            signature == state.get("last_signature", "") and
+            blocked_count <= (state.get("last_blocked_count") or 0)):
             self.logger.info("Notification duplicate detected, skipping")
             return
 
@@ -226,6 +277,7 @@ class Notifier:
         }
 
         sent = False
+        slack_ts = ""
         for channel, method in (
             ("slack", self._send_slack),
             ("email", self._send_email),
@@ -241,13 +293,13 @@ class Notifier:
                     if style == "detailed" and tree_context:
                         chat_chunks = self._format_slack_detailed_chunks(
                             blocked_count, tree_context, server_info_lines=server_info_lines)
-                        method(chat_chunks, cfg, pre_formatted=True, test_notify=force)
+                        slack_ts = method(chat_chunks, cfg, pre_formatted=True, test_notify=force) or ""
                     else:
                         max_lines = int(cfg.get("max_lines", self.max_lines))
                         chat_message = self._format_chat_message(
                             blocked_count, blocking_tree, max_lines, teams_style=False, include_intro=False,
                             server_info_lines=server_info_lines)
-                        method(chat_message, cfg, test_notify=force)
+                        slack_ts = method(chat_message, cfg, test_notify=force) or ""
                 elif channel == "teams":
                     max_lines = int(cfg.get("max_lines", self.max_lines))
                     chat_message = self._format_chat_message(
@@ -259,7 +311,7 @@ class Notifier:
                 sent = True
 
         if sent:
-            self._record_notification(signature)
+            self._record_notification(signature, blocked_count, slack_ts, state)
 
     # ------------------------------------------------------------------
     # Channel implementations
@@ -385,8 +437,7 @@ class Notifier:
 
     def _send_slack(self, message, cfg, pre_formatted=False, test_notify=False):
         if str(cfg.get("mode", "webhook")).lower() == "bot":
-            self._send_slack_bot(message, cfg, pre_formatted, test_notify)
-            return
+            return self._send_slack_bot(message, cfg, pre_formatted, test_notify)
         webhook_url = cfg.get("webhook_url", "")
         if not webhook_url:
             self.logger.warning("Slack webhook_url not configured")
@@ -458,6 +509,7 @@ class Notifier:
                 self.logger.info("Slack notification sent (HTTP %d)", resp.status)
         except Exception as e:
             self.logger.warning("Slack notification failed: %s", e)
+        return ""
 
     def _send_slack_bot(self, message, cfg, pre_formatted=False, test_notify=False):
         bot_token = str(cfg.get("bot_token", "")).strip()
@@ -470,12 +522,12 @@ class Notifier:
         payload = {"channel": channel_id, "text": "P4 Lock Alert", "blocks": blocks}
         response = self._slack_api_request(bot_token, payload)
         if not response or not response.get("ts"):
-            return
+            return ""
 
         reply_message = str(cfg.get("reply_message", "")).strip()
         if not reply_message:
             self.logger.info("Slack bot notification sent")
-            return
+            return response["ts"]
         if test_notify:
             self.logger.info("Waiting 5 seconds before sending Slack test reply")
             time.sleep(5)
@@ -486,6 +538,7 @@ class Notifier:
         })
         if reply:
             self.logger.info("Slack bot notification and threaded reply sent")
+        return response["ts"]
 
     def _slack_api_request(self, bot_token, payload):
         body = json.dumps(payload).encode("utf-8")
