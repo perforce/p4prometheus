@@ -10,6 +10,7 @@ import os
 import json
 import logging
 import tempfile
+from unittest import mock
 
 curr_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(curr_dir))
@@ -421,6 +422,40 @@ Server root: /p4/1/root
         for i in (0, 100, 199):
             self.assertIn("someuser, elapsed 00:00:{:02d}, fstat -Olhp //some/long/path/to/a/file{}...".format(
                 i % 60, i), joined)
+
+    def testSlackBotPostsThreadedReply(self):
+        """Bot mode posts the alert and configured reply in the alert thread."""
+        notifier = Notifier({}, logging.getLogger("test_monitor_metrics"))
+        requests = []
+
+        def fake_api_request(token, payload):
+            requests.append((token, payload))
+            return {"ok": True, "ts": "123.456"} if len(requests) == 1 else {"ok": True}
+
+        notifier._slack_api_request = fake_api_request
+        notifier._send_slack("alert body", {
+            "mode": "bot",
+            "bot_token": "xoxb-test",
+            "channel_id": "C123",
+            "reply_message": "Investigating this alert.",
+        })
+
+        self.assertEqual(2, len(requests))
+        self.assertEqual("xoxb-test", requests[0][0])
+        self.assertEqual("C123", requests[0][1]["channel"])
+        self.assertEqual("C123", requests[1][1]["channel"])
+        self.assertEqual("123.456", requests[1][1]["thread_ts"])
+        self.assertEqual("Investigating this alert.", requests[1][1]["text"])
+
+        requests[:] = []
+        with mock.patch("monitor_metrics.time.sleep") as sleep:
+            notifier._send_slack("alert body", {
+                "mode": "bot",
+                "bot_token": "xoxb-test",
+                "channel_id": "C123",
+                "reply_message": "Investigating this alert.",
+            }, test_notify=True)
+            sleep.assert_called_once_with(5)
 
     def testParseTestFileIgnoresExtraOutputBlocks(self):
         """parseTestFile() must skip unrelated Running:/Output: blocks (e.g. "info -s")

@@ -110,7 +110,7 @@ class MonitorMetrics:
 class Notifier:
     """Sends notifications when blocked commands exceed a configured threshold.
 
-    Supports Slack webhooks, email (SMTP), MS Teams webhooks, and a generic
+    Supports Slack webhooks or bot API messages, email (SMTP), MS Teams webhooks, and a generic
     shell script.  A cooldown mechanism prevents notification floods.
 
     Configuration is loaded from the ``notifications`` section of the YAML
@@ -241,13 +241,13 @@ class Notifier:
                     if style == "detailed" and tree_context:
                         chat_chunks = self._format_slack_detailed_chunks(
                             blocked_count, tree_context, server_info_lines=server_info_lines)
-                        method(chat_chunks, cfg, pre_formatted=True)
+                        method(chat_chunks, cfg, pre_formatted=True, test_notify=force)
                     else:
                         max_lines = int(cfg.get("max_lines", self.max_lines))
                         chat_message = self._format_chat_message(
                             blocked_count, blocking_tree, max_lines, teams_style=False, include_intro=False,
                             server_info_lines=server_info_lines)
-                        method(chat_message, cfg)
+                        method(chat_message, cfg, test_notify=force)
                 elif channel == "teams":
                     max_lines = int(cfg.get("max_lines", self.max_lines))
                     chat_message = self._format_chat_message(
@@ -383,7 +383,10 @@ class Notifier:
             return text
         return text[: limit - 40] + "\n... truncated for Slack length limit"
 
-    def _send_slack(self, message, cfg, pre_formatted=False):
+    def _send_slack(self, message, cfg, pre_formatted=False, test_notify=False):
+        if str(cfg.get("mode", "webhook")).lower() == "bot":
+            self._send_slack_bot(message, cfg, pre_formatted, test_notify)
+            return
         webhook_url = cfg.get("webhook_url", "")
         if not webhook_url:
             self.logger.warning("Slack webhook_url not configured")
@@ -455,6 +458,90 @@ class Notifier:
                 self.logger.info("Slack notification sent (HTTP %d)", resp.status)
         except Exception as e:
             self.logger.warning("Slack notification failed: %s", e)
+
+    def _send_slack_bot(self, message, cfg, pre_formatted=False, test_notify=False):
+        bot_token = str(cfg.get("bot_token", "")).strip()
+        channel_id = str(cfg.get("channel_id", "")).strip()
+        if not bot_token or not channel_id:
+            self.logger.warning("Slack bot_token and channel_id are required for bot mode")
+            return
+
+        blocks = self._slack_blocks(message, cfg, pre_formatted)
+        payload = {"channel": channel_id, "text": "P4 Lock Alert", "blocks": blocks}
+        response = self._slack_api_request(bot_token, payload)
+        if not response or not response.get("ts"):
+            return
+
+        reply_message = str(cfg.get("reply_message", "")).strip()
+        if not reply_message:
+            self.logger.info("Slack bot notification sent")
+            return
+        if test_notify:
+            self.logger.info("Waiting 5 seconds before sending Slack test reply")
+            time.sleep(5)
+        reply = self._slack_api_request(bot_token, {
+            "channel": channel_id,
+            "text": reply_message,
+            "thread_ts": response["ts"],
+        })
+        if reply:
+            self.logger.info("Slack bot notification and threaded reply sent")
+
+    def _slack_api_request(self, bot_token, payload):
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            "https://slack.com/api/chat.postMessage", data=body,
+            headers={
+                "Authorization": "Bearer {}".format(bot_token),
+                "Content-Type": "application/json; charset=utf-8",
+            })
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+            if not result.get("ok"):
+                self.logger.warning("Slack bot API request failed: %s", result.get("error", "unknown error"))
+                return None
+            return result
+        except Exception as e:
+            self.logger.warning("Slack bot API request failed: %s", e)
+            return None
+
+    def _slack_blocks(self, message, cfg, pre_formatted=False):
+        """Build the common Slack block payload used by webhook and bot modes."""
+        runbook_url = str(cfg.get("runbook_url", "")).strip() or self.runbook_url
+        blocks = [{
+            "type": "header",
+            "text": {"type": "plain_text", "text": "P4 Lock Alert"}
+        }]
+        if self.notification_text:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": self.notification_text}
+            })
+        max_body_blocks = 47
+        chunks = message if isinstance(message, list) else [message]
+        for i, chunk in enumerate(chunks):
+            if len(blocks) >= max_body_blocks:
+                blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": "_{} further section(s) omitted (Slack block limit)_".format(len(chunks) - i)}
+                })
+                break
+            chunk = self._truncate_slack_text(chunk)
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": chunk if pre_formatted else "```\n{}\n```".format(chunk)}
+            })
+        if runbook_url:
+            blocks.append({
+                "type": "actions",
+                "elements": [{
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Open Runbook"},
+                    "url": runbook_url
+                }]
+            })
+        return blocks
 
     def _send_email(self, message, cfg):
         smtp_host = cfg.get("smtp_host", "localhost")

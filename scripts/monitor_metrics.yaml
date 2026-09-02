@@ -27,10 +27,18 @@ notifications:
   max_lines: 40
 
   # ---------------------------------------------------------------------------
-  # Slack - post to an Incoming Webhook URL
+  # Slack - post to an Incoming Webhook URL, or use the Web API with a bot token.
   # ---------------------------------------------------------------------------
   slack:
     enabled: false
+    # Set mode to "bot" to post with chat.postMessage. Bot mode does not need
+    # a public URL. The bot must have chat:write and be in the target channel.
+    # mode: "bot"
+    # bot_token: "xoxb-..."
+    # channel_id: "C0123456789"
+    # Optional threaded reply sent after the alert message is created. With
+    # --notify-test, the reply is sent after a five-second delay.
+    # reply_message: "Investigating this lock alert."
     # Create a webhook at https://api.slack.com/messaging/webhooks
     webhook_url: "https://<some>/<webhook>/<url>"
     # Optional override of notifications.max_lines for Slack only.
