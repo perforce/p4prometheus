@@ -33,6 +33,8 @@ notifications:
     enabled: false
     # Set mode to "bot" to post with chat.postMessage. Bot mode does not need
     # a public URL. The bot must have chat:write and be in the target channel.
+    # See the sample slack_manifest.json for an example Slack App configuration.
+    # This needs to be created by you and installed in your Slack Workspace by your admins.
     # mode: "bot"
     # bot_token: "xoxb-..."
     # channel_id: "C0123456789"
