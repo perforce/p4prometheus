@@ -9,7 +9,7 @@
 repo_path="scripts"
 github_url="https://api.github.com/repos/perforce/p4prometheus/commits?per_page=1&path=$repo_path"
 github_download_url="https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts"
-workshop_url="https://swarm.workshop.perforce.com/downloads/guest/perforce_software/command-runner/scripts"
+workshop_url="https://swarm.workshop.perforce.com/downloads/guest/perforce_software/command-runner"
 
 # Just in case you want to customize this
 local_bin_dir=/usr/local/bin
@@ -43,7 +43,8 @@ Depends on 'curl' and 'jq' being in the path.
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 FILE_LIST="install_p4prom.sh update_p4prom.sh p4prom_common.sh monitor_metrics.py monitor_wrapper.sh check_for_updates.sh get_volume_info.sh create_dashboard.py dashboard.yaml upload_grafana_dashboard.sh"
-WORKSHOP_FILE_LIST="install_command-runner.sh"
+WORKSHOP_SCRIPT_LIST="install_command-runner.sh"
+WORKSHOP_FILE_LIST="command-runner-linux-amd64"
 DEPRECATED_FILE_LIST="push_metrics.sh report_instance_data.sh monitor_metrics.sh"
 
 # Command Line Processing
@@ -110,10 +111,16 @@ if [[ "$last_github_sha" != "$github_sha" ]]; then
     echo "last_github_date=$github_date" >> "$ConfigFile"
     msg "Scripts updated"
 
+    for fname in $WORKSHOP_SCRIPT_LIST; do
+        [[ -f "$fname" ]] && cp "$fname" "$fname.bak"
+        msg "downloading $fname"
+        wget -O - "$workshop_url/scripts/$fname" > "$fname"
+        chmod +x "$fname"
+    done
     for fname in $WORKSHOP_FILE_LIST; do
         [[ -f "$fname" ]] && cp "$fname" "$fname.bak"
         msg "downloading $fname"
-        wget -O - "$workshop_url/$fname" > "$fname"
+        wget -O - "$workshop_url/bin/$fname" > "$fname"
         chmod +x "$fname"
     done
 
