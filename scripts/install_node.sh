@@ -21,7 +21,7 @@ metrics_bin_dir=/etc/metrics
 local_bin_dir=/usr/local/bin
 
 # Version to download
-VER_NODE_EXPORTER="1.3.1"
+VER_NODE_EXPORTER="1.12.1"
 
 # Default to amd but allow arm architecture
 arch="amd64"

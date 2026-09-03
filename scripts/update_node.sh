@@ -24,7 +24,7 @@ vmagent_config_dir=/var/vmagent
 local_bin_dir=/usr/local/bin
 
 # Version to download
-VER_NODE_EXPORTER="1.3.1"
+VER_NODE_EXPORTER="1.12.1"
 VER_VICTORIA_METRICS="1.131.0"
 
 # Default to amd but allow arm architecture

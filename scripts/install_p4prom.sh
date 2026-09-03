@@ -24,7 +24,7 @@ vmagent_config_dir="/var/vmagent"
 # Air-gap: set to a directory of pre-staged release tarballs to skip downloads
 local_tarballs_dir=""
 
-VER_NODE_EXPORTER="1.3.1"
+VER_NODE_EXPORTER="1.12.1"
 VER_P4PROMETHEUS="0.11.1"
 VER_VICTORIA_METRICS="1.131.0"
 

@@ -23,7 +23,7 @@ fi
 # ============================================================
 # Configuration section - Updated to current versions as of Dec 2025
 
-VER_NODE_EXPORTER="1.8.2"
+VER_NODE_EXPORTER="1.12.1"
 VER_PROMETHEUS="2.54.1"
 VER_ALERTMANAGER="0.27.0"
 VER_PUSHGATEWAY="1.9.0"
