@@ -42,88 +42,95 @@ Depends on 'curl' and 'jq' being in the path.
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-FILE_LIST="install_p4prom.sh update_p4prom.sh p4prom_common.sh monitor_metrics.py monitor_wrapper.sh check_for_updates.sh get_volume_info.sh create_dashboard.py dashboard.yaml upload_grafana_dashboard.sh"
-WORKSHOP_SCRIPT_LIST="install_command-runner.sh"
-WORKSHOP_FILE_LIST="command-runner-linux-amd64"
-DEPRECATED_FILE_LIST="push_metrics.sh report_instance_data.sh monitor_metrics.sh"
+# Wrapped in a function: bash must fully parse this block (up to the matching
+# closing brace) before running it, so the update loop below can safely
+# overwrite this very script file without corrupting the running process.
+main() {
+    FILE_LIST="install_p4prom.sh update_p4prom.sh p4prom_common.sh monitor_metrics.py monitor_wrapper.sh check_for_updates.sh get_volume_info.sh create_dashboard.py dashboard.yaml upload_grafana_dashboard.sh"
+    WORKSHOP_SCRIPT_LIST="install_command-runner.sh"
+    WORKSHOP_FILE_LIST="command-runner-linux-amd64"
+    DEPRECATED_FILE_LIST="push_metrics.sh report_instance_data.sh monitor_metrics.sh"
 
-# Command Line Processing
- 
-declare -i shiftArgs=0
-ConfigFile=".update_config"
+    # Command Line Processing
+    
+    declare -i shiftArgs=0
+    ConfigFile=".update_config"
 
-set +u
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        (-h) usage && exit 0;;
-        # (-man) usage -man;;
-        (-c) ConfigFile=$2; shiftArgs=1;;
-        (-*) usage "Unknown command line option ($1)." && exit 1;;
-    esac
- 
-    # Shift (modify $#) the appropriate number of times.
-    shift; while [[ "$shiftArgs" -gt 0 ]]; do
-        [[ $# -eq 0 ]] && usage -h "Incorrect number of arguments."
-        shiftArgs=$shiftArgs-1
-        shift
+    set +u
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            (-h) usage && exit 0;;
+            # (-man) usage -man;;
+            (-c) ConfigFile=$2; shiftArgs=1;;
+            (-*) usage "Unknown command line option ($1)." && exit 1;;
+        esac
+    
+        # Shift (modify $#) the appropriate number of times.
+        shift; while [[ "$shiftArgs" -gt 0 ]]; do
+            [[ $# -eq 0 ]] && usage -h "Incorrect number of arguments."
+            shiftArgs=$shiftArgs-1
+            shift
+        done
     done
-done
-set -u
+    set -u
 
-cd "$SCRIPT_DIR" || bail "Can't cd to $SCRIPT_DIR"
+    cd "$SCRIPT_DIR" || bail "Can't cd to $SCRIPT_DIR"
 
-# Check for dependencies
+    # Check for dependencies
 
-for f in curl jq; do
-    command -v $f 2> /dev/null || bail "Failed to find $f in path"
-done
+    for f in curl jq; do
+        command -v $f 2> /dev/null || bail "Failed to find $f in path"
+    done
 
-last_github_sha=""
-last_github_date=""
+    last_github_sha=""
+    last_github_date=""
 
-if [[ -e "$ConfigFile" ]]; then
-    last_github_sha=$(grep last_github_sha "$ConfigFile" | cut -d= -f2)
-    last_github_date=$(grep last_github_date "$ConfigFile" | cut -d= -f2)
-fi
-
-github_sha=$(curl "$github_url" | jq '.[] | .sha')
-github_date=$(curl "$github_url" | jq '.[] | .commit.committer.date')
-
-mkdir -p save
-for fname in $DEPRECATED_FILE_LIST; do
-    if [[ -f "$fname" ]]; then
-        msg "Removing deprecated file $fname"
-        mv "$fname" "save/$fname"
+    if [[ -e "$ConfigFile" ]]; then
+        last_github_sha=$(grep last_github_sha "$ConfigFile" | cut -d= -f2)
+        last_github_date=$(grep last_github_date "$ConfigFile" | cut -d= -f2)
     fi
-done
 
-# For the sake of SELinux and systemd timers, we need to avoid changing attributes for the file (ls -alZ)
-# Thus we overwrite the existing file (having saved a copy) - as that keeps attributes
-if [[ "$last_github_sha" != "$github_sha" ]]; then
-    msg "Updating scripts"
-    for fname in $FILE_LIST; do
-        [[ -f "$fname" ]] && cp "$fname" "$fname.bak"
-        msg "downloading $fname"
-        wget -O - "$github_download_url/$fname" > "$fname"
-        chmod +x "$fname"
-    done
-    echo "last_github_sha=$github_sha" > "$ConfigFile"
-    echo "last_github_date=$github_date" >> "$ConfigFile"
-    msg "Scripts updated"
+    github_sha=$(curl "$github_url" | jq '.[] | .sha')
+    github_date=$(curl "$github_url" | jq '.[] | .commit.committer.date')
 
-    for fname in $WORKSHOP_SCRIPT_LIST; do
-        [[ -f "$fname" ]] && cp "$fname" "$fname.bak"
-        msg "downloading $fname"
-        wget -O - "$workshop_url/scripts/$fname" > "$fname"
-        chmod +x "$fname"
-    done
-    for fname in $WORKSHOP_FILE_LIST; do
-        [[ -f "$fname" ]] && cp "$fname" "$fname.bak"
-        msg "downloading $fname"
-        wget -O - "$workshop_url/bin/$fname" > "$fname"
-        chmod +x "$fname"
+    mkdir -p save
+    for fname in $DEPRECATED_FILE_LIST; do
+        if [[ -f "$fname" ]]; then
+            msg "Removing deprecated file $fname"
+            mv "$fname" "save/$fname"
+        fi
     done
 
-else
-    msg "Scripts are up-to-date - nothing to do"
-fi
+    # For the sake of SELinux and systemd timers, we need to avoid changing attributes for the file (ls -alZ)
+    # Thus we overwrite the existing file (having saved a copy) - as that keeps attributes
+    if [[ "$last_github_sha" != "$github_sha" ]]; then
+        msg "Updating scripts"
+        for fname in $FILE_LIST; do
+            [[ -f "$fname" ]] && cp "$fname" "$fname.bak"
+            msg "downloading $fname"
+            wget -O - "$github_download_url/$fname" > "$fname"
+            chmod +x "$fname"
+        done
+        echo "last_github_sha=$github_sha" > "$ConfigFile"
+        echo "last_github_date=$github_date" >> "$ConfigFile"
+        msg "Scripts updated"
+
+        for fname in $WORKSHOP_SCRIPT_LIST; do
+            [[ -f "$fname" ]] && cp "$fname" "$fname.bak"
+            msg "downloading $fname"
+            wget -O - "$workshop_url/scripts/$fname" > "$fname"
+            chmod +x "$fname"
+        done
+        for fname in $WORKSHOP_FILE_LIST; do
+            [[ -f "$fname" ]] && cp "$fname" "$fname.bak"
+            msg "downloading $fname"
+            wget -O - "$workshop_url/bin/$fname" > "$fname"
+            chmod +x "$fname"
+        done
+
+    else
+        msg "Scripts are up-to-date - nothing to do"
+    fi
+}
+
+main "$@"
