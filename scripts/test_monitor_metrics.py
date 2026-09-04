@@ -8,6 +8,7 @@ import sys
 import unittest
 import os
 import json
+import datetime
 import logging
 import tempfile
 from unittest import mock
@@ -586,6 +587,52 @@ DEBUG 2026-01-01 00:00:00,006 monitor_metrics.py 7: Output:
         notifier.maybe_notify(6, ["blocking totals: 6"], [], {"2001": {"2002": {}}})
         self.assertEqual(4, len(requests))
         self.assertNotIn("thread_ts", requests[3])
+
+    def testSlackDetailedReductionReplyIncludesDetectionTimeAndTree(self):
+        """Detailed Slack replies retain the alert tree and identify the reply time."""
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            state_file = tmp.name
+        self.addCleanup(lambda: os.path.exists(state_file) and os.remove(state_file))
+
+        notifier = Notifier({
+            "min_blocked_commands": 5,
+            "cooldown_seconds": 0,
+            "state_file": state_file,
+            "slack": {
+                "enabled": True,
+                "mode": "bot",
+                "style": "detailed",
+                "bot_token": "xoxb-test",
+                "channel_id": "C123",
+            },
+        }, logging.getLogger("test_monitor_metrics"))
+        requests = []
+
+        def fake_api_request(token, payload):
+            requests.append(payload)
+            return {"ok": True, "ts": "123.456"} if len(requests) == 1 else {"ok": True}
+
+        notifier._slack_api_request = fake_api_request
+        original_context = {
+            "sections": [("2001 root", ["cmd: job -i"])],
+            "duration": "00:00:05",
+            "lock_start": datetime.datetime(2026, 9, 4, 7, 42, 1),
+            "detected_at": datetime.datetime(2026, 9, 4, 7, 42, 6),
+            "tzname": "PDT",
+        }
+        reply_context = dict(original_context, detected_at=datetime.datetime(2026, 9, 4, 7, 42, 10))
+        notifier.maybe_notify(5, ["blocking totals: 5"], [], {"2001": {}}, tree_context=original_context)
+        notifier.maybe_notify(3, ["blocking totals: 3"], [], {"2001": {}}, tree_context=reply_context)
+
+        self.assertEqual(2, len(requests))
+        self.assertEqual("123.456", requests[1]["thread_ts"])
+        self.assertEqual("Blocks reduced", requests[1]["text"])
+        reply_text = "\n".join(block["text"]["text"] for block in requests[1]["blocks"]
+                       if block["type"] == "section")
+        self.assertIn("Blocks reduced", reply_text)
+        self.assertIn("Reply Detected At : 2026-09-04 07:42:10 (PDT)", reply_text)
+        self.assertIn("Lock Start Time  : 2026-09-04 07:42:01 (PDT)", reply_text)
+        self.assertIn("*[1] 2001 root*", reply_text)
 
 if __name__ == '__main__':
     unittest.main()

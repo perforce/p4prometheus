@@ -15,9 +15,13 @@ DESCRIPTION:
     This script monitors locks using lslocks and p4 monitor show for Perforce server metrics for use with Prometheus.
 
     Assumes it is wrapped by a simple bash script monitor_wrapper.sh
+    that configures SDP env or equivalent env vars.
 
-    That configures SDP env or equivalent env vars.
+    The script takes a config file as an argument. This allows customization of notification settings and other parameters.
+    Notification options include Slack webhooks, email (SMTP), MS Teams webhooks, and custom shell scripts.
 
+    For Slack notifications, there is an options to provide a bot token to have automatic replies sent to the channel
+    for the original post.
 """
 
 # Python 2.7/3.3 compatibility.
@@ -196,17 +200,36 @@ class Notifier:
             time.time(), signature, blocked_count,
             slack_ts)
 
-    def _send_slack_reduction_reply(self, blocked_count, blocking_tree, server_info_lines, cfg, state):
+    def _send_slack_reduction_reply(self, blocked_count, blocking_tree, server_info_lines,
+                                    tree_context, cfg, state):
         thread_ts = state.get("last_slack_ts", "")
         if not thread_ts:
             return False
-        tree_text = json.dumps(blocking_tree or {}, indent=2, sort_keys=True)
-        message = "Blocks reduced\n\nBlocking tree:\n{}".format(tree_text)
-        response = self._slack_api_request(str(cfg.get("bot_token", "")).strip(), {
-            "channel": str(cfg.get("channel_id", "")).strip(),
-            "text": message,
-            "thread_ts": thread_ts,
-        })
+        if str(cfg.get("style", "simple")).lower() == "detailed" and tree_context:
+            reply_detected_at = tree_context.get("detected_at")
+            tzname = tree_context.get("tzname") or ""
+            reply_time = "unknown"
+            if reply_detected_at:
+                reply_time = "{} ({})".format(
+                    reply_detected_at.strftime("%Y-%m-%d %H:%M:%S"), tzname)
+            message = ["*Blocks reduced*\nReply Detected At : {}".format(reply_time)]
+            message.extend(self._format_slack_detailed_chunks(
+                blocked_count, tree_context, server_info_lines=server_info_lines))
+            payload = {
+                "channel": str(cfg.get("channel_id", "")).strip(),
+                "text": "Blocks reduced",
+                "blocks": self._slack_blocks(message, cfg, pre_formatted=True),
+                "thread_ts": thread_ts,
+            }
+        else:
+            tree_text = json.dumps(blocking_tree or {}, indent=2, sort_keys=True)
+            message = "Blocks reduced\n\nBlocking tree:\n{}".format(tree_text)
+            payload = {
+                "channel": str(cfg.get("channel_id", "")).strip(),
+                "text": message,
+                "thread_ts": thread_ts,
+            }
+        response = self._slack_api_request(str(cfg.get("bot_token", "")).strip(), payload)
         if response:
             self.logger.info("Slack blocks-reduced reply sent")
             signature = self._payload_signature(
@@ -235,7 +258,7 @@ class Notifier:
             state.get("last_blocked_count") is not None and
             blocked_count < state["last_blocked_count"]):
             if self._send_slack_reduction_reply(
-                blocked_count, blocking_tree, server_info_lines, slack_cfg, state):
+                blocked_count, blocking_tree, server_info_lines, tree_context, slack_cfg, state):
                 return
         if not force and blocked_count < self.min_blocked:
             self.logger.debug(
