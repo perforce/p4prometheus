@@ -90,8 +90,13 @@ main() {
         last_github_date=$(grep last_github_date "$ConfigFile" | cut -d= -f2)
     fi
 
-    github_sha=$(curl "$github_url" | jq '.[] | .sha')
-    github_date=$(curl "$github_url" | jq '.[] | .commit.committer.date')
+    github_sha=$(curl -fsSL "$github_url" | jq -r '.[0].sha')
+    github_date=$(curl -fsSL "$github_url" | jq -r '.[0].commit.committer.date')
+    [[ -n "$github_sha" && "$github_sha" != "null" ]] || bail "Failed to determine latest GitHub commit"
+
+    github_tree_sha=$(curl -fsSL "https://api.github.com/repos/perforce/p4prometheus/git/commits/$github_sha" | jq -r '.tree.sha')
+    [[ -n "$github_tree_sha" && "$github_tree_sha" != "null" ]] || bail "Failed to determine GitHub tree for $github_sha"
+    github_tree=$(curl -fsSL "https://api.github.com/repos/perforce/p4prometheus/git/trees/$github_tree_sha?recursive=1")
 
     mkdir -p save
     for fname in $DEPRECATED_FILE_LIST; do
@@ -106,6 +111,13 @@ main() {
     if [[ "$last_github_sha" != "$github_sha" ]]; then
         msg "Updating scripts"
         for fname in $FILE_LIST; do
+            remote_sha=$(jq -r --arg path "scripts/$fname" '.tree[] | select(.path == $path) | .sha' <<< "$github_tree")
+            [[ -n "$remote_sha" && "$remote_sha" != "null" ]] || bail "Failed to find scripts/$fname in GitHub tree"
+            local_sha=$(grep "^github_file_sha_${fname}=" "$ConfigFile" 2>/dev/null | cut -d= -f2-)
+            if [[ "$remote_sha" == "$local_sha" ]]; then
+                msg "unchanged $fname"
+                continue
+            fi
             [[ -f "$fname" ]] && cp "$fname" "$fname.bak"
             msg "downloading $fname"
             wget -O - "$github_download_url/$fname" > "$fname"
@@ -113,6 +125,10 @@ main() {
         done
         echo "last_github_sha=$github_sha" > "$ConfigFile"
         echo "last_github_date=$github_date" >> "$ConfigFile"
+        for fname in $FILE_LIST; do
+            remote_sha=$(jq -r --arg path "scripts/$fname" '.tree[] | select(.path == $path) | .sha' <<< "$github_tree")
+            echo "github_file_sha_${fname}=$remote_sha" >> "$ConfigFile"
+        done
         msg "Scripts updated"
 
         for fname in $WORKSHOP_SCRIPT_LIST; do
