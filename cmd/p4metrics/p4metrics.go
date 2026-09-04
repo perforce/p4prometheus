@@ -524,7 +524,7 @@ func evaluateMemLimits(
 	if len(eval.KillCandidates) > 0 {
 		logger.Infof("Memlimit evaluation: %d kill candidates identified", len(eval.KillCandidates))
 		for _, action := range eval.KillCandidates {
-			logger.Debugf("Memlimit kill candidate: PID %d user=%s cmd=%s reason=%s threshold=%s usage=%s (%.1f%%)",
+			logger.Infof("Memlimit kill candidate: PID %d user=%s cmd=%s reason=%s threshold=%s usage=%s (%.1f%%)",
 				action.Pid, action.User, action.Cmd, action.ReasonType, action.ThresholdValue, humanizeBytes(action.RSSBytes), action.MemPercentage)
 		}
 	}
