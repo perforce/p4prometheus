@@ -48,7 +48,6 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 main() {
     FILE_LIST="install_p4prom.sh update_p4prom.sh p4prom_common.sh monitor_metrics.py monitor_wrapper.sh check_for_updates.sh get_volume_info.sh create_dashboard.py dashboard.yaml upload_grafana_dashboard.sh"
     WORKSHOP_SCRIPT_LIST="install_command-runner.sh"
-    WORKSHOP_FILE_LIST="command-runner-linux-amd64"
     DEPRECATED_FILE_LIST="push_metrics.sh report_instance_data.sh monitor_metrics.sh"
 
     # Command Line Processing
@@ -135,12 +134,6 @@ main() {
             [[ -f "$fname" ]] && cp "$fname" "$fname.bak"
             msg "downloading $fname"
             wget -O - "$workshop_url/scripts/$fname" > "$fname"
-            chmod +x "$fname"
-        done
-        for fname in $WORKSHOP_FILE_LIST; do
-            [[ -f "$fname" ]] && cp "$fname" "$fname.bak"
-            msg "downloading $fname"
-            wget -O - "$workshop_url/bin/$fname" > "$fname"
             chmod +x "$fname"
         done
 
