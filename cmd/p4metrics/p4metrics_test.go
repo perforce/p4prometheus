@@ -150,7 +150,7 @@ func TestOOMSlackMessageFormatting(t *testing.T) {
 }
 
 func TestSendOOMVMAgentAlert(t *testing.T) {
-	var receivedAlert []map[string]interface{}
+	var receivedAlert map[string]interface{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/alerts", r.URL.Path)
 		username, password, ok := r.BasicAuth()
@@ -174,11 +174,14 @@ func TestSendOOMVMAgentAlert(t *testing.T) {
 		MemPercentage: 51.2, ReasonType: "cmd_max_percentage", ThresholdValue: "50%",
 	}})
 
-	if assert.Len(t, receivedAlert, 1) {
-		labels := receivedAlert[0]["labels"].(map[string]interface{})
-		assert.Equal(t, "P4OOMKillCandidate", labels["alertname"])
-		assert.Equal(t, "customer", labels["customer"])
-		assert.Equal(t, "edge-1", labels["serverid"])
+	assert.Equal(t, "oom_kill_candidate", receivedAlert["event"])
+	assert.Equal(t, "customer", receivedAlert["customer"])
+	assert.Equal(t, "edge-1", receivedAlert["serverid"])
+	if assert.Len(t, receivedAlert["candidates"], 1) {
+		candidate := receivedAlert["candidates"].([]interface{})[0].(map[string]interface{})
+		assert.Equal(t, float64(1111), candidate["pid"])
+		assert.Equal(t, "alice", candidate["user"])
+		assert.Equal(t, "sync", candidate["command"])
 	}
 }
 

@@ -2194,30 +2194,46 @@ func (p4m *P4MonitorMetrics) sendOOMVMAgentAlert(kind string, actions []KillActi
 	if p4m == nil || len(actions) == 0 || p4m.vmAlertURL == "" || p4m.vmAlertUsername == "" || p4m.vmAlertPassword == "" {
 		return
 	}
-	alertName := "P4OOMKillCandidate"
-	severity := "warning"
+	type oomCandidate struct {
+		PID       int     `json:"pid"`
+		User      string  `json:"user"`
+		Command   string  `json:"command"`
+		RSSBytes  int64   `json:"rss_bytes"`
+		MemoryPct float64 `json:"memory_percent"`
+		Threshold string  `json:"threshold"`
+		Reason    string  `json:"reason"`
+	}
+	candidates := make([]oomCandidate, 0, len(actions))
+	for _, action := range actions {
+		candidates = append(candidates, oomCandidate{
+			PID:       action.Pid,
+			User:      action.User,
+			Command:   action.Cmd,
+			RSSBytes:  action.RSSBytes,
+			MemoryPct: action.MemPercentage,
+			Threshold: action.ThresholdValue,
+			Reason:    action.ReasonType,
+		})
+	}
+	payload := struct {
+		Event       string         `json:"event"`
+		Customer    string         `json:"customer"`
+		ServerID    string         `json:"serverid"`
+		SDPInstance string         `json:"sdp_instance,omitempty"`
+		Timestamp   string         `json:"timestamp"`
+		Candidates  []oomCandidate `json:"candidates"`
+	}{
+		Event:       "oom_kill_candidate",
+		Customer:    p4m.vmAlertUsername,
+		ServerID:    p4m.serverID,
+		SDPInstance: p4m.sdpInstance,
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+		Candidates:  candidates,
+	}
 	if kind == "actual" {
-		alertName = "P4OOMKill"
-		severity = "critical"
+		payload.Event = "oom_kill"
 	}
-	labels := map[string]string{
-		"alertname": alertName,
-		"customer":  p4m.vmAlertUsername,
-		"serverid":  p4m.serverID,
-		"severity":  severity,
-	}
-	if p4m.sdpInstance != "" {
-		labels["sdpinst"] = p4m.sdpInstance
-	}
-	alert := []map[string]interface{}{{
-		"labels": labels,
-		"annotations": map[string]string{
-			"summary":     fmt.Sprintf("%s: %d process(es)", alertName, len(actions)),
-			"description": p4m.buildOOMSlackMessage(kind, actions),
-		},
-		"startsAt": time.Now().UTC().Format(time.RFC3339),
-	}}
-	body, err := json.Marshal(alert)
+	body, err := json.Marshal(payload)
 	if err != nil {
 		p4m.logger.Warnf("Failed to marshal vmagent OOM alert: %v", err)
 		return
