@@ -2329,6 +2329,121 @@ func (p4m *P4MonitorMetrics) monitorCheckpoint() {
 	p4m.writeMetricsFile()
 }
 
+func (p4m *P4MonitorMetrics) parseSyncReplicaLog(lines []string) (start time.Time, end time.Time, hasError bool, err error) {
+	reStart := regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} .*Starting sync_replica\.sh`)
+	reEnd := regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} .*End .* sync replica`)
+	reError := regexp.MustCompile(` ERROR!!! `)
+
+	var startStr, endStr string
+	for _, line := range lines {
+		if matches := reStart.FindStringSubmatch(line); len(matches) > 0 {
+			startStr = strings.TrimSpace(strings.Fields(line)[0] + " " + strings.Fields(line)[1])
+		}
+		if matches := reEnd.FindStringSubmatch(line); len(matches) > 0 {
+			endStr = strings.TrimSpace(strings.Fields(line)[0] + " " + strings.Fields(line)[1])
+		}
+		if reError.MatchString(line) {
+			hasError = true
+		}
+	}
+	if startStr != "" {
+		start, err = time.Parse(checkpointTimeFormat, startStr)
+		if err != nil {
+			return start, end, hasError, err
+		}
+	}
+	if endStr != "" {
+		end, err = time.Parse(checkpointTimeFormat, endStr)
+		if err != nil {
+			return start, end, hasError, err
+		}
+	}
+	if startStr == "" || endStr == "" {
+		return start, end, hasError, fmt.Errorf("Start or End sync_replica timestamp missing")
+	}
+	return start, end, hasError, nil
+}
+
+func (p4m *P4MonitorMetrics) monitorSyncReplica() {
+	// Metric for when SDP sync_replica last ran and how long it took.
+	p4m.startMonitor("monitorSyncReplica", "p4_sync_replica")
+	defer p4m.completeMonitor()
+
+	if p4m.config.SDPInstance == "" {
+		p4m.logger.Debug("No SDP instance so exiting")
+		return
+	}
+	if runtime.GOOS != "linux" {
+		p4m.logger.Debug("Not running on Windows so exiting")
+		return
+	}
+	if _, ok := p4m.p4info["Replica of"]; !ok {
+		p4m.logger.Debugf("Exiting as not a replica")
+		return
+	}
+
+	sdpInstance := p4m.config.SDPInstance
+	errbuf := new(bytes.Buffer)
+	p := script.NewPipe().WithStderr(errbuf)
+	cmd := fmt.Sprintf("find -L /p4/%s/logs -type f -name 'sync_replica.log*' -exec ls -t {} +", sdpInstance)
+	p4m.logger.Debugf("Executing: %s", cmd)
+	files, err := p.Exec(cmd).Slice()
+	if err != nil {
+		p4m.logger.Errorf("Error running 'find': %v, err:%q", err, errbuf.String())
+		return
+	}
+	if len(files) == 0 {
+		p4m.logger.Warnf("No sync_replica.log files found")
+		return
+	}
+
+	var logFile string
+	var startTime, endTime time.Time
+	var hasError bool
+	for _, f := range files {
+		lines, err := script.File(f).Slice()
+		if err != nil {
+			p4m.logger.Debugf("Error reading %s: %v", f, err)
+			continue
+		}
+		startTime, endTime, hasError, err = p4m.parseSyncReplicaLog(lines)
+		if err == nil && !startTime.IsZero() && !endTime.IsZero() {
+			logFile = f
+			break
+		}
+	}
+	if logFile == "" {
+		p4m.logger.Debugf("Failed to find a valid sync_replica log with start/end timestamps")
+		return
+	}
+	fileInfo, err := os.Stat(logFile)
+	if err != nil {
+		p4m.logger.Errorf("error getting file info: %v", err)
+		return
+	}
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_sync_replica_log_time",
+		help:  "Time of last sync replica log",
+		mtype: "gauge",
+		value: fmt.Sprintf("%d", fileInfo.ModTime().Unix())})
+	if hasError {
+		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_sync_replica_error",
+			help:  "SDP sync replica error detected (1=error, 0=ok)",
+			mtype: "gauge",
+			value: "1"})
+	} else {
+		p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_sync_replica_error",
+			help:  "SDP sync replica error detected (1=error, 0=ok)",
+			mtype: "gauge",
+			value: "0"})
+	}
+	diff := endTime.Sub(startTime)
+	p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_sdp_sync_replica_duration",
+		help:  "Time taken for last sync replica run",
+		mtype: "gauge",
+		value: fmt.Sprintf("%.0f", diff.Seconds())})
+	p4m.writeMetricsFile()
+}
+
 func (p4m *P4MonitorMetrics) parseVerifyLog(lines []string) {
 	// Expected lines in log file (SDP 2023.1 or later!)
 	// Summary of Errors by Type:
@@ -3148,6 +3263,7 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 	p4m.monitorUptime()
 	p4m.monitorChange()
 	p4m.monitorCheckpoint()
+	p4m.monitorSyncReplica()
 	p4m.monitorJournalAndLogs()
 	p4m.monitorFilesys()
 	p4m.monitorHelixAuthSvc()

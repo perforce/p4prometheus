@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/perforce/p4prometheus/cmd/p4metrics/config"
 	"github.com/sirupsen/logrus"
@@ -106,6 +107,25 @@ func compareMetricValues(t *testing.T, expected metricValues, actual []metricStr
 			t.Errorf("unexpected metric %q", am.key)
 		}
 	}
+}
+
+func TestParseSyncReplicaLog(t *testing.T) {
+	cfg := config.Config{SDPInstance: "1"}
+	initLogger()
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+
+	lines := []string{
+		"2026-08-28 08:00:01 /p4/common/bin/sync_replica.sh: Starting sync_replica.sh",
+		"2026-08-28 08:22:35 /p4/common/bin/sync_replica.sh: ERROR!!! - pubg-p4-commit-rep p4_1 /p4/common/bin/sync_replica.sh: Offline journal replay failed. Abort!",
+		"2026-09-10 09:01:36 /p4/common/bin/sync_replica.sh: End p4_1 sync replica",
+	}
+
+	start, end, hasError, err := p4m.parseSyncReplicaLog(lines)
+	assert.NoError(t, err)
+	assert.True(t, hasError)
+	assert.Equal(t, time.Date(2026, 8, 28, 8, 0, 1, 0, time.UTC), start)
+	assert.Equal(t, time.Date(2026, 9, 10, 9, 1, 36, 0, time.UTC), end)
 }
 
 func TestP4MetricsLicense(t *testing.T) {

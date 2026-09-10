@@ -203,6 +203,9 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 | p4_sdp_checkpoint_duration |  | Time taken for last checkpoint/restore action - check for sudden increases |
 | p4_sdp_checkpoint_error | | SDP checkpoint error detected (1=error, 0=ok) |
 | p4_sdp_checkpoint_log_time |  | Time of last checkpoint log - helps check if automated jobs are running |
+| p4_sdp_sync_replica_duration |  | Time taken for last sync replica run - useful for replica recovery checks |
+| p4_sdp_sync_replica_error | | SDP sync replica error detected (1=error, 0=ok) |
+| p4_sdp_sync_replica_log_time |  | Time of last sync_replica.log file modification - useful to confirm periodic replica sync jobs run |
 | p4_sdp_verify_duration |  | How long in seconds last SDP p4verify.sh run took |
 | p4_sdp_verify_errors | type | Verify errors by type (submitted/sehlved/spec/upload) |
 | p4_sdp_verify_log_modtime |  | Epoch time when SDP log file p4verify.log was last modified |
