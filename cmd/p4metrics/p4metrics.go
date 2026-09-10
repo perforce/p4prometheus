@@ -2060,6 +2060,95 @@ func (p4m *P4MonitorMetrics) parseMonitorShow(monitorOutput []string) *monitorSh
 	return result
 }
 
+func (p4m *P4MonitorMetrics) buildOOMSlackMessage(kind string, actions []KillAction) string {
+	if len(actions) == 0 {
+		return ""
+	}
+	label := "OOM kill candidate"
+	if kind == "actual" {
+		label = "Actual OOM kill"
+	}
+	msg := fmt.Sprintf("%s: %d candidates detected.\n", label, len(actions))
+	for _, action := range actions {
+		msg += fmt.Sprintf("• PID %d user=%s cmd=%s rss=%s pct=%.1f%% threshold=%s reason=%s\n",
+			action.Pid,
+			action.User,
+			action.Cmd,
+			humanizeBytes(action.RSSBytes),
+			action.MemPercentage,
+			action.ThresholdValue,
+			action.ReasonType,
+		)
+	}
+	return strings.TrimSpace(msg)
+}
+
+func (p4m *P4MonitorMetrics) sendOOMSlackNotification(kind string, actions []KillAction) {
+	if p4m == nil || p4m.config == nil || !p4m.config.Notifications.Slack.Enabled {
+		return
+	}
+	if len(actions) == 0 {
+		return
+	}
+	msg := p4m.buildOOMSlackMessage(kind, actions)
+	if msg == "" {
+		return
+	}
+	slackCfg := p4m.config.Notifications.Slack
+	slackMode := strings.ToLower(strings.TrimSpace(slackCfg.Mode))
+	if slackMode == "" {
+		slackMode = "webhook"
+	}
+
+	payload := map[string]interface{}{"text": msg}
+	var url string
+	var header map[string]string
+	if slackMode == "bot" {
+		if strings.TrimSpace(slackCfg.BotToken) == "" || strings.TrimSpace(slackCfg.ChannelID) == "" {
+			p4m.logger.Warn("Slack bot mode enabled but bot_token/channel_id are not configured for OOM alerts")
+			return
+		}
+		url = "https://slack.com/api/chat.postMessage"
+		payload = map[string]interface{}{
+			"channel": slackCfg.ChannelID,
+			"text":    msg,
+		}
+		header = map[string]string{"Authorization": "Bearer " + slackCfg.BotToken, "Content-Type": "application/json"}
+	} else {
+		if strings.TrimSpace(slackCfg.WebhookURL) == "" {
+			p4m.logger.Warn("Slack webhook URL not configured for OOM alerts")
+			return
+		}
+		url = slackCfg.WebhookURL
+		header = map[string]string{"Content-Type": "application/json"}
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		p4m.logger.Warnf("Failed to marshal OOM Slack payload: %v", err)
+		return
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		p4m.logger.Warnf("Failed to create OOM Slack request: %v", err)
+		return
+	}
+	for k, v := range header {
+		req.Header.Set(k, v)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		p4m.logger.Warnf("Failed to send OOM Slack notification: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		p4m.logger.Warnf("OOM Slack notification failed with HTTP %d", resp.StatusCode)
+		return
+	}
+	p4m.logger.Infof("OOM Slack notification sent for %s alert", kind)
+}
+
 func (p4m *P4MonitorMetrics) monitorProcesses() {
 	// Monitor metrics summarised by cmd or user
 	p4m.startMonitor("monitorProcesses", "p4_monitor")
@@ -2183,11 +2272,17 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 					help:  "Number of processes exceeding memory limits",
 					mtype: "gauge",
 					value: fmt.Sprintf("%d", p4m.memlimitKillCandidates)})
+				if len(eval.KillCandidates) > 0 {
+					p4m.sendOOMSlackNotification("candidate", eval.KillCandidates)
+				}
 
 				// Terminate violating processes if configured and not in dry-run
 				if p4m.config.MemLimits.EnforceKills && len(eval.KillCandidates) > 0 {
 					p4m.logger.Infof("Memlimit enforcing limits: terminating %d violating processes", len(eval.KillCandidates))
-					p4m.terminateMemLimitViolators(eval, p4m.terminator)
+					killed := p4m.terminateMemLimitViolators(eval, p4m.terminator)
+					if killed > 0 {
+						p4m.sendOOMSlackNotification("actual", eval.KillCandidates)
+					}
 				} else if len(eval.KillCandidates) > 0 {
 					p4m.logger.Infof("Memlimit violations detected (%d processes) but enforcement disabled (enforce_kills: false)", len(eval.KillCandidates))
 				}

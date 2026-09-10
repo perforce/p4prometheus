@@ -103,6 +103,33 @@ func TestParseJournalConfig(t *testing.T) {
 	}
 }
 
+const configWithSlackNotifications = `
+metrics_root: /hxlogs/metrics
+sdp_instance: 1
+notifications:
+  slack:
+    enabled: true
+    mode: "bot"
+    bot_token: "xoxb-test-token"
+    channel_id: "C1234567890"
+`
+
+func TestValidSlackNotificationsConfig(t *testing.T) {
+	cfg := loadOrFail(t, configWithSlackNotifications)
+	if !cfg.Notifications.Slack.Enabled {
+		t.Fatalf("Expected notifications.slack.enabled true")
+	}
+	if cfg.Notifications.Slack.Mode != "bot" {
+		t.Fatalf("Expected notifications.slack.mode=bot, got %q", cfg.Notifications.Slack.Mode)
+	}
+	if cfg.Notifications.Slack.BotToken != "xoxb-test-token" {
+		t.Fatalf("Expected bot_token parsed correctly")
+	}
+	if cfg.Notifications.Slack.ChannelID != "C1234567890" {
+		t.Fatalf("Expected channel_id parsed correctly")
+	}
+}
+
 func ensureFail(t *testing.T, cfgString string, desc string) {
 	_, err := Unmarshal([]byte(cfgString))
 	if err == nil {

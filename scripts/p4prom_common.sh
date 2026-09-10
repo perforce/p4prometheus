@@ -575,6 +575,24 @@ parse_journal:   true
 EOF
     fi
 
+    # Add Slack OOM alert settings without overwriting a configured notification section.
+    if ! grep -qE '^[[:space:]]*#?[[:space:]]*notifications:' "$p4metrics_config_file"; then
+        cat << EOF >> "$p4metrics_config_file"
+
+# ----------------------
+# notifications: Optional outbound alerts for OOM kill candidates and actual kills.
+# Set mode to "bot" to use chat.postMessage; otherwise use an incoming webhook.
+notifications:
+  slack:
+    enabled: false
+    mode: "webhook"
+    webhook_url: "https://hooks.slack.com/services/..."
+    # bot_token: "xoxb-..."
+    # channel_id: "C0123456789"
+
+EOF
+    fi
+
     chown "$OSUSER:$OSGROUP" "$p4metrics_config_file"
     chmod 640 "$p4metrics_config_file"
 }

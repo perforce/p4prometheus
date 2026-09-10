@@ -128,6 +128,25 @@ func TestParseSyncReplicaLog(t *testing.T) {
 	assert.Equal(t, time.Date(2026, 9, 10, 9, 1, 36, 0, time.UTC), end)
 }
 
+func TestOOMSlackMessageFormatting(t *testing.T) {
+	cfg := config.Config{
+		Notifications: config.NotificationConfig{
+			Slack: config.SlackConfig{Enabled: true, WebhookURL: "https://example.com/slack"},
+		},
+	}
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+	acts := []KillAction{
+		{Pid: 1111, User: "alice", Cmd: "sync", RSSBytes: 2 * 1024 * 1024 * 1024, MemPercentage: 51.2, ReasonType: "cmd_max_percentage", ThresholdValue: "50%"},
+		{Pid: 2222, User: "bob", Cmd: "print", RSSBytes: 1 * 1024 * 1024 * 1024, MemPercentage: 31.7, ReasonType: "user_cumulative_max_percentage", ThresholdValue: "30%"},
+	}
+	msg := p4m.buildOOMSlackMessage("candidate", acts)
+	assert.Contains(t, msg, "OOM kill candidate")
+	assert.Contains(t, msg, "alice")
+	assert.Contains(t, msg, "sync")
+	assert.Contains(t, msg, "2 candidates")
+}
+
 func TestP4MetricsLicense(t *testing.T) {
 	cfg := config.Config{}
 	initLogger()

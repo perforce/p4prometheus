@@ -242,5 +242,5 @@ Note these metrics will all have these labels: sdpinst (if SDP), serverid. Extra
 
 There are a couple of utility tools (for parsing logs with JSON output):
 
-* [p4logtail](cmd/p4logtail/README.md)
-* [p4plogtail](cmd/p4plogtail/README.md)
+- [p4logtail](cmd/p4logtail/README.md)
+- [p4plogtail](cmd/p4plogtail/README.md)

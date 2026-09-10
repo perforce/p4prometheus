@@ -42,6 +42,22 @@ type MemLimits struct {
 	Groups          []MemLimitGroup `yaml:"groups"`         // Ordered list of user groups with limits
 }
 
+// SlackConfig stores Slack notification settings for alerts.
+type SlackConfig struct {
+	Enabled    bool   `yaml:"enabled"`
+	Mode       string `yaml:"mode"`
+	WebhookURL string `yaml:"webhook_url"`
+	BotToken   string `yaml:"bot_token"`
+	ChannelID  string `yaml:"channel_id"`
+	MaxLines   int    `yaml:"max_lines"`
+	ReplyText  string `yaml:"reply_message"`
+}
+
+// NotificationConfig groups outbound notification integrations.
+type NotificationConfig struct {
+	Slack SlackConfig `yaml:"slack"`
+}
+
 // Config for p4metrics - see SampleConfig for details
 type Config struct {
 	MetricsRoot          string        `yaml:"metrics_root"`
@@ -67,10 +83,11 @@ type Config struct {
 	MaxJournalPercentInt int
 	MaxLogSizeInt        int64
 	MaxLogPercentInt     int
-	MonitorIgnore        string         `yaml:"monitor_ignore"` // Monitor commmands to ignore - e.g. long running background tasks - values are a Go regex pattern - e.g. "admin resource-monitor|ldapsync"
-	MonitorIgnoreRe      *regexp.Regexp `yaml:"-"`              // Compiled regex for monitor_ignore - not set from YAML
-	MonitorGroups        []MonitorGroup `yaml:"monitor_groups"` // Array of command groups - each with a regex pattern to match commands and a label value to use for those commands (see SampleConfig for details)
-	MemLimits            *MemLimits     `yaml:"memlimits"`      // Optional memory limit monitoring/enforcement configuration
+	MonitorIgnore        string             `yaml:"monitor_ignore"` // Monitor commmands to ignore - e.g. long running background tasks - values are a Go regex pattern - e.g. "admin resource-monitor|ldapsync"
+	MonitorIgnoreRe      *regexp.Regexp     `yaml:"-"`              // Compiled regex for monitor_ignore - not set from YAML
+	MonitorGroups        []MonitorGroup     `yaml:"monitor_groups"` // Array of command groups - each with a regex pattern to match commands and a label value to use for those commands (see SampleConfig for details)
+	MemLimits            *MemLimits         `yaml:"memlimits"`      // Optional memory limit monitoring/enforcement configuration
+	Notifications        NotificationConfig `yaml:"notifications"`  // Optional alert notifications (Slack/Teams etc.)
 }
 
 // SampleConfig shows a sample config file - this can be used as a template
@@ -271,6 +288,17 @@ memlimits:
 # Set to false if you want to disable journal tailing/parsing completely.
 parse_journal:   true
 
+# ----------------------
+# notifications: Optional outbound alerts for OOM kill candidates and actual kills.
+# Set mode to "bot" to use chat.postMessage; otherwise use an incoming webhook.
+notifications:
+	slack:
+		enabled: false
+		mode: "webhook"
+		webhook_url: "https://hooks.slack.com/services/..."
+		# bot_token: "xoxb-..."
+		# channel_id: "C0123456789"
+
 `
 
 // parsePercentage parses a percentage string (e.g. "30" or "30%") into an integer 0-99.
@@ -443,6 +471,13 @@ func (c *Config) validate() error {
 		c.MonitorGroups[i].ReCommands = re
 	}
 	// Validate memlimits
+	if c.Notifications.Slack.Mode != "" {
+		slackMode := strings.ToLower(strings.TrimSpace(c.Notifications.Slack.Mode))
+		if slackMode != "webhook" && slackMode != "bot" {
+			return fmt.Errorf("notifications.slack.mode must be 'webhook' or 'bot'")
+		}
+		c.Notifications.Slack.Mode = slackMode
+	}
 	if c.MemLimits != nil {
 		ml := c.MemLimits
 		if ml.CandidateCmds != "" {
