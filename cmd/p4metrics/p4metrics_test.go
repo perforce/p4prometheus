@@ -149,6 +149,39 @@ func TestOOMSlackMessageFormatting(t *testing.T) {
 	t.Logf("OOM actual-kill Slack message:\n%s", p4m.buildOOMSlackMessage("actual", acts))
 }
 
+func TestSendOOMVMAgentAlert(t *testing.T) {
+	var receivedAlert []map[string]interface{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/alerts", r.URL.Path)
+		username, password, ok := r.BasicAuth()
+		assert.True(t, ok)
+		assert.Equal(t, "customer", username)
+		assert.Equal(t, "secret", password)
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&receivedAlert))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := config.Config{SDPInstance: "1"}
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+	p4m.vmAlertURL = server.URL + "/alerts"
+	p4m.vmAlertUsername = "customer"
+	p4m.vmAlertPassword = "secret"
+	p4m.serverID = "edge-1"
+	p4m.sendOOMVMAgentAlert("candidate", []KillAction{{
+		Pid: 1111, User: "alice", Cmd: "sync", RSSBytes: 2 * 1024 * 1024 * 1024,
+		MemPercentage: 51.2, ReasonType: "cmd_max_percentage", ThresholdValue: "50%",
+	}})
+
+	if assert.Len(t, receivedAlert, 1) {
+		labels := receivedAlert[0]["labels"].(map[string]interface{})
+		assert.Equal(t, "P4OOMKillCandidate", labels["alertname"])
+		assert.Equal(t, "customer", labels["customer"])
+		assert.Equal(t, "edge-1", labels["serverid"])
+	}
+}
+
 func TestP4MetricsLicense(t *testing.T) {
 	cfg := config.Config{}
 	initLogger()

@@ -41,6 +41,7 @@ const p4InfoTimeFormat = "2006/01/02 15:04:05 -0700 MST"
 const checkpointTimeFormat = "2006-01-02 15:04:05"
 const opensslTimeFormat = "Jan 2 15:04:05 2006 MST"
 const BufferSize = 1024 * 1024 // 1MB buffer
+const vmagentConfigDir = "/var/vmagent"
 
 // CompressFileResult holds the result of the compression operation
 type CompressFileResult struct {
@@ -723,6 +724,9 @@ type P4MonitorMetrics struct {
 	memlimitKillCandidates int               // Cumulative count of processes that would be killed by memlimit enforcement (if enabled)
 	memlimitKillCount      int               // Cumulative count of processes actually killed by memlimit enforcement
 	terminator             ProcessTerminator // Interface for terminating processes
+	vmAlertURL             string
+	vmAlertUsername        string
+	vmAlertPassword        string
 }
 
 func newP4MonitorMetrics(config *config.Config, envVars *map[string]string, logger *logrus.Logger) (p4m *P4MonitorMetrics) {
@@ -742,7 +746,44 @@ func newP4MonitorMetrics(config *config.Config, envVars *map[string]string, logg
 		p4m:    p4m,
 		logger: logger,
 	}
+	p4m.loadVMAgentAlertConfig()
 	return
+}
+
+func (p4m *P4MonitorMetrics) loadVMAgentAlertConfig() {
+	envPath := filepath.Join(vmagentConfigDir, "vmagent.env")
+	passwordPath := filepath.Join(vmagentConfigDir, ".vmpassword")
+	envData, err := os.ReadFile(envPath)
+	if err != nil {
+		return
+	}
+	passwordData, err := os.ReadFile(passwordPath)
+	if err != nil {
+		p4m.logger.Warnf("vmagent alert push disabled: unable to read %s: %v", passwordPath, err)
+		return
+	}
+	values := make(map[string]string)
+	for _, line := range strings.Split(string(envData), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, found := strings.Cut(line, "=")
+		if found {
+			values[strings.TrimSpace(key)] = strings.TrimSpace(value)
+		}
+	}
+	host := strings.TrimRight(values["VM_METRICS_HOST"], "/")
+	username := values["VM_CUSTOMER"]
+	password := strings.TrimSpace(string(passwordData))
+	if host == "" || username == "" || password == "" {
+		p4m.logger.Warn("vmagent alert push disabled: VM_METRICS_HOST, VM_CUSTOMER, or .vmpassword is empty")
+		return
+	}
+	p4m.vmAlertURL = host + "/alerts"
+	p4m.vmAlertUsername = username
+	p4m.vmAlertPassword = password
+	p4m.logger.Infof("Configured vmagent OOM alert push endpoint: %s", p4m.vmAlertURL)
 }
 
 func (p4m *P4MonitorMetrics) parseConfigShow(cfg []string) {
@@ -2149,6 +2190,58 @@ func (p4m *P4MonitorMetrics) sendOOMSlackNotification(kind string, actions []Kil
 	p4m.logger.Infof("OOM Slack notification sent for %s alert", kind)
 }
 
+func (p4m *P4MonitorMetrics) sendOOMVMAgentAlert(kind string, actions []KillAction) {
+	if p4m == nil || len(actions) == 0 || p4m.vmAlertURL == "" || p4m.vmAlertUsername == "" || p4m.vmAlertPassword == "" {
+		return
+	}
+	alertName := "P4OOMKillCandidate"
+	severity := "warning"
+	if kind == "actual" {
+		alertName = "P4OOMKill"
+		severity = "critical"
+	}
+	labels := map[string]string{
+		"alertname": alertName,
+		"customer":  p4m.vmAlertUsername,
+		"serverid":  p4m.serverID,
+		"severity":  severity,
+	}
+	if p4m.sdpInstance != "" {
+		labels["sdpinst"] = p4m.sdpInstance
+	}
+	alert := []map[string]interface{}{{
+		"labels": labels,
+		"annotations": map[string]string{
+			"summary":     fmt.Sprintf("%s: %d process(es)", alertName, len(actions)),
+			"description": p4m.buildOOMSlackMessage(kind, actions),
+		},
+		"startsAt": time.Now().UTC().Format(time.RFC3339),
+	}}
+	body, err := json.Marshal(alert)
+	if err != nil {
+		p4m.logger.Warnf("Failed to marshal vmagent OOM alert: %v", err)
+		return
+	}
+	req, err := http.NewRequest(http.MethodPost, p4m.vmAlertURL, bytes.NewReader(body))
+	if err != nil {
+		p4m.logger.Warnf("Failed to create vmagent OOM alert request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth(p4m.vmAlertUsername, p4m.vmAlertPassword)
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		p4m.logger.Warnf("Failed to push OOM alert to vmagent endpoint: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		p4m.logger.Warnf("vmagent OOM alert push failed with HTTP %d", resp.StatusCode)
+		return
+	}
+	p4m.logger.Infof("Pushed %s OOM alert to vmagent endpoint", kind)
+}
+
 func (p4m *P4MonitorMetrics) monitorProcesses() {
 	// Monitor metrics summarised by cmd or user
 	p4m.startMonitor("monitorProcesses", "p4_monitor")
@@ -2274,6 +2367,7 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 					value: fmt.Sprintf("%d", p4m.memlimitKillCandidates)})
 				if len(eval.KillCandidates) > 0 {
 					p4m.sendOOMSlackNotification("candidate", eval.KillCandidates)
+					p4m.sendOOMVMAgentAlert("candidate", eval.KillCandidates)
 				}
 
 				// Terminate violating processes if configured and not in dry-run
@@ -2282,6 +2376,7 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 					killed := p4m.terminateMemLimitViolators(eval, p4m.terminator)
 					if killed > 0 {
 						p4m.sendOOMSlackNotification("actual", eval.KillCandidates)
+						p4m.sendOOMVMAgentAlert("actual", eval.KillCandidates)
 					}
 				} else if len(eval.KillCandidates) > 0 {
 					p4m.logger.Infof("Memlimit violations detected (%d processes) but enforcement disabled (enforce_kills: false)", len(eval.KillCandidates))
