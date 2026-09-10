@@ -2064,9 +2064,9 @@ func (p4m *P4MonitorMetrics) buildOOMSlackMessage(kind string, actions []KillAct
 	if len(actions) == 0 {
 		return ""
 	}
-	label := "OOM kill candidate"
+	label := "P4Metrics OOM kill candidate"
 	if kind == "actual" {
-		label = "Actual OOM kill"
+		label = "P4Metrics actual OOM kill"
 	}
 	msg := fmt.Sprintf("%s: %d candidates detected.\n", label, len(actions))
 	for _, action := range actions {

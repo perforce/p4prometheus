@@ -145,6 +145,8 @@ func TestOOMSlackMessageFormatting(t *testing.T) {
 	assert.Contains(t, msg, "alice")
 	assert.Contains(t, msg, "sync")
 	assert.Contains(t, msg, "2 candidates")
+	t.Logf("OOM candidate Slack message:\n%s", msg)
+	t.Logf("OOM actual-kill Slack message:\n%s", p4m.buildOOMSlackMessage("actual", acts))
 }
 
 func TestP4MetricsLicense(t *testing.T) {

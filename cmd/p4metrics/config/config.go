@@ -292,12 +292,12 @@ parse_journal:   true
 # notifications: Optional outbound alerts for OOM kill candidates and actual kills.
 # Set mode to "bot" to use chat.postMessage; otherwise use an incoming webhook.
 notifications:
-	slack:
-		enabled: false
-		mode: "webhook"
-		webhook_url: "https://hooks.slack.com/services/..."
-		# bot_token: "xoxb-..."
-		# channel_id: "C0123456789"
+  slack:
+    enabled: false
+    mode: "webhook"
+    webhook_url: "https://hooks.slack.com/services/..."
+    # bot_token: "xoxb-..."
+    # channel_id: "C0123456789"
 
 `
 
