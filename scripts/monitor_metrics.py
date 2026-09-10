@@ -1120,6 +1120,28 @@ class P4Monitor(object):
         self.logger.debug("parsed TextLockInfo: %s" % str(jlock))
         return json.dumps(jlock)
 
+    @staticmethod
+    def truncate_table_name(table_name, max_sendq_suffix_chars=10, max_other_chars=30):
+        """Shorten very long table names for readability in logs and Slack alerts.
+
+        ``db.sendq.*`` names are shortened aggressively to keep the important
+        prefix and a short suffix. Other table names are kept as-is unless they
+        exceed a much larger threshold.
+        """
+        if not table_name:
+            return ""
+
+        prefix = "db.sendq."
+        if table_name.startswith(prefix):
+            suffix = table_name[len(prefix):]
+            if len(suffix) > max_sendq_suffix_chars:
+                return "%s%s..." % (prefix, suffix[:max_sendq_suffix_chars])
+            return table_name
+
+        if len(table_name) > max_other_chars:
+            return "%s..." % table_name[:max_other_chars]
+        return table_name
+
     def dbFileInPath(self, path):
         "Returns name of db file or empty string"
         parts = path.split("/")
@@ -1127,10 +1149,10 @@ class P4Monitor(object):
             return ""
         p = parts[-1]
         if p.startswith("db.") or p == "rdb.lbr" or p.startswith("storage"):
-            return p
+            return self.truncate_table_name(p)
         for p in ["/clients/", "/clientEntity/", "/meta/"]:
             if p in path:
-                return p.replace("/", "") + "Lock"
+                return self.truncate_table_name(p.replace("/", "") + "Lock")
         return ""
 
     # lslocks output in JSON format:

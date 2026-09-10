@@ -210,6 +210,20 @@ p4d               105  FLOCK  16K WRITE 0     0   0 /path/db.configh
         self.maxDiff = None
         self.assertEqual(exp_lines, lines)
 
+    def testTruncatesLongSendqTableNames(self):
+        """Long db.sendq names should be shortened in messages and Slack sections."""
+        long_name = "db.sendq.jenkins-swarm-jenkins-docker-68-docker-development-modules-development_Changes.0"
+        self.assertEqual("db.sendq.jenkins-sw...", P4Monitor.truncate_table_name(long_name))
+        self.assertEqual("db.have", P4Monitor.truncate_table_name("db.have"))
+        self.assertEqual(
+            "this_table_name_is_very_long_b...",
+            P4Monitor.truncate_table_name("this_table_name_is_very_long_but_not_db_sendq")
+        )
+
+        obj = P4Monitor()
+        value = obj.dbFileInPath("/hxmetadata/p4/1/db1/" + long_name)
+        self.assertEqual("db.sendq.jenkins-sw...", value)
+
     def testFindBlockers3(self):
         """Check analysis of blockers"""
         lockdata = """{
