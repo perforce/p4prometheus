@@ -635,6 +635,44 @@ DEBUG 2026-01-01 00:00:00,006 monitor_metrics.py 7: Output:
                 notifier.maybe_notify(blocked_count, blines, detail_msgs, {"2001": {}})
             self.assertEqual(expected_sends, len(sent_payloads))
 
+    def testBlockerObservationTimesPersistAcrossRuns(self):
+        """Active root blockers retain first-seen time while stale entries are pruned."""
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            state_file = tmp.name
+        self.addCleanup(lambda: os.path.exists(state_file) and os.remove(state_file))
+        config = {
+            "min_blocked_commands": 5,
+            "state_file": state_file,
+        }
+        first_context = {
+            "root_blocker_keys": ["100|db.have", "200|db.user"],
+            "sections": [],
+            "detected_at": datetime.datetime(2026, 9, 10, 17, 9),
+            "tzname": "KST",
+        }
+        with mock.patch("monitor_metrics.time.time", return_value=1000):
+            Notifier(config, logging.getLogger("test_monitor_metrics")).maybe_notify(
+                2, [], [], {}, tree_context=first_context)
+
+        second_context = {
+            "root_blocker_keys": ["100|db.have"],
+            "sections": [],
+            "detected_at": datetime.datetime(2026, 9, 10, 17, 10),
+            "tzname": "KST",
+        }
+        with mock.patch("monitor_metrics.time.time", return_value=1060):
+            notifier = Notifier(config, logging.getLogger("test_monitor_metrics"))
+            notifier.maybe_notify(1, [], [], {}, tree_context=second_context)
+
+        self.assertEqual(datetime.datetime.fromtimestamp(1000), second_context["first_observed_at"])
+        self.assertEqual(60, second_context["observed_duration_seconds"])
+        rendered = "\n".join(notifier._format_slack_detailed_chunks(1, second_context))
+        self.assertIn("First Blocking Observed : {} (KST)".format(
+            datetime.datetime.fromtimestamp(1000).strftime("%Y-%m-%d %H:%M:%S")), rendered)
+        self.assertIn("Observed Blocking For   : 00:01:00", rendered)
+        with open(state_file, "r") as state_handle:
+            self.assertEqual({"100|db.have": 1000}, json.load(state_handle)["blocker_first_seen"])
+
     def testSlackBotRepliesWhenBlocksAreReduced(self):
         """A later lower block count replies in the original Slack alert thread."""
         with tempfile.NamedTemporaryFile(delete=False) as tmp:

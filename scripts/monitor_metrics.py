@@ -156,6 +156,7 @@ class Notifier:
             "last_signature": "",
             "last_blocked_count": None,
             "last_slack_ts": "",
+            "blocker_first_seen": {},
         }
         try:
             with open(self.state_file, "r") as f:
@@ -170,6 +171,10 @@ class Notifier:
                     if data.get("last_blocked_count") is not None:
                         state["last_blocked_count"] = int(data["last_blocked_count"])
                     state["last_slack_ts"] = str(data.get("last_slack_ts", "") or "")
+                    first_seen = data.get("blocker_first_seen", {})
+                    if isinstance(first_seen, dict):
+                        state["blocker_first_seen"] = {
+                            str(key): float(value) for key, value in first_seen.items()}
                     return state
             except ValueError:
                 pass
@@ -179,7 +184,8 @@ class Notifier:
         except (OSError, ValueError, TypeError):
             return state
 
-    def _save_state(self, last_time, last_signature, last_blocked_count=None, last_slack_ts=""):
+    def _save_state(self, last_time, last_signature, last_blocked_count=None, last_slack_ts="",
+                    blocker_first_seen=None):
         try:
             with open(self.state_file, "w") as f:
                 json.dump({
@@ -187,6 +193,7 @@ class Notifier:
                     "last_signature": last_signature,
                     "last_blocked_count": last_blocked_count,
                     "last_slack_ts": last_slack_ts,
+                    "blocker_first_seen": blocker_first_seen or {},
                 }, f)
         except OSError as e:
             self.logger.warning("Could not write notification state file: %s", e)
@@ -216,7 +223,32 @@ class Notifier:
             slack_ts = (state or {}).get("last_slack_ts", "")
         self._save_state(
             time.time(), signature, blocked_count,
-            slack_ts)
+            slack_ts, (state or {}).get("blocker_first_seen", {}))
+
+    def _update_blocker_observations(self, state, tree_context):
+        """Track first observation times for root blockers active in this run."""
+        if not tree_context:
+            return
+        now = time.time()
+        current_keys = tree_context.get("root_blocker_keys", [])
+        first_seen = state.get("blocker_first_seen", {})
+        first_seen = {key: first_seen[key] for key in current_keys if key in first_seen}
+        for key in current_keys:
+            first_seen.setdefault(key, now)
+        state["blocker_first_seen"] = first_seen
+        tree_context["blocker_first_seen"] = first_seen
+
+        if first_seen:
+            earliest = min(first_seen.values())
+            tree_context["first_observed_at"] = datetime.datetime.fromtimestamp(earliest)
+            tree_context["observed_duration_seconds"] = max(0, int(now - earliest))
+
+    def _save_observation_state(self, state):
+        """Save blocker observations when this run does not send a notification."""
+        self._save_state(
+            state.get("last_time") or 0, state.get("last_signature", ""),
+            state.get("last_blocked_count"), state.get("last_slack_ts", ""),
+            state.get("blocker_first_seen", {}))
 
     def _send_slack_reduction_reply(self, blocked_count, blocking_tree, server_info_lines,
                                     tree_context, cfg, state):
@@ -270,6 +302,7 @@ class Notifier:
                 notifications.slack.style is "detailed" (see build_tree_context()).
         """
         state = self._load_state()
+        self._update_blocker_observations(state, tree_context)
         slack_cfg = self.config.get("slack", {})
         if (not force and slack_cfg.get("enabled") and
             str(slack_cfg.get("mode", "webhook")).lower() == "bot" and
@@ -282,9 +315,11 @@ class Notifier:
             self.logger.debug(
                 "Blocked commands %d below threshold %d, skipping notification",
                 blocked_count, self.min_blocked)
+            self._save_observation_state(state)
             return
         if not force and not self._is_cooled_down(state):
             self.logger.debug("Notification cooldown active, skipping")
+            self._save_observation_state(state)
             return
         if force:
             self.logger.info("Notification forced (--notify-test): threshold/cooldown bypassed")
@@ -300,6 +335,7 @@ class Notifier:
             signature == state.get("last_signature", "") and
             blocked_count <= (state.get("last_blocked_count") or 0)):
             self.logger.info("Notification duplicate detected, skipping")
+            self._save_observation_state(state)
             return
 
         message_lines = []
@@ -353,6 +389,8 @@ class Notifier:
 
         if sent:
             self._record_notification(signature, blocked_count, slack_ts, state)
+        else:
+            self._save_observation_state(state)
 
     # ------------------------------------------------------------------
     # Channel implementations
@@ -435,6 +473,16 @@ class Notifier:
         tzname = tree_context.get("tzname") or ""
         detected_at = tree_context.get("detected_at")
         duration = tree_context.get("duration")
+        first_observed_at = tree_context.get("first_observed_at")
+        observed_duration_seconds = tree_context.get("observed_duration_seconds")
+        if first_observed_at:
+            preamble.append("First Blocking Observed : {} ({})".format(
+                first_observed_at.strftime("%Y-%m-%d %H:%M:%S"), tzname))
+        if observed_duration_seconds is not None:
+            hours, remainder = divmod(observed_duration_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            preamble.append("Observed Blocking For   : {:02d}:{:02d}:{:02d}".format(
+                hours, minutes, seconds))
         if detected_at:
             preamble.append("Detected At      : {} ({})".format(
                 detected_at.strftime("%Y-%m-%d %H:%M:%S"), tzname))
@@ -1331,6 +1379,11 @@ class P4Monitor(object):
         """
         sections = build_slack_tree_sections(
             self.blocking_tree, metrics.blockingCommands, metrics.monitorCommands, blockingCounts)
+        root_blocker_keys = []
+        for pid in self.blocking_tree:
+            blocker = metrics.blockingCommands.get(pid)
+            table = blocker.table if blocker else ""
+            root_blocker_keys.append("{}|{}".format(pid, table))
         oldest_elapsed = None
         max_seconds = -1
         for pid in self.blocking_tree:
@@ -1341,6 +1394,7 @@ class P4Monitor(object):
                 oldest_elapsed = b.elapsed
         return {
             "sections": sections,
+            "root_blocker_keys": root_blocker_keys,
             "duration": oldest_elapsed,
             "detected_at": self.now,
             "tzname": time.strftime("%Z"),
