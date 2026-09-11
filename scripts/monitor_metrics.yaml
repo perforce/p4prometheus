@@ -38,9 +38,8 @@ notifications:
     # mode: "bot"
     # bot_token: "xoxb-..."
     # channel_id: "C0123456789"
-    # Optional threaded reply sent after the alert message is created. With
-    # --notify-test, the reply is sent after a five-second delay.
-    # reply_message: "Investigating this lock alert."
+    # When a later run finds fewer blocked commands, bot mode replies in the
+    # original alert thread with the updated blocking tree.
     # Create a webhook at https://api.slack.com/messaging/webhooks
     webhook_url: "https://<some>/<webhook>/<url>"
     # Optional override of notifications.max_lines for Slack only.

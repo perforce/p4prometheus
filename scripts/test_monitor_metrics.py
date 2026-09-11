@@ -438,8 +438,8 @@ Server root: /p4/1/root
             self.assertIn("someuser, elapsed 00:00:{:02d}, fstat -Olhp //some/long/path/to/a/file{}...".format(
                 i % 60, i), joined)
 
-    def testSlackBotPostsThreadedReply(self):
-        """Bot mode posts the alert and configured reply in the alert thread."""
+    def testSlackBotPostsAlertOnly(self):
+        """Bot mode posts the alert and saves its timestamp for a later reply."""
         notifier = Notifier({}, logging.getLogger("test_monitor_metrics"))
         requests = []
 
@@ -452,25 +452,13 @@ Server root: /p4/1/root
             "mode": "bot",
             "bot_token": "xoxb-test",
             "channel_id": "C123",
-            "reply_message": "Investigating this alert.",
         })
 
-        self.assertEqual(2, len(requests))
+        self.assertEqual(1, len(requests))
         self.assertEqual("xoxb-test", requests[0][0])
         self.assertEqual("C123", requests[0][1]["channel"])
-        self.assertEqual("C123", requests[1][1]["channel"])
-        self.assertEqual("123.456", requests[1][1]["thread_ts"])
-        self.assertEqual("Investigating this alert.", requests[1][1]["text"])
-
-        requests[:] = []
-        with mock.patch("monitor_metrics.time.sleep") as sleep:
-            notifier._send_slack("alert body", {
-                "mode": "bot",
-                "bot_token": "xoxb-test",
-                "channel_id": "C123",
-                "reply_message": "Investigating this alert.",
-            }, test_notify=True)
-            sleep.assert_called_once_with(5)
+    # When a later run finds fewer blocked commands, bot mode replies in the
+    # original alert thread with the updated blocking tree.
 
     def testParseTestFileIgnoresExtraOutputBlocks(self):
         """parseTestFile() must skip unrelated Running:/Output: blocks (e.g. "info -s")

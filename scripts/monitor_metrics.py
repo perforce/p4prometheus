@@ -460,7 +460,7 @@ class Notifier:
 
     def _send_slack(self, message, cfg, pre_formatted=False, test_notify=False):
         if str(cfg.get("mode", "webhook")).lower() == "bot":
-            return self._send_slack_bot(message, cfg, pre_formatted, test_notify)
+            return self._send_slack_bot(message, cfg, pre_formatted)
         webhook_url = cfg.get("webhook_url", "")
         if not webhook_url:
             self.logger.warning("Slack webhook_url not configured")
@@ -547,20 +547,7 @@ class Notifier:
         if not response or not response.get("ts"):
             return ""
 
-        reply_message = str(cfg.get("reply_message", "")).strip()
-        if not reply_message:
-            self.logger.info("Slack bot notification sent")
-            return response["ts"]
-        if test_notify:
-            self.logger.info("Waiting 5 seconds before sending Slack test reply")
-            time.sleep(5)
-        reply = self._slack_api_request(bot_token, {
-            "channel": channel_id,
-            "text": reply_message,
-            "thread_ts": response["ts"],
-        })
-        if reply:
-            self.logger.info("Slack bot notification and threaded reply sent")
+        self.logger.info("Slack bot notification sent")
         return response["ts"]
 
     def _slack_api_request(self, bot_token, payload):
