@@ -407,7 +407,7 @@ Server root: /p4/1/root
             1, tree_context,
             server_info_lines=["ServerID: p4d_edge_idc", "Server services: edge-server"])
         self.assertIn("ServerID        : p4d_edge_idc", message)
-        self.assertIn("Current Duration : 00:02:59  (:warning: ONGOING)", message)
+        self.assertIn("Longest Blocker Elapsed : 00:02:59  (:warning: ONGOING)", message)
         self.assertIn("Blocking threshold exceeded \u2014 total blocked commands: 1", message)
         self.assertIn("*Blocking Tree (full, untruncated)*", message)
         self.assertIn("```\ncmd: change -i", message)
@@ -705,7 +705,6 @@ DEBUG 2026-01-01 00:00:00,006 monitor_metrics.py 7: Output:
         original_context = {
             "sections": [("2001 root", ["cmd: job -i"])],
             "duration": "00:00:05",
-            "lock_start": datetime.datetime(2026, 9, 4, 7, 42, 1),
             "detected_at": datetime.datetime(2026, 9, 4, 7, 42, 6),
             "tzname": "PDT",
         }
@@ -720,7 +719,7 @@ DEBUG 2026-01-01 00:00:00,006 monitor_metrics.py 7: Output:
                        if block["type"] == "section")
         self.assertIn("Blocks reduced", reply_text)
         self.assertIn("Reply Detected At : 2026-09-04 07:42:10 (PDT)", reply_text)
-        self.assertIn("Lock Start Time  : 2026-09-04 07:42:01 (PDT)", reply_text)
+        self.assertIn("Longest Blocker Elapsed : 00:00:05  (:warning: ONGOING)", reply_text)
         self.assertIn("*[1] 2001 root*", reply_text)
 
 if __name__ == '__main__':

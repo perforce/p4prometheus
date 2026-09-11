@@ -433,17 +433,13 @@ class Notifier:
             preamble.append("")
 
         tzname = tree_context.get("tzname") or ""
-        lock_start = tree_context.get("lock_start")
         detected_at = tree_context.get("detected_at")
         duration = tree_context.get("duration")
-        if lock_start:
-            preamble.append("Lock Start Time  : {} ({})".format(
-                lock_start.strftime("%Y-%m-%d %H:%M:%S"), tzname))
         if detected_at:
             preamble.append("Detected At      : {} ({})".format(
                 detected_at.strftime("%Y-%m-%d %H:%M:%S"), tzname))
         if duration:
-            preamble.append("Current Duration : {}  (:warning: ONGOING)".format(duration))
+            preamble.append("Longest Blocker Elapsed : {}  (:warning: ONGOING)".format(duration))
         preamble.append("")
 
         preamble.append("Blocking threshold exceeded \u2014 total blocked commands: {}".format(blocked_count))
@@ -1329,8 +1325,9 @@ class P4Monitor(object):
     def build_tree_context(self, metrics, blockingCounts):
         """Build the context used for the Slack 'detailed' notification style.
 
-        Includes rendered tree sections plus timing info (oldest lock start time,
-        detection time, and current duration) for the longest-running root blocker.
+        Includes rendered tree sections, detection time, and the elapsed runtime
+        of the longest-running root blocker. Command elapsed time is not a lock
+        acquisition time, so no lock-start timestamp is inferred from it.
         """
         sections = build_slack_tree_sections(
             self.blocking_tree, metrics.blockingCommands, metrics.monitorCommands, blockingCounts)
@@ -1342,13 +1339,9 @@ class P4Monitor(object):
             if secs is not None and secs > max_seconds:
                 max_seconds = secs
                 oldest_elapsed = b.elapsed
-        lock_start = None
-        if max_seconds >= 0:
-            lock_start = self.now - datetime.timedelta(seconds=max_seconds)
         return {
             "sections": sections,
             "duration": oldest_elapsed,
-            "lock_start": lock_start,
             "detected_at": self.now,
             "tzname": time.strftime("%Z"),
         }
