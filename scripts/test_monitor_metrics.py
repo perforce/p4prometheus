@@ -548,6 +548,93 @@ DEBUG 2026-01-01 00:00:00,006 monitor_metrics.py 7: Output:
         notifier.maybe_notify(**kwargs)
         self.assertEqual(2, len(sent_payloads))
 
+    def testSlackBotNotificationDecisionMatrix(self):
+        """Bot alerts honor threshold/cooldown and reply only to later reductions."""
+        cases = [
+            ("initial below threshold", None, "", 4, 1000, 0, None, False),
+            ("initial reaches threshold", None, "", 5, 1000, 1, "parent", False),
+            ("equal during cooldown", 5, "123.456", 5, 1100, 0, None, False),
+            ("higher during cooldown", 5, "123.456", 7, 1100, 0, None, False),
+            ("equal after cooldown", 5, "123.456", 5, 1301, 1, "parent", False),
+            ("higher after cooldown", 5, "123.456", 7, 1301, 1, "parent", False),
+            ("lower replies during cooldown", 5, "123.456", 3, 1100, 1, "reply", False),
+            ("lower without thread", 5, "", 3, 1100, 0, None, False),
+            ("failed lower reply retains thread", 5, "123.456", 3, 1100, 1, "reply", True),
+        ]
+        for (name, previous_count, previous_ts, blocked_count, now, request_count,
+             request_type, fail_reply) in cases:
+            with self.subTest(name=name), tempfile.NamedTemporaryFile(delete=False) as tmp:
+                state_file = tmp.name
+            self.addCleanup(lambda path=state_file: os.path.exists(path) and os.remove(path))
+            notifier = Notifier({
+                "min_blocked_commands": 5,
+                "cooldown_seconds": 300,
+                "state_file": state_file,
+                "slack": {
+                    "enabled": True,
+                    "mode": "bot",
+                    "bot_token": "xoxb-test",
+                    "channel_id": "C123",
+                },
+            }, logging.getLogger("test_monitor_metrics"))
+            if previous_count is not None:
+                notifier._save_state(1000, "previous", previous_count, previous_ts)
+
+            requests = []
+
+            def fake_api_request(token, payload):
+                requests.append(payload)
+                if "thread_ts" in payload and fail_reply:
+                    return None
+                return {"ok": True, "ts": "987.654"} if "thread_ts" not in payload else {"ok": True}
+
+            notifier._slack_api_request = fake_api_request
+            with mock.patch("monitor_metrics.time.time", return_value=now):
+                notifier.maybe_notify(
+                    blocked_count, ["blocking totals: {}".format(blocked_count)], [], {"2001": {}})
+
+            self.assertEqual(request_count, len(requests))
+            if request_type == "parent":
+                self.assertNotIn("thread_ts", requests[0])
+            elif request_type == "reply":
+                self.assertEqual(previous_ts, requests[0]["thread_ts"])
+            if fail_reply:
+                with open(state_file, "r") as state_handle:
+                    self.assertEqual(previous_ts, json.load(state_handle)["last_slack_ts"])
+
+    def testNonBotNotificationDecisionMatrix(self):
+        """Non-bot channels apply threshold, cooldown, and duplicate suppression."""
+        cases = [
+            ("below threshold", None, 4, 1000, "payload", 0),
+            ("active cooldown", 1000, 5, 1100, "payload", 0),
+            ("expired cooldown changed payload", 1000, 6, 1301, "changed", 1),
+            ("expired cooldown duplicate payload", 1000, 5, 1301, "payload", 0),
+        ]
+        for name, previous_time, blocked_count, now, signature, expected_sends in cases:
+            with self.subTest(name=name), tempfile.NamedTemporaryFile(delete=False) as tmp:
+                state_file = tmp.name
+            self.addCleanup(lambda path=state_file: os.path.exists(path) and os.remove(path))
+            notifier = Notifier({
+                "min_blocked_commands": 5,
+                "cooldown_seconds": 300,
+                "state_file": state_file,
+                "script": {"enabled": True, "command": "dummy"},
+            }, logging.getLogger("test_monitor_metrics"))
+            if previous_time is not None:
+                previous_signature = notifier._payload_signature(
+                    5, ["blocking totals: 5"], [], {"2001": {}}, None)
+                if signature == "changed":
+                    previous_signature = "previous"
+                notifier._save_state(previous_time, previous_signature, 5)
+
+            sent_payloads = []
+            notifier._send_script = lambda payload, cfg: sent_payloads.append(payload)
+            blines = ["blocking totals: {}".format(blocked_count)]
+            detail_msgs = [] if signature == "payload" else ["changed"]
+            with mock.patch("monitor_metrics.time.time", return_value=now):
+                notifier.maybe_notify(blocked_count, blines, detail_msgs, {"2001": {}})
+            self.assertEqual(expected_sends, len(sent_payloads))
+
     def testSlackBotRepliesWhenBlocksAreReduced(self):
         """A later lower block count replies in the original Slack alert thread."""
         with tempfile.NamedTemporaryFile(delete=False) as tmp:

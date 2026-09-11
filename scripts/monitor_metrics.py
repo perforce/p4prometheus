@@ -117,6 +117,24 @@ class Notifier:
     Supports Slack webhooks or bot API messages, email (SMTP), MS Teams webhooks, and a generic
     shell script.  A cooldown mechanism prevents notification floods.
 
+        In Slack bot mode, each run persists the blocked-command count and the
+        timestamp of its parent alert. The next run compares its count to the
+        saved value:
+
+        * No saved count: send a parent alert when the count reaches the threshold.
+        * Lower count: reply "Blocks reduced" in the saved parent alert's thread,
+            regardless of threshold or cooldown. On success, clear the saved thread
+            timestamp so further reductions cannot reply to the resolved alert.
+        * Equal or higher count: never reply. Send a new parent alert only after
+            the cooldown expires; that new alert becomes the target for a later
+            reduction reply.
+        * A count below threshold that is not a lower-count transition sends no
+            notification.
+
+        Slack webhook, email, Teams, and script notifications do not support the
+        threaded reduction reply. They use the threshold, cooldown, and duplicate
+        payload checks only.
+
     Configuration is loaded from the ``notifications`` section of the YAML
     config file passed via ``--config``.
     """
