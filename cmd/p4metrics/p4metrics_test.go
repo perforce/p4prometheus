@@ -152,7 +152,8 @@ func TestOOMSlackMessageFormatting(t *testing.T) {
 func TestSendOOMVMAgentAlert(t *testing.T) {
 	var receivedAlert map[string]interface{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/alerts", r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/alerts/", r.URL.Path)
 		username, password, ok := r.BasicAuth()
 		assert.True(t, ok)
 		assert.Equal(t, "customer", username)
@@ -165,7 +166,7 @@ func TestSendOOMVMAgentAlert(t *testing.T) {
 	cfg := config.Config{SDPInstance: "1"}
 	env := map[string]string{}
 	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
-	p4m.vmAlertURL = server.URL + "/alerts"
+	p4m.vmAlertURL = server.URL + "/alerts/"
 	p4m.vmAlertUsername = "customer"
 	p4m.vmAlertPassword = "secret"
 	p4m.serverID = "edge-1"
@@ -187,8 +188,8 @@ func TestSendOOMVMAgentAlert(t *testing.T) {
 
 func TestVMAgentAlertURLUsesDataPushGatewayPort(t *testing.T) {
 	assert.Equal(t,
-		"https://monitor.example.com:9092/alerts",
-		strings.Replace("https://monitor.example.com:9093", ":9093", ":9092", 1)+"/alerts")
+		"https://monitor.example.com:9092/alerts/",
+		strings.Replace("https://monitor.example.com:9093", ":9093", ":9092", 1)+"/alerts/")
 }
 
 func TestP4MetricsLicense(t *testing.T) {

@@ -780,7 +780,7 @@ func (p4m *P4MonitorMetrics) loadVMAgentAlertConfig() {
 		p4m.logger.Warn("vmagent alert push disabled: VM_METRICS_HOST, VM_CUSTOMER, or .vmpassword is empty")
 		return
 	}
-	p4m.vmAlertURL = strings.Replace(host, ":9093", ":9092", 1) + "/alerts"
+	p4m.vmAlertURL = strings.Replace(host, ":9093", ":9092", 1) + "/alerts/"
 	p4m.vmAlertUsername = username
 	p4m.vmAlertPassword = password
 	p4m.logger.Infof("Configured vmagent OOM alert push endpoint: %s", p4m.vmAlertURL)
