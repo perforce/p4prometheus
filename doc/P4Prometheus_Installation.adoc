@@ -58,6 +58,12 @@ chmod +x install_p4prom.sh
 
 For a non-SDP server, use `./install_p4prom.sh -nosdp -h` to review the required connection and path options before installing.
 
+=== Updating config files for new installation
+
+The following files will typically need to be updated for your environment:
+
+see link:../examples/EXAMPLES.md[docs on examples with links to configuration files]
+
 === Script Reference
 
 ==== install_prom_graf.sh

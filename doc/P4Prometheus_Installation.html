@@ -452,18 +452,19 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#_deployment_roles">1. Deployment Roles</a></li>
 <li><a href="#_automated_installation">2. Automated Installation</a>
 <ul class="sectlevel2">
-<li><a href="#_script_reference">2.1. Script Reference</a>
+<li><a href="#_updating_config_files_for_new_installation">2.1. Updating config files for new installation</a></li>
+<li><a href="#_script_reference">2.2. Script Reference</a>
 <ul class="sectlevel3">
-<li><a href="#_install_prom_graf_sh">2.1.1. install_prom_graf.sh</a></li>
-<li><a href="#_update_prom_graf_sh">2.1.2. update_prom_graf.sh</a></li>
-<li><a href="#_install_p4prom_sh">2.1.3. install_p4prom.sh</a></li>
-<li><a href="#_update_p4prom_sh">2.1.4. update_p4prom.sh</a></li>
-<li><a href="#_install_node_sh">2.1.5. install_node.sh</a></li>
-<li><a href="#_install_lslocks_sh">2.1.6. install_lslocks.sh</a></li>
-<li><a href="#_migrate_prom_graf_data_sh">2.1.7. migrate_prom_graf_data.sh</a></li>
+<li><a href="#_install_prom_graf_sh">2.2.1. install_prom_graf.sh</a></li>
+<li><a href="#_update_prom_graf_sh">2.2.2. update_prom_graf.sh</a></li>
+<li><a href="#_install_p4prom_sh">2.2.3. install_p4prom.sh</a></li>
+<li><a href="#_update_p4prom_sh">2.2.4. update_p4prom.sh</a></li>
+<li><a href="#_install_node_sh">2.2.5. install_node.sh</a></li>
+<li><a href="#_install_lslocks_sh">2.2.6. install_lslocks.sh</a></li>
+<li><a href="#_migrate_prom_graf_data_sh">2.2.7. migrate_prom_graf_data.sh</a></li>
 </ul>
 </li>
-<li><a href="#_upgrades">2.2. Upgrades</a></li>
+<li><a href="#_upgrades">2.3. Upgrades</a></li>
 </ul>
 </li>
 <li><a href="#_enterprise_options">3. Enterprise Options</a>
@@ -611,9 +612,18 @@ chmod +x install_p4prom.sh
 <p>For a non-SDP server, use <code>./install_p4prom.sh -nosdp -h</code> to review the required connection and path options before installing.</p>
 </div>
 <div class="sect2">
-<h3 id="_script_reference">2.1. Script Reference</h3>
+<h3 id="_updating_config_files_for_new_installation">2.1. Updating config files for new installation</h3>
+<div class="paragraph">
+<p>The following files will typically need to be updated for your environment:</p>
+</div>
+<div class="paragraph">
+<p>see <a href="../examples/EXAMPLES.md">docs on examples with links to configuration files</a></p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_script_reference">2.2. Script Reference</h3>
 <div class="sect3">
-<h4 id="_install_prom_graf_sh">2.1.1. install_prom_graf.sh</h4>
+<h4 id="_install_prom_graf_sh">2.2.1. install_prom_graf.sh</h4>
 <div class="paragraph">
 <p>This section provides a reference for the <code>install_prom_graf.sh</code> script, including usage and available options.</p>
 </div>
@@ -663,7 +673,7 @@ Example:
 </div>
 </div>
 <div class="sect3">
-<h4 id="_update_prom_graf_sh">2.1.2. update_prom_graf.sh</h4>
+<h4 id="_update_prom_graf_sh">2.2.2. update_prom_graf.sh</h4>
 <div class="paragraph">
 <p>Updates the monitoring server while preserving paths and options stored by <code>install_prom_graf.sh</code>.</p>
 </div>
@@ -697,7 +707,7 @@ Note: If /etc/p4prometheus-monitoring/install.env exists from a prior
 </div>
 </div>
 <div class="sect3">
-<h4 id="_install_p4prom_sh">2.1.3. install_p4prom.sh</h4>
+<h4 id="_install_p4prom_sh">2.2.3. install_p4prom.sh</h4>
 <div class="paragraph">
 <p>Installs node_exporter, p4prometheus, p4metrics, and lock monitoring on a Helix Core server.</p>
 </div>
@@ -742,7 +752,7 @@ Examples:
 </div>
 </div>
 <div class="sect3">
-<h4 id="_update_p4prom_sh">2.1.4. update_p4prom.sh</h4>
+<h4 id="_update_p4prom_sh">2.2.4. update_p4prom.sh</h4>
 <div class="paragraph">
 <p>Updates the monitoring components installed on a Helix Core server.</p>
 </div>
@@ -787,7 +797,7 @@ Examples:
 </div>
 </div>
 <div class="sect3">
-<h4 id="_install_node_sh">2.1.5. install_node.sh</h4>
+<h4 id="_install_node_sh">2.2.5. install_node.sh</h4>
 <div class="paragraph">
 <p>Installs node_exporter on another monitored host, such as a Swarm, Hansoft, or Helix TeamHub server.</p>
 </div>
@@ -818,7 +828,7 @@ Examples:
 </div>
 </div>
 <div class="sect3">
-<h4 id="_install_lslocks_sh">2.1.6. install_lslocks.sh</h4>
+<h4 id="_install_lslocks_sh">2.2.6. install_lslocks.sh</h4>
 <div class="paragraph">
 <p>Installs lock monitoring only, without the full Helix Core monitoring stack.</p>
 </div>
@@ -854,7 +864,7 @@ Examples:
 </div>
 </div>
 <div class="sect3">
-<h4 id="_migrate_prom_graf_data_sh">2.1.7. migrate_prom_graf_data.sh</h4>
+<h4 id="_migrate_prom_graf_data_sh">2.2.7. migrate_prom_graf_data.sh</h4>
 <div class="paragraph">
 <p>Moves existing monitoring-server data to a different base directory without a full reinstall.</p>
 </div>
@@ -896,7 +906,7 @@ Examples:
 </div>
 </div>
 <div class="sect2">
-<h3 id="_upgrades">2.2. Upgrades</h3>
+<h3 id="_upgrades">2.3. Upgrades</h3>
 <div class="paragraph">
 <p>In an SDP environment, run the update checker as the <code>perforce</code> user:</p>
 </div>
@@ -2318,7 +2328,7 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-09-15 13:25:53 +0100
+Last updated 2026-09-15 13:38:06 +0100
 </div>
 </div>
 </body>
