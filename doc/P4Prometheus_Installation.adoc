@@ -1,9 +1,19 @@
-= P4Prometheus Installation
+= Perforce P4Prometheus - Installation Guide
+Perforce Professional Services <consulting@perforce.com>
+:revnumber: v2026.1
+:revdate: 2026-09-15
+:doctype: book
+:icons: font
 :toc:
-:toclevels: 3
+:toclevels: 5
+:sectnumlevels: 4
+:xrefstyle: full
+
+== Preface
 
 P4Prometheus installation is automated by the scripts in link:../scripts/[scripts/]. Manual component installation is retained in <<manual-installation>> for environments where automation cannot be used.
 
+:sectnums:
 == Deployment Roles
 
 Install the following components for each role:

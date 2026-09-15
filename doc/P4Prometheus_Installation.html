@@ -5,7 +5,8 @@
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="generator" content="Asciidoctor 2.0.22">
-<title>P4Prometheus Installation</title>
+<meta name="author" content="Perforce Professional Services">
+<title>Perforce P4Prometheus - Installation Guide</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,300italic,400,400italic,600,600italic%7CNoto+Serif:400,400italic,700,700italic%7CDroid+Sans+Mono:400,700">
 <style>
 /*! Asciidoctor default stylesheet | MIT License | https://asciidoctor.org */
@@ -433,80 +434,92 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 #footer-text{color:rgba(0,0,0,.6);font-size:.9em}}
 @media amzn-kf8{#header,#content,#footnotes,#footer{padding:0}}
 </style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
 </head>
-<body class="article">
+<body class="book">
 <div id="header">
-<h1>P4Prometheus Installation</h1>
+<h1>Perforce P4Prometheus - Installation Guide</h1>
+<div class="details">
+<span id="author" class="author">Perforce Professional Services</span><br>
+<span id="email" class="email"><a href="mailto:consulting@perforce.com">consulting@perforce.com</a></span><br>
+<span id="revnumber">version v2026.1,</span>
+<span id="revdate">2026-09-15</span>
+</div>
 <div id="toc" class="toc">
 <div id="toctitle">Table of Contents</div>
 <ul class="sectlevel1">
-<li><a href="#_deployment_roles">Deployment Roles</a></li>
-<li><a href="#_automated_installation">Automated Installation</a>
+<li><a href="#_preface">Preface</a></li>
+<li><a href="#_deployment_roles">1. Deployment Roles</a></li>
+<li><a href="#_automated_installation">2. Automated Installation</a>
 <ul class="sectlevel2">
-<li><a href="#_script_reference">Script Reference</a></li>
-<li><a href="#_upgrades">Upgrades</a></li>
+<li><a href="#_script_reference">2.1. Script Reference</a></li>
+<li><a href="#_upgrades">2.2. Upgrades</a></li>
 </ul>
 </li>
-<li><a href="#_enterprise_options">Enterprise Options</a>
+<li><a href="#_enterprise_options">3. Enterprise Options</a>
 <ul class="sectlevel2">
-<li><a href="#_dedicated_data_volume">Dedicated Data Volume</a></li>
-<li><a href="#_retention_binaries_and_targets">Retention, Binaries, and Targets</a></li>
-<li><a href="#_air_gapped_installation">Air-Gapped Installation</a></li>
-<li><a href="#_install_state_and_fleet_configuration">Install State and Fleet Configuration</a></li>
+<li><a href="#_dedicated_data_volume">3.1. Dedicated Data Volume</a></li>
+<li><a href="#_retention_binaries_and_targets">3.2. Retention, Binaries, and Targets</a></li>
+<li><a href="#_air_gapped_installation">3.3. Air-Gapped Installation</a></li>
+<li><a href="#_install_state_and_fleet_configuration">3.4. Install State and Fleet Configuration</a></li>
 </ul>
 </li>
-<li><a href="#_verify_installation">Verify Installation</a></li>
-<li><a href="#manual-installation">Manual Installation</a>
+<li><a href="#_verify_installation">4. Verify Installation</a></li>
+<li><a href="#manual-installation">5. Manual Installation</a>
 <ul class="sectlevel2">
-<li><a href="#_package_installation_of_grafana">Package Installation of Grafana</a>
+<li><a href="#_package_installation_of_grafana">5.1. Package Installation of Grafana</a>
 <ul class="sectlevel3">
-<li><a href="#_create_your_first_data_source">Create your first Data Source</a></li>
-<li><a href="#_setup_of_grafana_dashboards">Setup of Grafana dashboards</a></li>
-<li><a href="#_script_to_create_grafana_dashboard">Script to create Grafana dashboard</a></li>
+<li><a href="#_create_your_first_data_source">5.1.1. Create your first Data Source</a></li>
+<li><a href="#_setup_of_grafana_dashboards">5.1.2. Setup of Grafana dashboards</a></li>
+<li><a href="#_script_to_create_grafana_dashboard">5.1.3. Script to create Grafana dashboard</a></li>
 </ul>
 </li>
-<li><a href="#_install_prometheus">Install Prometheus</a>
+<li><a href="#_install_prometheus">5.2. Install Prometheus</a>
 <ul class="sectlevel3">
-<li><a href="#_prometheus_config">Prometheus config</a></li>
+<li><a href="#_prometheus_config">5.2.1. Prometheus config</a></li>
 </ul>
 </li>
-<li><a href="#_install_victoria_metrics_optional_but_recommended">Install victoria metrics (optional but recommended)</a>
+<li><a href="#_install_victoria_metrics_optional_but_recommended">5.3. Install victoria metrics (optional but recommended)</a>
 <ul class="sectlevel3">
-<li><a href="#_substituting_victoria_metrics_for_prometheus_in_grafana">Substituting Victoria Metrics for Prometheus in Grafana</a></li>
-<li><a href="#_importing_prometheus_data_into_victoria_metrics">Importing Prometheus data into Victoria Metrics</a></li>
+<li><a href="#_substituting_victoria_metrics_for_prometheus_in_grafana">5.3.1. Substituting Victoria Metrics for Prometheus in Grafana</a></li>
+<li><a href="#_importing_prometheus_data_into_victoria_metrics">5.3.2. Importing Prometheus data into Victoria Metrics</a></li>
 </ul>
 </li>
-<li><a href="#_install_node_exporter">Install node exporter</a></li>
-<li><a href="#_install_p4prometheus_details">Install p4prometheus - details</a></li>
-<li><a href="#_install_p4metrics_and_monitor_locks_systemd_timer_services">Install p4metrics and monitor_locks systemd timer services</a>
+<li><a href="#_install_node_exporter">5.4. Install node exporter</a></li>
+<li><a href="#_install_p4prometheus_details">5.5. Install p4prometheus - details</a></li>
+<li><a href="#_install_p4metrics_and_monitor_locks_systemd_timer_services">5.6. Install p4metrics and monitor_locks systemd timer services</a>
 <ul class="sectlevel3">
-<li><a href="#_checking_for_blocked_commands">Checking for blocked commands</a></li>
-<li><a href="#_start_and_enable_service">Start and enable service</a></li>
+<li><a href="#_checking_for_blocked_commands">5.6.1. Checking for blocked commands</a></li>
+<li><a href="#_start_and_enable_service">5.6.2. Start and enable service</a></li>
 </ul>
 </li>
-<li><a href="#_alerting">Alerting</a>
+<li><a href="#_alerting">5.7. Alerting</a>
 <ul class="sectlevel3">
-<li><a href="#_alertmanager_config">Alertmanager config</a></li>
-<li><a href="#_alerting_rules">Alerting rules</a></li>
-<li><a href="#_prometheus_config_to_reference_alertmanager_rules">Prometheus config to reference alertmanager rules</a></li>
+<li><a href="#_alertmanager_config">5.7.1. Alertmanager config</a></li>
+<li><a href="#_alerting_rules">5.7.2. Alerting rules</a>
+<ul class="sectlevel4">
+<li><a href="#_split_file_alerting_rules_recommended">5.7.2.1. Split-file alerting rules (recommended)</a></li>
 </ul>
 </li>
-<li><a href="#_troubleshooting">Troubleshooting</a>
-<ul class="sectlevel3">
-<li><a href="#_p4prometheus">p4prometheus</a></li>
-<li><a href="#_p4metrics">p4metrics</a></li>
-<li><a href="#_node_exporter">node exporter</a></li>
-<li><a href="#_prometheus">prometheus</a></li>
-<li><a href="#_grafana">Grafana</a></li>
+<li><a href="#_prometheus_config_to_reference_alertmanager_rules">5.7.3. Prometheus config to reference alertmanager rules</a></li>
 </ul>
 </li>
-<li><a href="#_advanced_config_options">Advanced config options</a></li>
-<li><a href="#_windows_installation">Windows Installation</a>
+<li><a href="#_troubleshooting">5.8. Troubleshooting</a>
 <ul class="sectlevel3">
-<li><a href="#_windows_exporter">Windows Exporter</a></li>
-<li><a href="#_p4prometheus_on_windows">P4prometheus on Windows</a></li>
-<li><a href="#_running_p4metrics">Running p4metrics</a></li>
-<li><a href="#_installing_programs_as_services">Installing Programs as Services</a></li>
+<li><a href="#_p4prometheus">5.8.1. p4prometheus</a></li>
+<li><a href="#_p4metrics">5.8.2. p4metrics</a></li>
+<li><a href="#_node_exporter">5.8.3. node exporter</a></li>
+<li><a href="#_prometheus">5.8.4. prometheus</a></li>
+<li><a href="#_grafana">5.8.5. Grafana</a></li>
+</ul>
+</li>
+<li><a href="#_advanced_config_options">5.9. Advanced config options</a></li>
+<li><a href="#_windows_installation">5.10. Windows Installation</a>
+<ul class="sectlevel3">
+<li><a href="#_windows_exporter">5.10.1. Windows Exporter</a></li>
+<li><a href="#_p4prometheus_on_windows">5.10.2. P4prometheus on Windows</a></li>
+<li><a href="#_running_p4metrics">5.10.3. Running p4metrics</a></li>
+<li><a href="#_installing_programs_as_services">5.10.4. Installing Programs as Services</a></li>
 </ul>
 </li>
 </ul>
@@ -515,15 +528,16 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </div>
 </div>
 <div id="content">
-<div id="preamble">
+<div class="sect1">
+<h2 id="_preface">Preface</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>P4Prometheus installation is automated by the scripts in <a href="../scripts/">scripts/</a>. Manual component installation is retained in <a href="#manual-installation">Manual Installation</a> for environments where automation cannot be used.</p>
+<p>P4Prometheus installation is automated by the scripts in <a href="../scripts/">scripts/</a>. Manual component installation is retained in <a href="#manual-installation">Chapter 5, <em>Manual Installation</em></a> for environments where automation cannot be used.</p>
 </div>
 </div>
 </div>
 <div class="sect1">
-<h2 id="_deployment_roles">Deployment Roles</h2>
+<h2 id="_deployment_roles">1. Deployment Roles</h2>
 <div class="sectionbody">
 <div class="paragraph">
 <p>Install the following components for each role:</p>
@@ -557,7 +571,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </div>
 </div>
 <div class="sect1">
-<h2 id="_automated_installation">Automated Installation</h2>
+<h2 id="_automated_installation">2. Automated Installation</h2>
 <div class="sectionbody">
 <div class="paragraph">
 <p>Run the relevant installer as <code>root</code>. Download the script from a checkout, or download its raw GitHub URL, make it executable, and review the available options before installing:</p>
@@ -587,7 +601,7 @@ chmod +x install_p4prom.sh
 <p>For a non-SDP server, use <code>./install_p4prom.sh -nosdp -h</code> to review the required connection and path options before installing.</p>
 </div>
 <div class="sect2">
-<h3 id="_script_reference">Script Reference</h3>
+<h3 id="_script_reference">2.1. Script Reference</h3>
 <div class="ulist">
 <ul>
 <li>
@@ -615,7 +629,7 @@ chmod +x install_p4prom.sh
 </div>
 </div>
 <div class="sect2">
-<h3 id="_upgrades">Upgrades</h3>
+<h3 id="_upgrades">2.2. Upgrades</h3>
 <div class="paragraph">
 <p>In an SDP environment, run the update checker as the <code>perforce</code> user:</p>
 </div>
@@ -633,13 +647,13 @@ sudo ./update_p4prom.sh 1</code></pre>
 </div>
 </div>
 <div class="sect1">
-<h2 id="_enterprise_options">Enterprise Options</h2>
+<h2 id="_enterprise_options">3. Enterprise Options</h2>
 <div class="sectionbody">
 <div class="paragraph">
 <p>All install and update scripts support a common set of options. Run the appropriate script with <code>-h</code> for the complete list.</p>
 </div>
 <div class="sect2">
-<h3 id="_dedicated_data_volume">Dedicated Data Volume</h3>
+<h3 id="_dedicated_data_volume">3.1. Dedicated Data Volume</h3>
 <div class="paragraph">
 <p>Use <code>-d</code> to keep monitoring data on a dedicated volume:</p>
 </div>
@@ -661,7 +675,7 @@ sudo ./migrate_prom_graf_data.sh -d /data --cleanup-old</code></pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_retention_binaries_and_targets">Retention, Binaries, and Targets</h3>
+<h3 id="_retention_binaries_and_targets">3.2. Retention, Binaries, and Targets</h3>
 <div class="listingblock">
 <div class="content">
 <pre class="highlight"><code class="language-bash" data-lang="bash"># Retain metrics for 12 months and use a custom binary directory.
@@ -673,7 +687,7 @@ sudo ./install_prom_graf.sh -target myp4server:9100 -target replica1:9100</code>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_air_gapped_installation">Air-Gapped Installation</h3>
+<h3 id="_air_gapped_installation">3.3. Air-Gapped Installation</h3>
 <div class="paragraph">
 <p>Download the required GitHub release assets on a connected machine, transfer them to the target, then pass their directory with <code>--local-tarballs-dir</code>:</p>
 </div>
@@ -688,7 +702,7 @@ sudo ./install_p4prom.sh --local-tarballs-dir /opt/installers</code></pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_install_state_and_fleet_configuration">Install State and Fleet Configuration</h3>
+<h3 id="_install_state_and_fleet_configuration">3.4. Install State and Fleet Configuration</h3>
 <div class="paragraph">
 <p>Monitoring-server scripts save state in <code>/etc/p4prometheus-monitoring/install.env</code>. Helix Core server scripts use <code>/p4/common/site/config/p4prom_install.env</code> with SDP, or <code>/etc/p4prometheus/p4prom_install.env</code> without it.</p>
 </div>
@@ -709,7 +723,7 @@ systemctl restart p4prometheus</code></pre>
 </div>
 </div>
 <div class="sect1">
-<h2 id="_verify_installation">Verify Installation</h2>
+<h2 id="_verify_installation">4. Verify Installation</h2>
 <div class="sectionbody">
 <div class="listingblock">
 <div class="content">
@@ -723,13 +737,13 @@ curl http://localhost:9100/metrics | grep p4_</code></pre>
 </div>
 </div>
 <div class="sect1">
-<h2 id="manual-installation">Manual Installation</h2>
+<h2 id="manual-installation">5. Manual Installation</h2>
 <div class="sectionbody">
 <div class="paragraph">
 <p>The following component-by-component procedures are retained for sites that cannot use the scripts. They are not the recommended default installation path.</p>
 </div>
 <div class="sect2">
-<h3 id="_package_installation_of_grafana">Package Installation of Grafana</h3>
+<h3 id="_package_installation_of_grafana">5.1. Package Installation of Grafana</h3>
 <div class="paragraph">
 <p>This should be done on the monitoring server only. If not using <a href="#automated-installation">automated scripts</a> then follow these instructions.</p>
 </div>
@@ -747,7 +761,7 @@ curl http://localhost:9100/metrics | grep p4_</code></pre>
 </ul>
 </div>
 <div class="sect3">
-<h4 id="_create_your_first_data_source">Create your first Data Source</h4>
+<h4 id="_create_your_first_data_source">5.1.1. Create your first Data Source</h4>
 <div class="paragraph">
 <p>Assuming you are using Victoria Metrics (VM):</p>
 </div>
@@ -776,7 +790,7 @@ curl http://localhost:9100/metrics | grep p4_</code></pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_setup_of_grafana_dashboards">Setup of Grafana dashboards</h4>
+<h4 id="_setup_of_grafana_dashboards">5.1.2. Setup of Grafana dashboards</h4>
 <div class="paragraph">
 <p>Once Grafana is installed (and Prometheus/Victoria Metrics) the following dashboards are recommended to be imported as starting points for further customisation:</p>
 </div>
@@ -823,7 +837,7 @@ curl http://localhost:9100/metrics | grep p4_</code></pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_script_to_create_grafana_dashboard">Script to create Grafana dashboard</h4>
+<h4 id="_script_to_create_grafana_dashboard">5.1.3. Script to create Grafana dashboard</h4>
 <div class="paragraph">
 <p>Download the following files:</p>
 </div>
@@ -922,7 +936,7 @@ export GRAFANA_API_TOKEN="&lt;service account token created above&gt;"</pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_install_prometheus">Install Prometheus</h3>
+<h3 id="_install_prometheus">5.2. Install Prometheus</h3>
 <div class="paragraph">
 <p>This must be done on the monitoring server only. If not using <a href="#automated-installation">automated scripts</a> then follow these instructions.</p>
 </div>
@@ -930,7 +944,7 @@ export GRAFANA_API_TOKEN="&lt;service account token created above&gt;"</pre>
 <table>
 <tr>
 <td class="icon">
-<div class="title">Important</div>
+<i class="fa icon-important" title="Important"></i>
 </td>
 <td class="content">
 Once you have installed prometheus you will need to adjust its configuration file!
@@ -995,7 +1009,7 @@ EOF</code></pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_prometheus_config">Prometheus config</h4>
+<h4 id="_prometheus_config">5.2.1. Prometheus config</h4>
 <div class="paragraph">
 <p><strong>It is important you edit and adjust the <code>targets</code> value appropriately below</strong> (see <code>#####</code> section) to scrape from your commit/edge/replica servers (and localhost).</p>
 </div>
@@ -1056,7 +1070,7 @@ EOF</code></pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_install_victoria_metrics_optional_but_recommended">Install victoria metrics (optional but recommended)</h3>
+<h3 id="_install_victoria_metrics_optional_but_recommended">5.3. Install victoria metrics (optional but recommended)</h3>
 <div class="paragraph">
 <p>This is a high performing component (up to 20x faster) and good for long term storage (data compression is up to 70x) so that much more data can be stored in the same space. If not using <a href="#automated-installation">automated scripts</a> then follow these instructions.</p>
 </div>
@@ -1160,7 +1174,7 @@ make restart # Convenience command</pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_substituting_victoria_metrics_for_prometheus_in_grafana">Substituting Victoria Metrics for Prometheus in Grafana</h4>
+<h4 id="_substituting_victoria_metrics_for_prometheus_in_grafana">5.3.1. Substituting Victoria Metrics for Prometheus in Grafana</h4>
 <div class="paragraph">
 <p>If using Victoria Metrics, then you should:</p>
 </div>
@@ -1179,7 +1193,7 @@ make restart # Convenience command</pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_importing_prometheus_data_into_victoria_metrics">Importing Prometheus data into Victoria Metrics</h4>
+<h4 id="_importing_prometheus_data_into_victoria_metrics">5.3.2. Importing Prometheus data into Victoria Metrics</h4>
 <div class="paragraph">
 <p>This can be fairly easily done, and will allow you to save the space used by Prometheus.</p>
 </div>
@@ -1192,7 +1206,7 @@ make restart # Convenience command</pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_install_node_exporter">Install node exporter</h3>
+<h3 id="_install_node_exporter">5.4. Install node exporter</h3>
 <div class="paragraph">
 <p>This must be done on the Perforce (Helix Core) server machine (ditto for any other servers such as replicas which are being monitored).</p>
 </div>
@@ -1299,7 +1313,7 @@ sudo systemctl status node_exporter</pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_install_p4prometheus_details">Install p4prometheus - details</h3>
+<h3 id="_install_p4prometheus_details">5.5. Install p4prometheus - details</h3>
 <div class="paragraph">
 <p>This must be done on the Perforce (Helix Core) server machine (and any replica machines).</p>
 </div>
@@ -1459,7 +1473,7 @@ sudo systemctl status p4prometheus</pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_install_p4metrics_and_monitor_locks_systemd_timer_services">Install p4metrics and monitor_locks systemd timer services</h3>
+<h3 id="_install_p4metrics_and_monitor_locks_systemd_timer_services">5.6. Install p4metrics and monitor_locks systemd timer services</h3>
 <div class="paragraph">
 <p>Use <a href="#automated-script-installation">Automated Script Installation</a>!!</p>
 </div>
@@ -1482,7 +1496,7 @@ sudo systemctl status p4prometheus</pre>
 <p>If not using SDP then please ensure that an appropriate LONG TERM TICKET is setup in the environment that this script is running in.</p>
 </div>
 <div class="sect3">
-<h4 id="_checking_for_blocked_commands">Checking for blocked commands</h4>
+<h4 id="_checking_for_blocked_commands">5.6.1. Checking for blocked commands</h4>
 <div class="paragraph">
 <p>Look in the log file <code>/p4/1/logs/monitor_metrics.log</code> (or wherever you have configured it to go) for output.</p>
 </div>
@@ -1527,7 +1541,7 @@ sudo systemctl status p4prometheus</pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_start_and_enable_service">Start and enable service</h4>
+<h4 id="_start_and_enable_service">5.6.2. Start and enable service</h4>
 <div class="literalblock">
 <div class="content">
 <pre>sudo systemctl daemon-reload
@@ -1558,7 +1572,7 @@ sudo systemctl enable prometheus</pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_alerting">Alerting</h3>
+<h3 id="_alerting">5.7. Alerting</h3>
 <div class="paragraph">
 <p>Done via <code>alertmanager</code>. Optional component.</p>
 </div>
@@ -1630,7 +1644,7 @@ sudo systemctl status alertmanager</pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_alertmanager_config">Alertmanager config</h4>
+<h4 id="_alertmanager_config">5.7.1. Alertmanager config</h4>
 <div class="paragraph">
 <p>See sample config file here:</p>
 </div>
@@ -1676,7 +1690,7 @@ Found:
 </div>
 </div>
 <div class="sect3">
-<h4 id="_alerting_rules">Alerting rules</h4>
+<h4 id="_alerting_rules">5.7.2. Alerting rules</h4>
 <div class="paragraph">
 <p>This is an example, assuming simple email and local postfix or equivalent have been setup.</p>
 </div>
@@ -1687,7 +1701,7 @@ Found:
 <p>It would be setup as <code>/etc/prometheus/perforce_rules.yml</code></p>
 </div>
 <div class="sect4">
-<h5 id="_split_file_alerting_rules_recommended">Split-file alerting rules (recommended)</h5>
+<h5 id="_split_file_alerting_rules_recommended">5.7.2.1. Split-file alerting rules (recommended)</h5>
 <div class="paragraph">
 <p><code>update_prom_graf.sh</code> manages two separate rules files to avoid overwriting your customizations on each update:</p>
 </div>
@@ -1760,7 +1774,7 @@ rule_files:
 </div>
 </div>
 <div class="sect3">
-<h4 id="_prometheus_config_to_reference_alertmanager_rules">Prometheus config to reference alertmanager rules</h4>
+<h4 id="_prometheus_config_to_reference_alertmanager_rules">5.7.3. Prometheus config to reference alertmanager rules</h4>
 <div class="paragraph">
 <p><em>Strongly recommend</em>: set up a simple <code>Makefile</code> in <code>/etc/prometheus</code> which validates config and rules file:</p>
 </div>
@@ -1801,7 +1815,7 @@ Checking perforce_rules.yml
 </div>
 </div>
 <div class="sect2">
-<h3 id="_troubleshooting">Troubleshooting</h3>
+<h3 id="_troubleshooting">5.8. Troubleshooting</h3>
 <div class="paragraph">
 <p>Make sure all <em>firewalls</em> are appropriately configured and the various components on each machine can see each other!</p>
 </div>
@@ -1831,7 +1845,7 @@ Checking perforce_rules.yml
 <p>Use curl on the monitoring server to ensure that you can pull metrics from the other servers (from the target Node Exporter ports) - see below.</p>
 </div>
 <div class="sect3">
-<h4 id="_p4prometheus">p4prometheus</h4>
+<h4 id="_p4prometheus">5.8.1. p4prometheus</h4>
 <div class="paragraph">
 <p>If this is running correctly, it should write into the designated log file, e.g. <code>/hxlogs/metrics/p4_cmds.prom</code></p>
 </div>
@@ -1849,7 +1863,7 @@ p4_prom_log_lines_read{serverid="master.1",sdpinst="1"} 7143</pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_p4metrics">p4metrics</h4>
+<h4 id="_p4metrics">5.8.2. p4metrics</h4>
 <div class="paragraph">
 <p>Make sure <code>p4metrics</code> is working:</p>
 </div>
@@ -1877,7 +1891,7 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_node_exporter">node exporter</h4>
+<h4 id="_node_exporter">5.8.3. node exporter</h4>
 <div class="paragraph">
 <p>Make sure node_exporter is working (it is easy for there to be permissions access problems to the metrics dir).</p>
 </div>
@@ -1902,13 +1916,13 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_prometheus">prometheus</h4>
+<h4 id="_prometheus">5.8.4. prometheus</h4>
 <div class="paragraph">
 <p>Access page <a href="http://localhost:9090" class="bare">http://localhost:9090</a> in your browser and search for some metrics.</p>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_grafana">Grafana</h4>
+<h4 id="_grafana">5.8.5. Grafana</h4>
 <div class="paragraph">
 <p>Check that a suitable data source is setup (i.e. Victoria Metrics or Prometheus - see below)</p>
 </div>
@@ -1918,7 +1932,7 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_advanced_config_options">Advanced config options</h3>
+<h3 id="_advanced_config_options">5.9. Advanced config options</h3>
 <div class="paragraph">
 <p>For improved security:</p>
 </div>
@@ -1934,7 +1948,7 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_windows_installation">Windows Installation</h3>
+<h3 id="_windows_installation">5.10. Windows Installation</h3>
 <div class="paragraph">
 <p>The above instructions are all for Linux. However, all the components have Windows binaries, with the exception of the systemd timer service for <code>lslocks</code> monitoring (<code>monitor_wrapper.sh</code> and <code>monitor_metrics.py</code>). Note that <code>p4metrics</code> now has a Windows executable version (it wraps the <code>p4.exe</code> CLI)</p>
 </div>
@@ -1964,7 +1978,7 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 <p>For testing it is recommended just to run the various executables from command line first and test with Prometheus and Grafana. This allows you to test with firewalls/ports/access rights etc. When it is all working, you can wrap up and install each binary as a Service as noted below.</p>
 </div>
 <div class="sect3">
-<h4 id="_windows_exporter">Windows Exporter</h4>
+<h4 id="_windows_exporter">5.10.1. Windows Exporter</h4>
 <div class="paragraph">
 <p>This used to be called "WMI Exporter".</p>
 </div>
@@ -1993,13 +2007,13 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_p4prometheus_on_windows">P4prometheus on Windows</h4>
+<h4 id="_p4prometheus_on_windows">5.10.2. P4prometheus on Windows</h4>
 <div class="paragraph">
 <p>The executable takes the <code>--config</code> parameter and the yaml file is same format as for Linux version. You can specify paths with forward slashes if desired, e.g. <code>c:/p4/metrics</code></p>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_running_p4metrics">Running p4metrics</h4>
+<h4 id="_running_p4metrics">5.10.3. Running p4metrics</h4>
 <div class="paragraph">
 <p>Starting with the version <a href="../../cmd/p4metrics/p4metrics.yaml">draft version of p4metrics</a> create locally and adjust path settings, e.g. <code>c:/p4/metrics</code></p>
 </div>
@@ -2016,7 +2030,7 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_installing_programs_as_services">Installing Programs as Services</h4>
+<h4 id="_installing_programs_as_services">5.10.4. Installing Programs as Services</h4>
 <div class="paragraph">
 <p>To install as a service using for example <a href="https://nssm.cc/">NSSM - Non Sucking Service Manager!</a> to wrap the Prometheus/Windows Exporter/P4Prometheus binaries downloaded above.</p>
 </div>
@@ -2036,7 +2050,8 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2026-09-15 11:51:55 +0100
+Version v2026.1<br>
+Last updated 2026-09-15 12:06:14 +0100
 </div>
 </div>
 </body>
