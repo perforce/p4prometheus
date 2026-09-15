@@ -1,0 +1,150 @@
+= P4Prometheus Installation
+:toc:
+:toclevels: 3
+
+P4Prometheus installation is automated by the scripts in link:../scripts/[scripts/]. Manual component installation is retained in <<manual-installation>> for environments where automation cannot be used.
+
+== Deployment Roles
+
+Install the following components for each role:
+
+[cols="1,2"]
+|===
+|Role |Installer and components
+
+|Monitoring server
+|link:../scripts/install_prom_graf.sh[install_prom_graf.sh]: Grafana, Prometheus, VictoriaMetrics, node_exporter, and optional Alertmanager, Pushgateway, and Pint.
+
+|Helix Core server
+|link:../scripts/install_p4prom.sh[install_p4prom.sh]: node_exporter, p4prometheus, p4metrics, and lock-monitoring scripts.
+
+|Other monitored server
+|link:../scripts/install_node.sh[install_node.sh]: node_exporter only, for example on Swarm, Hansoft, or Helix TeamHub hosts.
+|===
+
+== Automated Installation
+
+Run the relevant installer as `root`. Download the script from a checkout, or download its raw GitHub URL, make it executable, and review the available options before installing:
+
+[source,bash]
+----
+wget https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh
+chmod +x install_prom_graf.sh
+./install_prom_graf.sh -h
+----
+
+For a Helix Core server, download `install_p4prom.sh` together with `p4prom_common.sh` into the same directory:
+
+[source,bash]
+----
+wget https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_p4prom.sh
+wget https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/p4prom_common.sh
+chmod +x install_p4prom.sh
+./install_p4prom.sh -h
+
+# SDP instance 1
+./install_p4prom.sh 1
+----
+
+For a non-SDP server, use `./install_p4prom.sh -nosdp -h` to review the required connection and path options before installing.
+
+=== Script Reference
+
+* link:../scripts/install_prom_graf.sh[install_prom_graf.sh]: install the monitoring server.
+* link:../scripts/update_prom_graf.sh[update_prom_graf.sh]: update the monitoring server.
+* link:../scripts/install_p4prom.sh[install_p4prom.sh]: install monitoring on a Helix Core server.
+* link:../scripts/update_p4prom.sh[update_p4prom.sh]: update monitoring on a Helix Core server.
+* link:../scripts/install_node.sh[install_node.sh]: install node_exporter on another monitored server.
+* link:../scripts/install_lslocks.sh[install_lslocks.sh]: install lock monitoring only.
+* link:../scripts/migrate_prom_graf_data.sh[migrate_prom_graf_data.sh]: move monitoring-server data to another volume.
+
+=== Upgrades
+
+In an SDP environment, run the update checker as the `perforce` user:
+
+[source,bash]
+----
+cd /p4/common/site/bin
+./check_for_updates.sh
+sudo ./update_p4prom.sh 1
+----
+
+For very old installations where `update_p4prom.sh` was not downloaded, remove `.update_config` and rerun `check_for_updates.sh`. Alternatively, download link:../scripts/update_p4prom.sh[update_p4prom.sh] directly, review `-h`, and run it as `root`.
+
+== Enterprise Options
+
+All install and update scripts support a common set of options. Run the appropriate script with `-h` for the complete list.
+
+=== Dedicated Data Volume
+
+Use `-d` to keep monitoring data on a dedicated volume:
+
+[source,bash]
+----
+sudo ./install_prom_graf.sh -d /data
+sudo ./update_prom_graf.sh
+----
+
+The selected path is retained in `/etc/p4prometheus-monitoring/install.env`. To move an existing installation, use:
+
+[source,bash]
+----
+sudo ./migrate_prom_graf_data.sh -d /data --dry-run
+sudo ./migrate_prom_graf_data.sh -d /data
+sudo ./migrate_prom_graf_data.sh -d /data --cleanup-old
+----
+
+=== Retention, Binaries, and Targets
+
+[source,bash]
+----
+# Retain metrics for 12 months and use a custom binary directory.
+sudo ./install_prom_graf.sh -d /data -r 12 -b /opt/monitoring/bin
+
+# Add scrape targets during installation.
+sudo ./install_prom_graf.sh -target myp4server:9100 -target replica1:9100
+----
+
+=== Air-Gapped Installation
+
+Download the required GitHub release assets on a connected machine, transfer them to the target, then pass their directory with `--local-tarballs-dir`:
+
+[source,bash]
+----
+sudo ./install_prom_graf.sh -d /data --local-tarballs-dir /opt/installers
+sudo ./install_p4prom.sh --local-tarballs-dir /opt/installers
+----
+
+`p4prom_common.sh` must be alongside `install_p4prom.sh` or `update_p4prom.sh` on air-gapped Helix Core servers.
+
+=== Install State and Fleet Configuration
+
+Monitoring-server scripts save state in `/etc/p4prometheus-monitoring/install.env`. Helix Core server scripts use `/p4/common/site/config/p4prom_install.env` with SDP, or `/etc/p4prometheus/p4prom_install.env` without it.
+
+For HMS fleets sharing `/p4/common`, create a hostname-specific configuration when required:
+
+[source,bash]
+----
+cp /p4/common/site/config/p4prometheus.yml \
+   /p4/common/site/config/p4prometheus.$(hostname -s).yml
+systemctl restart p4prometheus
+----
+
+The generated wrappers choose the hostname-specific file before the shared default.
+
+== Verify Installation
+
+[source,bash]
+----
+systemctl status p4prometheus p4metrics node_exporter
+curl http://localhost:9100/metrics | grep p4_
+----
+
+On the monitoring server, verify Prometheus targets and dashboards after running the relevant installer. See <<troubleshooting>> for component-specific checks.
+
+[[manual-installation]]
+== Manual Installation
+
+The following component-by-component procedures are retained for sites that cannot use the scripts. They are not the recommended default installation path.
+
+include::install/manual-install.adoc[]
