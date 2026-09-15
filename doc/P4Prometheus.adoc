@@ -18,41 +18,49 @@ P4Prometheus integrates Perforce Helix Core Server (`p4d`) with https://promethe
 The `p4prometheus` service continuously parses `p4d` logs and writes Prometheus textfile-collector metrics. Other project components interrogate `p4d` and associated logs for supplementary metrics.
 
 :sectnums:
-== Installation
-
-Use the automated scripts for new installations and upgrades. The canonical guide is link:P4Prometheus_Installation.adoc[P4Prometheus Installation].
-
-It covers monitoring-server, Helix Core server, and node-exporter-only installations; upgrades; dedicated data volumes; air-gapped installations; state files; and manual component installation where scripts cannot be used.
-
-== Support Status
-
-This is a Community Supported Perforce tool.
-
 == Overview
 
-P4Prometheus is part of a monitoring solution made of these components:
+P4Prometheus is part of a monitoring solution comprising these components:
 
 * https://prometheus.io/[Prometheus]: time-series metrics management.
-* https://github.com/VictoriaMetrics/VictoriaMetrics[VictoriaMetrics]: optional, Prometheus-compatible long-term metrics storage.
+* https://github.com/VictoriaMetrics/VictoriaMetrics[VictoriaMetrics]: recommended, Prometheus-compatible long-term metrics storage.
 * https://grafana.com/[Grafana]: metrics dashboards and visualization.
 * https://github.com/prometheus/node_exporter[node_exporter]: Linux host metrics and textfile collection.
 * https://github.com/prometheus-community/windows_exporter[windows_exporter]: Windows host metrics.
 * https://github.com/prometheus/alertmanager[Alertmanager]: alert routing, grouping, and de-duplication.
+* https://github.com/rcowham/pint[Pint]: Prometheus alerting rules linter - fork of Cloudflare original.
+
+In addition to these components you can create a monitoring solution tailored to your environment, with automation and alerting including:
+
+* Alerts being sent to Slack (or Teams/Email/PagerDuty)
+** Such alerts containing links to relevant Grafana dashboards, and a Runbook for incident response, help ensure timely and effective handling of incidents.
+** Options for alerting include notifications of blocked commands, and automated updates when blocks reduce
+* Monitoring of Memory usage, and optional OOM-kill events (Out-Of-Memory killer) on Linux hosts.
 
 Project components:
 
-* link:../releases/latest[p4prometheus]: a released binary that parses Helix Core logs.
-* link:../cmd/p4metrics/README.md[p4metrics]: supplementary Helix Core and SDP-compatible metrics.
+* link:../releases/latest[p4prometheus]: a binary that parses P4 Server logs.
+* link:../cmd/p4metrics/README.md[p4metrics]: supplementary P4 Server and SDP-compatible metrics.
 * link:../scripts/monitor_metrics.py[monitor_metrics.py] and link:../scripts/monitor_wrapper.sh[monitor_wrapper.sh]: Linux lock monitoring using `lslocks` and `p4 monitor show`.
-* link:../cmd/p4logtail/README.md[p4logtail] and link:../cmd/p4plogtail/README.md[p4plogtail]: completed-command log tails with JSON output.
+* link:../cmd/p4logtail/README.md[p4logtail] and link:../cmd/p4plogtail/README.md[p4plogtail]: completed-command log tails with JSON output (for use with third party log analysis tools such as Splunk, DataDog, ELK Stack etc.)
 
-P4Prometheus uses https://github.com/rcowham/go-libp4dlog[go-libp4dlog] for log parsing.
+P4Prometheus uses https://github.com/rcowham/go-libp4dlog[go-libp4dlog] for p4d log parsing.
 
 The installation and upgrade scripts support standard installation, dedicated data volumes (`-d /data`), offline assets (`--local-tarballs-dir`), SDP-safe configuration in `/p4/common/site/config/`, hostname-specific HMS fleet configuration, and stateful non-destructive upgrades. See link:P4Prometheus_Installation.adoc[the installation guide] for details.
 
 https://prometheus.io/docs/introduction/overview/[Prometheus overview]
 
 image:https://prometheus.io/assets/docs/architecture.svg[Prometheus architecture]
+
+== Support Status
+
+This is a Community Supported Perforce tool.
+
+== Installation
+
+Use the automated scripts for new installations and upgrades. The canonical guide is link:P4Prometheus_Installation.adoc[P4Prometheus Installation].
+
+It covers monitoring-server, P4 Server, and node-exporter-only installations; upgrades; dedicated data volumes; air-gapped installations; state files; and manual component installation where scripts cannot be used.
 
 == Grafana Dashboards
 

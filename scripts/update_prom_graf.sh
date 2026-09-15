@@ -75,6 +75,7 @@ function usage
       echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
    fi
 
+# tag::includeManual[]
    echo "USAGE for update_prom_graf.sh:
 
     update_prom_graf.sh [-d <data_root>] [-b <bin_dir>] [-r <months>]
@@ -84,20 +85,21 @@ or
 
     update_prom_graf.sh -h
 
-  -d <data_root>           Base directory for runtime data (prometheus, alertmanager, etc.)
-                           Loaded automatically from state file if not specified.
-  -b <bin_dir>             Binary installation directory.
-                           Loaded automatically from state file if not specified.
-  -r <months>              Metrics retention period in months for VictoriaMetrics/Prometheus.
-                           Loaded automatically from state file if not specified.
-  --local-tarballs-dir <p> Directory of pre-staged release tarballs (air-gap installs).
-                           Skips all downloads; file names must match GitHub release assets.
-  -push                    Update Pushgateway if installed (not updated by default).
+    -d <data_root>          Base directory for runtime data (prometheus, alertmanager, etc.)
+                            Loaded automatically from state file if not specified.
+    -b <bin_dir>            Binary installation directory.
+                            Loaded automatically from state file if not specified.
+    -r <months>             Metrics retention period in months for VictoriaMetrics/Prometheus.
+                            Loaded automatically from state file if not specified.
+    --local-tarballs-dir <p> Directory of pre-staged release tarballs (air-gap installs).
+                            Skips all downloads; file names must match GitHub release assets.
+    -push                   Update Pushgateway if installed (not updated by default).
 
 Note: If /etc/p4prometheus-monitoring/install.env exists from a prior
   install_prom_graf.sh run, all paths and settings are loaded from it automatically.
 
 "
+# end::includeManual[]
 }
 
 # Command Line Processing

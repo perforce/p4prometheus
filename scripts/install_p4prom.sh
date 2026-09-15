@@ -66,7 +66,8 @@ function usage
       echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
    fi
  
-   echo "USAGE for install_p4prom.sh:
+# tag::includeManual[]
+    echo "USAGE for install_p4prom.sh:
 
 install_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-osuser <osuser>]
         [-p <P4PORT>] [-u <p4user>] [-c <p4prom_config_dir>]
@@ -100,6 +101,7 @@ Examples:
 ./install_p4prom.sh -nosdp -m /p4metrics -u perforce -p 1666 -u p4admin -c /p4/p4prometheus
 
 "
+# end::includeManual[]
 }
 
 # Command Line Processing

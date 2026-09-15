@@ -105,6 +105,7 @@ function usage
       echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
    fi
 
+# tag::includeManual[]
    echo "USAGE for install_prom_graf.sh:
 
     install_prom_graf.sh [-d <data_root>] [-b <bin_dir>] [-r <months>]
@@ -116,26 +117,26 @@ or
 
     install_prom_graf.sh -h
 
-  -d <data_root>            Base directory for all runtime data.
+    -d <data_root>          Base directory for all runtime data.
                             Default: /var/lib
                             Example: -d /data  (puts all data under /data/)
-  -b <bin_dir>              Directory for installed binaries.
+    -b <bin_dir>            Directory for installed binaries.
                             Default: /usr/local/bin
-  -r <months>               Metrics retention period in months (for use with VictoriaMetrics).
+    -r <months>             Metrics retention period in months (for use with VictoriaMetrics).
                             Not used by Prometheus itself, which has a short retention setting.
                             Default: 6
-  -target <host:port>       Prometheus scrape target. Repeatable.
+    -target <host:port>     Prometheus scrape target. Repeatable.
                             Example: -target myserver:9100 -target otherserver:9100
                             If not specified, a placeholder is written to prometheus.yml.
-  -grafana-setup            Create Grafana datasource for Victoria Metrics and
+    -grafana-setup          Create Grafana datasource for Victoria Metrics and
                             import recommended dashboards from INSTALL.md.
-  --local-tarballs-dir <p>  Directory containing pre-staged release tarballs.
+    --local-tarballs-dir <p>  Directory containing pre-staged release tarballs.
                             Skips all downloads - for air-gapped environments.
                             Files must match GitHub release asset names exactly.
-  -push                     Install Pushgateway (not installed by default).
+    -push                   Install Pushgateway (not installed by default).
                             This is generally deprecated in favor of using VMAgent remotely.
-    -pint                     Install Pint linter and create pint.service
-                                                        for continuous validation of /etc/prometheus/perforce_rules.yml.
+    -pint                   Install Pint linter and create pint.service
+                            for continuous validation of /etc/prometheus/perforce_rules.yml.
 
 Example:
 
@@ -144,6 +145,7 @@ Example:
     sudo ./install_prom_graf.sh -d /data -target myp4:9100 -target myreplica:9100 -grafana-setup
     sudo ./install_prom_graf.sh -pint
 "
+# end::includeManual[]
 }
 
 # Command Line Processing

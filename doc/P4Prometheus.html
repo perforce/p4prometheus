@@ -449,9 +449,9 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div id="toctitle">Table of Contents</div>
 <ul class="sectlevel1">
 <li><a href="#_preface">Preface</a></li>
-<li><a href="#_installation">1. Installation</a></li>
+<li><a href="#_overview">1. Overview</a></li>
 <li><a href="#_support_status">2. Support Status</a></li>
-<li><a href="#_overview">3. Overview</a></li>
+<li><a href="#_installation">3. Installation</a></li>
 <li><a href="#_grafana_dashboards">4. Grafana Dashboards</a></li>
 <li><a href="#_metrics_available">5. Metrics Available</a>
 <ul class="sectlevel2">
@@ -484,29 +484,10 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </div>
 </div>
 <div class="sect1">
-<h2 id="_installation">1. Installation</h2>
+<h2 id="_overview">1. Overview</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>Use the automated scripts for new installations and upgrades. The canonical guide is <a href="P4Prometheus_Installation.adoc">P4Prometheus Installation</a>.</p>
-</div>
-<div class="paragraph">
-<p>It covers monitoring-server, Helix Core server, and node-exporter-only installations; upgrades; dedicated data volumes; air-gapped installations; state files; and manual component installation where scripts cannot be used.</p>
-</div>
-</div>
-</div>
-<div class="sect1">
-<h2 id="_support_status">2. Support Status</h2>
-<div class="sectionbody">
-<div class="paragraph">
-<p>This is a Community Supported Perforce tool.</p>
-</div>
-</div>
-</div>
-<div class="sect1">
-<h2 id="_overview">3. Overview</h2>
-<div class="sectionbody">
-<div class="paragraph">
-<p>P4Prometheus is part of a monitoring solution made of these components:</p>
+<p>P4Prometheus is part of a monitoring solution comprising these components:</p>
 </div>
 <div class="ulist">
 <ul>
@@ -514,7 +495,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <p><a href="https://prometheus.io/">Prometheus</a>: time-series metrics management.</p>
 </li>
 <li>
-<p><a href="https://github.com/VictoriaMetrics/VictoriaMetrics">VictoriaMetrics</a>: optional, Prometheus-compatible long-term metrics storage.</p>
+<p><a href="https://github.com/VictoriaMetrics/VictoriaMetrics">VictoriaMetrics</a>: recommended, Prometheus-compatible long-term metrics storage.</p>
 </li>
 <li>
 <p><a href="https://grafana.com/">Grafana</a>: metrics dashboards and visualization.</p>
@@ -528,6 +509,32 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li>
 <p><a href="https://github.com/prometheus/alertmanager">Alertmanager</a>: alert routing, grouping, and de-duplication.</p>
 </li>
+<li>
+<p><a href="https://github.com/rcowham/pint">Pint</a>: Prometheus alerting rules linter - fork of Cloudflare original.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>In addition to these components you can create a monitoring solution tailored to your environment, with automation and alerting including:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Alerts being sent to Slack (or Teams/Email/PagerDuty)</p>
+<div class="ulist">
+<ul>
+<li>
+<p>Such alerts containing links to relevant Grafana dashboards, and a Runbook for incident response, help ensure timely and effective handling of incidents.</p>
+</li>
+<li>
+<p>Options for alerting include notifications of blocked commands, and automated updates when blocks reduce</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p>Monitoring of Memory usage, and optional OOM-kill events (Out-Of-Memory killer) on Linux hosts.</p>
+</li>
 </ul>
 </div>
 <div class="paragraph">
@@ -536,21 +543,21 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div class="ulist">
 <ul>
 <li>
-<p><a href="../releases/latest">p4prometheus</a>: a released binary that parses Helix Core logs.</p>
+<p><a href="../releases/latest">p4prometheus</a>: a binary that parses P4 Server logs.</p>
 </li>
 <li>
-<p><a href="../cmd/p4metrics/README.md">p4metrics</a>: supplementary Helix Core and SDP-compatible metrics.</p>
+<p><a href="../cmd/p4metrics/README.md">p4metrics</a>: supplementary P4 Server and SDP-compatible metrics.</p>
 </li>
 <li>
 <p><a href="../scripts/monitor_metrics.py">monitor_metrics.py</a> and <a href="../scripts/monitor_wrapper.sh">monitor_wrapper.sh</a>: Linux lock monitoring using <code>lslocks</code> and <code>p4 monitor show</code>.</p>
 </li>
 <li>
-<p><a href="../cmd/p4logtail/README.md">p4logtail</a> and <a href="../cmd/p4plogtail/README.md">p4plogtail</a>: completed-command log tails with JSON output.</p>
+<p><a href="../cmd/p4logtail/README.md">p4logtail</a> and <a href="../cmd/p4plogtail/README.md">p4plogtail</a>: completed-command log tails with JSON output (for use with third party log analysis tools such as Splunk, DataDog, ELK Stack etc.)</p>
 </li>
 </ul>
 </div>
 <div class="paragraph">
-<p>P4Prometheus uses <a href="https://github.com/rcowham/go-libp4dlog">go-libp4dlog</a> for log parsing.</p>
+<p>P4Prometheus uses <a href="https://github.com/rcowham/go-libp4dlog">go-libp4dlog</a> for p4d log parsing.</p>
 </div>
 <div class="paragraph">
 <p>The installation and upgrade scripts support standard installation, dedicated data volumes (<code>-d /data</code>), offline assets (<code>--local-tarballs-dir</code>), SDP-safe configuration in <code>/p4/common/site/config/</code>, hostname-specific HMS fleet configuration, and stateful non-destructive upgrades. See <a href="P4Prometheus_Installation.adoc">the installation guide</a> for details.</p>
@@ -560,6 +567,25 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </div>
 <div class="paragraph">
 <p><span class="image"><img src="https://prometheus.io/assets/docs/architecture.svg" alt="Prometheus architecture"></span></p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_support_status">2. Support Status</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This is a Community Supported Perforce tool.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_installation">3. Installation</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Use the automated scripts for new installations and upgrades. The canonical guide is <a href="P4Prometheus_Installation.adoc">P4Prometheus Installation</a>.</p>
+</div>
+<div class="paragraph">
+<p>It covers monitoring-server, P4 Server, and node-exporter-only installations; upgrades; dedicated data volumes; air-gapped installations; state files; and manual component installation where scripts cannot be used.</p>
 </div>
 </div>
 </div>
@@ -736,7 +762,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-09-15 12:06:14 +0100
+Last updated 2026-09-15 12:38:46 +0100
 </div>
 </div>
 </body>

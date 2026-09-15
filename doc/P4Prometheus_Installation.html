@@ -452,7 +452,17 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#_deployment_roles">1. Deployment Roles</a></li>
 <li><a href="#_automated_installation">2. Automated Installation</a>
 <ul class="sectlevel2">
-<li><a href="#_script_reference">2.1. Script Reference</a></li>
+<li><a href="#_script_reference">2.1. Script Reference</a>
+<ul class="sectlevel3">
+<li><a href="#_install_prom_graf_sh">2.1.1. install_prom_graf.sh</a></li>
+<li><a href="#_update_prom_graf_sh">2.1.2. update_prom_graf.sh</a></li>
+<li><a href="#_install_p4prom_sh">2.1.3. install_p4prom.sh</a></li>
+<li><a href="#_update_p4prom_sh">2.1.4. update_p4prom.sh</a></li>
+<li><a href="#_install_node_sh">2.1.5. install_node.sh</a></li>
+<li><a href="#_install_lslocks_sh">2.1.6. install_lslocks.sh</a></li>
+<li><a href="#_migrate_prom_graf_data_sh">2.1.7. migrate_prom_graf_data.sh</a></li>
+</ul>
+</li>
 <li><a href="#_upgrades">2.2. Upgrades</a></li>
 </ul>
 </li>
@@ -532,7 +542,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h2 id="_preface">Preface</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>P4Prometheus installation is automated by the scripts in <a href="../scripts/">scripts/</a>. Manual component installation is retained in <a href="#manual-installation">Chapter 5, <em>Manual Installation</em></a> for environments where automation cannot be used.</p>
+<p>P4Prometheus installation is automated (on Linux) by the scripts in <a href="../scripts/">scripts/</a>. Manual component installation is retained in <a href="#manual-installation">Chapter 5, <em>Manual Installation</em></a> for environments where automation cannot be used (including Windows).</p>
 </div>
 </div>
 </div>
@@ -602,30 +612,287 @@ chmod +x install_p4prom.sh
 </div>
 <div class="sect2">
 <h3 id="_script_reference">2.1. Script Reference</h3>
-<div class="ulist">
-<ul>
-<li>
-<p><a href="../scripts/install_prom_graf.sh">install_prom_graf.sh</a>: install the monitoring server.</p>
-</li>
-<li>
-<p><a href="../scripts/update_prom_graf.sh">update_prom_graf.sh</a>: update the monitoring server.</p>
-</li>
-<li>
-<p><a href="../scripts/install_p4prom.sh">install_p4prom.sh</a>: install monitoring on a Helix Core server.</p>
-</li>
-<li>
-<p><a href="../scripts/update_p4prom.sh">update_p4prom.sh</a>: update monitoring on a Helix Core server.</p>
-</li>
-<li>
-<p><a href="../scripts/install_node.sh">install_node.sh</a>: install node_exporter on another monitored server.</p>
-</li>
-<li>
-<p><a href="../scripts/install_lslocks.sh">install_lslocks.sh</a>: install lock monitoring only.</p>
-</li>
-<li>
-<p><a href="../scripts/migrate_prom_graf_data.sh">migrate_prom_graf_data.sh</a>: move monitoring-server data to another volume.</p>
-</li>
-</ul>
+<div class="sect3">
+<h4 id="_install_prom_graf_sh">2.1.1. install_prom_graf.sh</h4>
+<div class="paragraph">
+<p>This section provides a reference for the <code>install_prom_graf.sh</code> script, including usage and available options.</p>
+</div>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre class="highlight"><code>   echo "USAGE for install_prom_graf.sh:
+
+    install_prom_graf.sh [-d &lt;data_root&gt;] [-b &lt;bin_dir&gt;] [-r &lt;months&gt;]
+                         [-target &lt;host:port&gt;] [-grafana-setup]
+                         [--local-tarballs-dir &lt;path&gt;]
+                         [-push] [-pint]
+
+or
+
+    install_prom_graf.sh -h
+
+    -d &lt;data_root&gt;          Base directory for all runtime data.
+                            Default: /var/lib
+                            Example: -d /data  (puts all data under /data/)
+    -b &lt;bin_dir&gt;            Directory for installed binaries.
+                            Default: /usr/local/bin
+    -r &lt;months&gt;             Metrics retention period in months (for use with VictoriaMetrics).
+                            Not used by Prometheus itself, which has a short retention setting.
+                            Default: 6
+    -target &lt;host:port&gt;     Prometheus scrape target. Repeatable.
+                            Example: -target myserver:9100 -target otherserver:9100
+                            If not specified, a placeholder is written to prometheus.yml.
+    -grafana-setup          Create Grafana datasource for Victoria Metrics and
+                            import recommended dashboards from INSTALL.md.
+    --local-tarballs-dir &lt;p&gt;  Directory containing pre-staged release tarballs.
+                            Skips all downloads - for air-gapped environments.
+                            Files must match GitHub release asset names exactly.
+    -push                   Install Pushgateway (not installed by default).
+                            This is generally deprecated in favor of using VMAgent remotely.
+    -pint                   Install Pint linter and create pint.service
+                            for continuous validation of /etc/prometheus/perforce_rules.yml.
+
+Example:
+
+    sudo ./install_prom_graf.sh -d /data -b /opt/bin -r 12 -target myserver:9100 -grafana-setup
+    sudo ./install_prom_graf.sh -grafana-setup
+    sudo ./install_prom_graf.sh -d /data -target myp4:9100 -target myreplica:9100 -grafana-setup
+    sudo ./install_prom_graf.sh -pint
+"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_update_prom_graf_sh">2.1.2. update_prom_graf.sh</h4>
+<div class="paragraph">
+<p>Updates the monitoring server while preserving paths and options stored by <code>install_prom_graf.sh</code>.</p>
+</div>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre class="highlight"><code>   echo "USAGE for update_prom_graf.sh:
+
+    update_prom_graf.sh [-d &lt;data_root&gt;] [-b &lt;bin_dir&gt;] [-r &lt;months&gt;]
+                        [--local-tarballs-dir &lt;path&gt;] [-push]
+
+or
+
+    update_prom_graf.sh -h
+
+    -d &lt;data_root&gt;          Base directory for runtime data (prometheus, alertmanager, etc.)
+                            Loaded automatically from state file if not specified.
+    -b &lt;bin_dir&gt;            Binary installation directory.
+                            Loaded automatically from state file if not specified.
+    -r &lt;months&gt;             Metrics retention period in months for VictoriaMetrics/Prometheus.
+                            Loaded automatically from state file if not specified.
+    --local-tarballs-dir &lt;p&gt; Directory of pre-staged release tarballs (air-gap installs).
+                            Skips all downloads; file names must match GitHub release assets.
+    -push                   Update Pushgateway if installed (not updated by default).
+
+Note: If /etc/p4prometheus-monitoring/install.env exists from a prior
+  install_prom_graf.sh run, all paths and settings are loaded from it automatically.
+
+"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_install_p4prom_sh">2.1.3. install_p4prom.sh</h4>
+<div class="paragraph">
+<p>Installs node_exporter, p4prometheus, p4metrics, and lock monitoring on a Helix Core server.</p>
+</div>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre class="highlight"><code>    echo "USAGE for install_p4prom.sh:
+
+install_p4prom.sh [&lt;instance&gt; | -nosdp] [-m &lt;metrics_root&gt;] [-osuser &lt;osuser&gt;]
+        [-p &lt;P4PORT&gt;] [-u &lt;p4user&gt;] [-c &lt;p4prom_config_dir&gt;]
+        [-b &lt;bin_dir&gt;] [--local-tarballs-dir &lt;path&gt;] [-push]
+
+   or
+
+install_p4prom.sh -h
+
+    &lt;metrics_root&gt;        Directory where metrics will be written - default: $metrics_root
+    &lt;osuser&gt;              OS user running p4d; used for file ownership and crontab
+    &lt;P4PORT&gt;              P4PORT to use within installed scripts
+    &lt;P4USER&gt;              P4USER to use within installed scripts
+    &lt;p4prom_config_dir&gt;   Directory for p4prometheus config files (non-SDP installs)
+                          Default: /etc/p4prometheus
+    -b &lt;bin_dir&gt;          Directory for installed binaries - default: $local_bin_dir
+    --local-tarballs-dir  Directory of pre-staged release tarballs (air-gap installs).
+                          Skips all downloads; file names must match GitHub release assets.
+    -push                 Install vmagent service/configuration in /var/vmagent.
+                          Not relevant for most installations.
+
+IMPORTANT: Specify either the installed SDP instance (e.g. 1), or -nosdp and other parameters
+
+WARNING: If using -nosdp, ensure P4PORT and P4USER are provided or set in environment,
+    and that you can connect (e.g. 'p4 trust' done, already logged in)
+
+Examples:
+
+./install_p4prom.sh 1
+./install_p4prom.sh hw
+./install_p4prom.sh -nosdp -m /p4metrics -u perforce -p 1666 -u p4admin -c /p4/p4prometheus
+
+"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_update_p4prom_sh">2.1.4. update_p4prom.sh</h4>
+<div class="paragraph">
+<p>Updates the monitoring components installed on a Helix Core server.</p>
+</div>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre class="highlight"><code>    echo "USAGE for update_p4prom.sh:
+
+update_p4prom.sh [&lt;instance&gt; | -nosdp] [-m &lt;metrics_root&gt;] [-l &lt;metrics_link&gt;]
+                 [-u &lt;osuser&gt;] [-c &lt;p4prom_config_dir&gt;] [-b &lt;bin_dir&gt;]
+                 [--local-tarballs-dir &lt;path&gt;]
+
+   or
+
+update_p4prom.sh -h
+
+    &lt;metrics_root&gt;        Directory where metrics are written - default: $metrics_root
+    &lt;metrics_link&gt;        Symlink to metrics_root (SDP installs only) - default: $metrics_link
+    &lt;osuser&gt;              OS user running p4d (e.g. perforce)
+    &lt;p4prom_config_dir&gt;   Config file directory (non-SDP installs) - default: /etc/p4prometheus
+    -b &lt;bin_dir&gt;          Binary installation directory - default: $local_bin_dir
+    --local-tarballs-dir  Directory of pre-staged release tarballs (air-gap installs).
+                          Skips all downloads; file names must match GitHub release assets.
+    -vmagent              Install vmagent to replace legacy push_metrics cron jobs.
+                          Not relevant for most installations - intended for P4RA only.
+
+Specify either the SDP instance (e.g. 1), or -nosdp
+
+WARNING: If using -nosdp, ensure P4PORT and P4USER are set and you can connect
+    (e.g. 'p4 trust' done, already logged in)
+
+Note: If a p4prom_install.env state file exists from a prior install_p4prom.sh
+    run, paths are loaded from it automatically. CLI flags always override.
+
+Examples:
+
+./update_p4prom.sh 1
+./update_p4prom.sh -nosdp -m /p4metrics -u perforce -c /etc/p4prometheus
+
+"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_install_node_sh">2.1.5. install_node.sh</h4>
+<div class="paragraph">
+<p>Installs node_exporter on another monitored host, such as a Swarm, Hansoft, or Helix TeamHub server.</p>
+</div>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre class="highlight"><code>    echo "USAGE for install_node.sh:
+ 
+install_node.sh [-m &lt;metrics_root&gt;] [-push]
+ 
+   or
+
+install_node.sh -h
+
+    &lt;metrics_root&gt;  is the directory where metrics will be written - default: $metrics_root
+    -push           Means install pushgateway cronjob and config file.
+
+This expects to be run as root/sudo. If -push is specified then a crontab entry will be written.
+
+Examples:
+
+./install_node.sh
+./install_node.sh -m /p4metrics
+./install_node.sh -m /p4metrics -push
+
+"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_install_lslocks_sh">2.1.6. install_lslocks.sh</h4>
+<div class="paragraph">
+<p>Installs lock monitoring only, without the full Helix Core monitoring stack.</p>
+</div>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre class="highlight"><code>    echo "USAGE for install_lslocks.sh:
+
+install_lslocks.sh [&lt;instance&gt; | -nosdp] [-m &lt;metrics_root&gt;] [-osuser &lt;osuser&gt;] 
+        [-p &lt;P4PORT&gt;] [-u &lt;p4user&gt;]
+
+   or
+
+install_lslocks.sh -h
+
+    &lt;metrics_root&gt;  is the directory where metrics will be written - default: $metrics_root
+    &lt;osuser&gt;        Operating system user, e.g. perforce, under which p4d process is running and to install crontab
+    &lt;P4PORT&gt;        P4PORT to use within any installed scripts
+    &lt;P4USER&gt;        P4USER to use within any installed scripts
+
+IMPORTANT: Specify either the SDP instance (e.g. 1), or -nosdp and other parameters
+
+WARNING: If using -nosdp, then please ensure P4PORT and P4USER are provided or are appropriately set and that you can connect
+    to your server (e.g. you have done a 'p4 trust' if required, and logged in already)
+
+Examples:
+
+./install_lslocks.sh 1
+./install_lslocks.sh -nosdp -osuser perforce -m /p4metrics -p 1666 -u p4admin 
+
+"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_migrate_prom_graf_data_sh">2.1.7. migrate_prom_graf_data.sh</h4>
+<div class="paragraph">
+<p>Moves existing monitoring-server data to a different base directory without a full reinstall.</p>
+</div>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre class="highlight"><code># Usage:
+#   migrate_prom_graf_data.sh -d &lt;new_data_root&gt; [--dry-run] [--cleanup-old]
+#
+# Flags:
+#   -d &lt;new_data_root&gt;   REQUIRED. New base directory (e.g. /data or /hxdata)
+#   --dry-run            Show what would be done; make no changes
+#   --cleanup-old        After successful migration, remove old data directories
+#                        (default: leave originals; safe to re-run)
+#   -h, --help           Show this usage text
+#
+# Preflight checks performed:
+#   - New data root is on a writable filesystem
+#   - Sufficient free space at destination (current usage + 10% headroom)
+#   - All affected services are present (will be stopped/started)
+#   - No source/dest overlap
+#
+# Services stopped for migration (then restarted):
+#   prometheus, alertmanager, victoria-metrics, grafana-server, pushgateway
+#
+# After migration:
+#   - /etc/grafana/grafana.ini [paths.data] is updated
+#   - Systemd service files are regenerated with new paths
+#   - State file is updated with new DATA_ROOT
+#   - Old directories are left intact (renamed with .migrated-YYYYMMDD suffix)
+#     unless --cleanup-old is passed
+#
+# Recovery:
+#   If this script is interrupted, old data is still in place.  Simply run
+#   migrate_prom_graf_data.sh again; it will skip components whose data has
+#   already been moved.</code></pre>
+</div>
+</div>
 </div>
 </div>
 <div class="sect2">
@@ -1217,7 +1484,7 @@ make restart # Convenience command</pre>
 <div class="content">
 <pre>useradd --no-create-home --shell /bin/false node_exporter
 
-export PVER="1.3.1"
+export PVER="1.12.1"
 wget https://github.com/prometheus/node_exporter/releases/download/v$PVER/node_exporter-$PVER.linux-amd64.tar.gz
 
 tar xvf node_exporter-$PVER.linux-amd64.tar.gz
@@ -1328,7 +1595,7 @@ sudo systemctl status node_exporter</pre>
 </div>
 <div class="literalblock">
 <div class="content">
-<pre>export PVER=0.9.6  # Adjust this to latest release!
+<pre>export PVER=0.11.3  # Adjust this to latest release!
 wget https://github.com/perforce/p4prometheus/releases/download/v$PVER/p4prometheus.linux-amd64.gz
 gunzip p4prometheus.linux-amd64.gz
 chmod +rx p4prometheus.linux-amd64
@@ -2051,7 +2318,7 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-09-15 12:06:14 +0100
+Last updated 2026-09-15 13:25:53 +0100
 </div>
 </div>
 </body>

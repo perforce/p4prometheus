@@ -11,7 +11,7 @@ Perforce Professional Services <consulting@perforce.com>
 
 == Preface
 
-P4Prometheus installation is automated by the scripts in link:../scripts/[scripts/]. Manual component installation is retained in <<manual-installation>> for environments where automation cannot be used.
+P4Prometheus installation is automated (on Linux) by the scripts in link:../scripts/[scripts/]. Manual component installation is retained in <<manual-installation>> for environments where automation cannot be used (including Windows).
 
 :sectnums:
 == Deployment Roles
@@ -60,13 +60,75 @@ For a non-SDP server, use `./install_p4prom.sh -nosdp -h` to review the required
 
 === Script Reference
 
-* link:../scripts/install_prom_graf.sh[install_prom_graf.sh]: install the monitoring server.
-* link:../scripts/update_prom_graf.sh[update_prom_graf.sh]: update the monitoring server.
-* link:../scripts/install_p4prom.sh[install_p4prom.sh]: install monitoring on a Helix Core server.
-* link:../scripts/update_p4prom.sh[update_p4prom.sh]: update monitoring on a Helix Core server.
-* link:../scripts/install_node.sh[install_node.sh]: install node_exporter on another monitored server.
-* link:../scripts/install_lslocks.sh[install_lslocks.sh]: install lock monitoring only.
-* link:../scripts/migrate_prom_graf_data.sh[migrate_prom_graf_data.sh]: move monitoring-server data to another volume.
+==== install_prom_graf.sh
+
+This section provides a reference for the `install_prom_graf.sh` script, including usage and available options.
+
+[source]
+.Usage
+----
+include::../scripts/install_prom_graf.sh[tags=includeManual]
+----
+
+==== update_prom_graf.sh
+
+Updates the monitoring server while preserving paths and options stored by `install_prom_graf.sh`.
+
+[source]
+.Usage
+----
+include::../scripts/update_prom_graf.sh[tags=includeManual]
+----
+
+==== install_p4prom.sh
+
+Installs node_exporter, p4prometheus, p4metrics, and lock monitoring on a Helix Core server.
+
+[source]
+.Usage
+----
+include::../scripts/install_p4prom.sh[tags=includeManual]
+----
+
+==== update_p4prom.sh
+
+Updates the monitoring components installed on a Helix Core server.
+
+[source]
+.Usage
+----
+include::../scripts/update_p4prom.sh[tags=includeManual]
+----
+
+==== install_node.sh
+
+Installs node_exporter on another monitored host, such as a Swarm, Hansoft, or Helix TeamHub server.
+
+[source]
+.Usage
+----
+include::../scripts/install_node.sh[tags=includeManual]
+----
+
+==== install_lslocks.sh
+
+Installs lock monitoring only, without the full Helix Core monitoring stack.
+
+[source]
+.Usage
+----
+include::../scripts/install_lslocks.sh[tags=includeManual]
+----
+
+==== migrate_prom_graf_data.sh
+
+Moves existing monitoring-server data to a different base directory without a full reinstall.
+
+[source]
+.Usage
+----
+include::../scripts/migrate_prom_graf_data.sh[tags=includeManual]
+----
 
 === Upgrades
 

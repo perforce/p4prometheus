@@ -30,7 +30,8 @@ function usage
       echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
    fi
  
-   echo "USAGE for install_lslocks.sh:
+# tag::includeManual[]
+    echo "USAGE for install_lslocks.sh:
 
 install_lslocks.sh [<instance> | -nosdp] [-m <metrics_root>] [-osuser <osuser>] 
         [-p <P4PORT>] [-u <p4user>]
@@ -55,6 +56,7 @@ Examples:
 ./install_lslocks.sh -nosdp -osuser perforce -m /p4metrics -p 1666 -u p4admin 
 
 "
+# end::includeManual[]
 }
 
 # Command Line Processing

@@ -11,6 +11,7 @@
 #   - The initial install used the default /var/lib location
 #   - You want to migrate without a full reinstall
 #
+# tag::includeManual[]
 # Usage:
 #   migrate_prom_graf_data.sh -d <new_data_root> [--dry-run] [--cleanup-old]
 #
@@ -41,6 +42,7 @@
 #   If this script is interrupted, old data is still in place.  Simply run
 #   migrate_prom_graf_data.sh again; it will skip components whose data has
 #   already been moved.
+# end::includeManual[]
 
 set -euo pipefail
 

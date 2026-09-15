@@ -68,7 +68,8 @@ function usage
       echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
    fi
 
-   echo "USAGE for update_p4prom.sh:
+# tag::includeManual[]
+    echo "USAGE for update_p4prom.sh:
 
 update_p4prom.sh [<instance> | -nosdp] [-m <metrics_root>] [-l <metrics_link>]
                  [-u <osuser>] [-c <p4prom_config_dir>] [-b <bin_dir>]
@@ -102,6 +103,7 @@ Examples:
 ./update_p4prom.sh -nosdp -m /p4metrics -u perforce -c /etc/p4prometheus
 
 "
+# end::includeManual[]
 }
 
 # Command Line Processing

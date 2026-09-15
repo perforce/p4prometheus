@@ -40,7 +40,8 @@ function usage
       echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
    fi
  
-   echo "USAGE for install_node.sh:
+# tag::includeManual[]
+    echo "USAGE for install_node.sh:
  
 install_node.sh [-m <metrics_root>] [-push]
  
@@ -60,6 +61,7 @@ Examples:
 ./install_node.sh -m /p4metrics -push
 
 "
+# end::includeManual[]
 }
 
 # Command Line Processing
