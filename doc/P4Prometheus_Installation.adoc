@@ -218,7 +218,7 @@ systemctl status p4prometheus p4metrics node_exporter
 curl http://localhost:9100/metrics | grep p4_
 ----
 
-On the monitoring server, verify Prometheus targets and dashboards after running the relevant installer. See <<_troubleshooting>> for component-specific checks.
+On the monitoring server, verify Prometheus targets and dashboards after running the relevant installer. See Troubleshooting section next for component-specific checks.
 
 === Troubleshooting
 
@@ -226,71 +226,23 @@ Make sure all _firewalls_ are appropriately configured and the various component
 
 Port defaults are:
 
-* Grafana: 3000
-* Prometheus: 9090
-* Victoria Metrics: 8428
-* Node++_++exporter: 9100
-* Alertmanager: 9093
+* Monitoring server (the following should be accessible to users)
+** Grafana: 3000
+** Prometheus: 9090
+** Victoria Metrics: 8428
+** Node++_++exporter: 9100
+** Alertmanager: 9093
+
+* P4d server(s) - the following should be accessible to the monitoring server to scrape metrics from.
+** Node++_++exporter: 9100
 
 Use curl on the monitoring server to ensure that you can pull metrics from the other servers (from the target Node Exporter ports) - see below.
 
-==== p4prometheus
+==== On monitoring server
 
-If this is running correctly, it should write into the designated log file, e.g. `/hxlogs/metrics/p4++_++cmds.prom`
+===== prometheus
 
-You can just grep for the most basic metric a couple of times (make sure it is increasing every minute or so):
-
-....
-$ grep lines /p4/metrics/p4_cmds.prom 
-
-# HELP p4_prom_log_lines_read A count of log lines read
-# TYPE p4_prom_log_lines_read counter
-p4_prom_log_lines_read{serverid="master.1",sdpinst="1"} 7143
-....
-
-==== p4metrics
-
-Make sure `p4metrics` is working:
-
-[source,bash]
-----
-sudo systemctl status p4metrics
-sudo journalctl -u p4metrics --no-pager | less
-----
-
-You can test it via:
-
-....
-p4metrics --config p4metrics.yaml --debug --dry.run
-....
-
-Check that appropriate files are listed in your metrics dir (and are being updated every minute), e.g.
-
-....
-ls -ltr /hxlogs/metrics/
-....
-
-==== node exporter
-
-Make sure node++_++exporter is working (it is easy for there to be permissions access problems to the metrics dir).
-
-Assuming you have installed the `/etc/systemd/system/node++_++exporter.service` then find the ExecStart line and run it manually and check for errors (optionally appending "--log.level=debug").
-
-Check that you can see values:
-
-....
-curl localhost:9100/metrics | grep p4_
-....
-
-If the above is empty, then double check the permissions on ++`++/hxlogs/metrics' or the directory you have configured. Look for errors in:
-
-....
-sudo journalctl -u node_exporter --no-pager | less
-....
-
-==== prometheus
-
-Access page http://localhost:9090 in your browser and search for some metrics.
+Access page http://localhost:9090 (or http://<monitoring_server_ip_or_hostname>:9090) in your browser and search for some metrics.
 
 Check the prometheus config file to ensure that it is correctly pointing to the appropriate targets and scrape intervals. The default location is usually `/etc/prometheus/prometheus.yml`.
 
@@ -314,11 +266,80 @@ curl p4_ha:9100/metrics | grep p4_
 
 Problems are most likely due to incorrect target addresses (DNS?), network issues including firewalls, or the node exporter not running on the specified hosts.
 
-==== Grafana
+===== Victoria Metrics
 
-Check that a suitable data source is setup (i.e. Victoria Metrics or Prometheus - see below)
+Access page http://localhost:8428 (or http://<monitoring_server_ip_or_hostname>:8428) in your browser and search for some metrics.
+
+Check the Victoria Metrics config file and the status of the service.
+
+===== Grafana
+
+Check that a suitable data source is setup (i.e. Victoria Metrics or Prometheus) - <<_create_your_first_data_source>>
 
 Use the `Explore` option to look for some basic metrics, e.g. just start typing `p4++_++` and it should autocomplete if it has found `p4++_++` metrics being collected. Alternatively try `node++_++time++_++seconds`
+
+==== On p4d servers
+
+===== p4prometheus
+
+Make sure the service `p4prometheus` is running:
+
+```bash
+sudo systemctl status p4prometheus
+sudo journalctl -u p4prometheus --no-pager | tail -20
+```
+
+If this is running correctly, it should write into the designated log file, e.g. `/hxlogs/metrics/p4++_++cmds.prom`
+
+You can just grep for the most basic metric a couple of times (make sure it is increasing every minute or so):
+
+....
+$ grep lines /p4/metrics/p4_cmds.prom 
+
+# HELP p4_prom_log_lines_read A count of log lines read
+# TYPE p4_prom_log_lines_read counter
+p4_prom_log_lines_read{serverid="master.1",sdpinst="1"} 7143
+....
+
+===== p4metrics
+
+Make sure the service `p4metrics` is running:
+
+[source,bash]
+----
+sudo systemctl status p4metrics
+sudo journalctl -u p4metrics --no-pager | less
+----
+
+You can test it via:
+
+....
+p4metrics --config p4metrics.yaml --debug --dry.run
+....
+
+Check that appropriate files are listed in your metrics dir (and are being updated every minute), e.g.
+
+....
+ls -ltr /hxlogs/metrics/
+....
+
+===== node exporter
+
+Make sure node++_++exporter is working (it is easy for there to be permissions access problems to the metrics dir).
+
+Assuming you have installed the `/etc/systemd/system/node++_++exporter.service` then find the ExecStart line and run it manually and check for errors (optionally appending "--log.level=debug").
+
+Check that you can see values:
+
+....
+curl localhost:9100/metrics | grep p4_
+....
+
+If the above is empty, then double check the permissions on ++`++/hxlogs/metrics' or the directory you have configured. Look for errors in:
+
+....
+sudo journalctl -u node_exporter --no-pager | less
+....
 
 [[manual-installation]]
 == Manual Installation

@@ -479,11 +479,20 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <ul class="sectlevel2">
 <li><a href="#_troubleshooting">4.1. Troubleshooting</a>
 <ul class="sectlevel3">
-<li><a href="#_p4prometheus">4.1.1. p4prometheus</a></li>
-<li><a href="#_p4metrics">4.1.2. p4metrics</a></li>
-<li><a href="#_node_exporter">4.1.3. node exporter</a></li>
-<li><a href="#_prometheus">4.1.4. prometheus</a></li>
-<li><a href="#_grafana">4.1.5. Grafana</a></li>
+<li><a href="#_on_monitoring_server">4.1.1. On monitoring server</a>
+<ul class="sectlevel4">
+<li><a href="#_prometheus">4.1.1.1. prometheus</a></li>
+<li><a href="#_victoria_metrics">4.1.1.2. Victoria Metrics</a></li>
+<li><a href="#_grafana">4.1.1.3. Grafana</a></li>
+</ul>
+</li>
+<li><a href="#_on_p4d_servers">4.1.2. On p4d servers</a>
+<ul class="sectlevel4">
+<li><a href="#_p4prometheus">4.1.2.1. p4prometheus</a></li>
+<li><a href="#_p4metrics">4.1.2.2. p4metrics</a></li>
+<li><a href="#_node_exporter">4.1.2.3. node exporter</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -1009,7 +1018,7 @@ curl http://localhost:9100/metrics | grep p4_</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p>On the monitoring server, verify Prometheus targets and dashboards after running the relevant installer. See <a href="#_troubleshooting">Section 4.1, &#8220;Troubleshooting&#8221;</a> for component-specific checks.</p>
+<p>On the monitoring server, verify Prometheus targets and dashboards after running the relevant installer. See Troubleshooting section next for component-specific checks.</p>
 </div>
 <div class="sect2">
 <h3 id="_troubleshooting">4.1. Troubleshooting</h3>
@@ -1019,6 +1028,10 @@ curl http://localhost:9100/metrics | grep p4_</code></pre>
 <div class="paragraph">
 <p>Port defaults are:</p>
 </div>
+<div class="ulist">
+<ul>
+<li>
+<p>Monitoring server (the following should be accessible to users)</p>
 <div class="ulist">
 <ul>
 <li>
@@ -1038,84 +1051,28 @@ curl http://localhost:9100/metrics | grep p4_</code></pre>
 </li>
 </ul>
 </div>
+</li>
+<li>
+<p>P4d server(s) - the following should be accessible to the monitoring server to scrape metrics from.</p>
+<div class="ulist">
+<ul>
+<li>
+<p>Node_exporter: 9100</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
+</div>
 <div class="paragraph">
 <p>Use curl on the monitoring server to ensure that you can pull metrics from the other servers (from the target Node Exporter ports) - see below.</p>
 </div>
 <div class="sect3">
-<h4 id="_p4prometheus">4.1.1. p4prometheus</h4>
+<h4 id="_on_monitoring_server">4.1.1. On monitoring server</h4>
+<div class="sect4">
+<h5 id="_prometheus">4.1.1.1. prometheus</h5>
 <div class="paragraph">
-<p>If this is running correctly, it should write into the designated log file, e.g. <code>/hxlogs/metrics/p4_cmds.prom</code></p>
-</div>
-<div class="paragraph">
-<p>You can just grep for the most basic metric a couple of times (make sure it is increasing every minute or so):</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>$ grep lines /p4/metrics/p4_cmds.prom
-
-# HELP p4_prom_log_lines_read A count of log lines read
-# TYPE p4_prom_log_lines_read counter
-p4_prom_log_lines_read{serverid="master.1",sdpinst="1"} 7143</pre>
-</div>
-</div>
-</div>
-<div class="sect3">
-<h4 id="_p4metrics">4.1.2. p4metrics</h4>
-<div class="paragraph">
-<p>Make sure <code>p4metrics</code> is working:</p>
-</div>
-<div class="listingblock">
-<div class="content">
-<pre class="highlight"><code class="language-bash" data-lang="bash">sudo systemctl status p4metrics
-sudo journalctl -u p4metrics --no-pager | less</code></pre>
-</div>
-</div>
-<div class="paragraph">
-<p>You can test it via:</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>p4metrics --config p4metrics.yaml --debug --dry.run</pre>
-</div>
-</div>
-<div class="paragraph">
-<p>Check that appropriate files are listed in your metrics dir (and are being updated every minute), e.g.</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>ls -ltr /hxlogs/metrics/</pre>
-</div>
-</div>
-</div>
-<div class="sect3">
-<h4 id="_node_exporter">4.1.3. node exporter</h4>
-<div class="paragraph">
-<p>Make sure node_exporter is working (it is easy for there to be permissions access problems to the metrics dir).</p>
-</div>
-<div class="paragraph">
-<p>Assuming you have installed the <code>/etc/systemd/system/node_exporter.service</code> then find the ExecStart line and run it manually and check for errors (optionally appending "--log.level=debug").</p>
-</div>
-<div class="paragraph">
-<p>Check that you can see values:</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>curl localhost:9100/metrics | grep p4_</pre>
-</div>
-</div>
-<div class="paragraph">
-<p>If the above is empty, then double check the permissions on `/hxlogs/metrics' or the directory you have configured. Look for errors in:</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>sudo journalctl -u node_exporter --no-pager | less</pre>
-</div>
-</div>
-</div>
-<div class="sect3">
-<h4 id="_prometheus">4.1.4. prometheus</h4>
-<div class="paragraph">
-<p>Access page <a href="http://localhost:9090" class="bare">http://localhost:9090</a> in your browser and search for some metrics.</p>
+<p>Access page <a href="http://localhost:9090" class="bare">http://localhost:9090</a> (or <a href="http://&lt;monitoring_server_ip_or_hostname&gt;:9090" class="bare">http://&lt;monitoring_server_ip_or_hostname&gt;:9090</a>) in your browser and search for some metrics.</p>
 </div>
 <div class="paragraph">
 <p>Check the prometheus config file to ensure that it is correctly pointing to the appropriate targets and scrape intervals. The default location is usually <code>/etc/prometheus/prometheus.yml</code>.</p>
@@ -1145,13 +1102,106 @@ curl p4_ha:9100/metrics | grep p4_</code></pre>
 <p>Problems are most likely due to incorrect target addresses (DNS?), network issues including firewalls, or the node exporter not running on the specified hosts.</p>
 </div>
 </div>
-<div class="sect3">
-<h4 id="_grafana">4.1.5. Grafana</h4>
+<div class="sect4">
+<h5 id="_victoria_metrics">4.1.1.2. Victoria Metrics</h5>
 <div class="paragraph">
-<p>Check that a suitable data source is setup (i.e. Victoria Metrics or Prometheus - see below)</p>
+<p>Access page <a href="http://localhost:8428" class="bare">http://localhost:8428</a> (or <a href="http://&lt;monitoring_server_ip_or_hostname&gt;:8428" class="bare">http://&lt;monitoring_server_ip_or_hostname&gt;:8428</a>) in your browser and search for some metrics.</p>
+</div>
+<div class="paragraph">
+<p>Check the Victoria Metrics config file and the status of the service.</p>
+</div>
+</div>
+<div class="sect4">
+<h5 id="_grafana">4.1.1.3. Grafana</h5>
+<div class="paragraph">
+<p>Check that a suitable data source is setup (i.e. Victoria Metrics or Prometheus) - <a href="#_create_your_first_data_source">Section 5.3.1, &#8220;Create your first Data Source&#8221;</a></p>
 </div>
 <div class="paragraph">
 <p>Use the <code>Explore</code> option to look for some basic metrics, e.g. just start typing <code>p4_</code> and it should autocomplete if it has found <code>p4_</code> metrics being collected. Alternatively try <code>node_time_seconds</code></p>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_on_p4d_servers">4.1.2. On p4d servers</h4>
+<div class="sect4">
+<h5 id="_p4prometheus">4.1.2.1. p4prometheus</h5>
+<div class="paragraph">
+<p>Make sure the service <code>p4prometheus</code> is running:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-bash" data-lang="bash">sudo systemctl status p4prometheus
+sudo journalctl -u p4prometheus --no-pager | tail -20</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If this is running correctly, it should write into the designated log file, e.g. <code>/hxlogs/metrics/p4_cmds.prom</code></p>
+</div>
+<div class="paragraph">
+<p>You can just grep for the most basic metric a couple of times (make sure it is increasing every minute or so):</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>$ grep lines /p4/metrics/p4_cmds.prom
+
+# HELP p4_prom_log_lines_read A count of log lines read
+# TYPE p4_prom_log_lines_read counter
+p4_prom_log_lines_read{serverid="master.1",sdpinst="1"} 7143</pre>
+</div>
+</div>
+</div>
+<div class="sect4">
+<h5 id="_p4metrics">4.1.2.2. p4metrics</h5>
+<div class="paragraph">
+<p>Make sure the service <code>p4metrics</code> is running:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-bash" data-lang="bash">sudo systemctl status p4metrics
+sudo journalctl -u p4metrics --no-pager | less</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>You can test it via:</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>p4metrics --config p4metrics.yaml --debug --dry.run</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Check that appropriate files are listed in your metrics dir (and are being updated every minute), e.g.</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>ls -ltr /hxlogs/metrics/</pre>
+</div>
+</div>
+</div>
+<div class="sect4">
+<h5 id="_node_exporter">4.1.2.3. node exporter</h5>
+<div class="paragraph">
+<p>Make sure node_exporter is working (it is easy for there to be permissions access problems to the metrics dir).</p>
+</div>
+<div class="paragraph">
+<p>Assuming you have installed the <code>/etc/systemd/system/node_exporter.service</code> then find the ExecStart line and run it manually and check for errors (optionally appending "--log.level=debug").</p>
+</div>
+<div class="paragraph">
+<p>Check that you can see values:</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>curl localhost:9100/metrics | grep p4_</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If the above is empty, then double check the permissions on `/hxlogs/metrics' or the directory you have configured. Look for errors in:</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>sudo journalctl -u node_exporter --no-pager | less</pre>
+</div>
+</div>
 </div>
 </div>
 </div>
@@ -2355,7 +2405,7 @@ Checking perforce_rules.yml
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-09-17 13:21:24 +0100
+Last updated 2026-09-17 13:35:44 +0100
 </div>
 </div>
 </body>
