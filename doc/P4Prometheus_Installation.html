@@ -475,25 +475,34 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#_install_state_and_fleet_configuration">3.4. Install State and Fleet Configuration</a></li>
 </ul>
 </li>
-<li><a href="#_verify_installation">4. Verify Installation</a></li>
+<li><a href="#_verify_installation">4. Verify Installation</a>
+<ul class="sectlevel2">
+<li><a href="#_troubleshooting">4.1. Troubleshooting</a>
+<ul class="sectlevel3">
+<li><a href="#_p4prometheus">4.1.1. p4prometheus</a></li>
+<li><a href="#_p4metrics">4.1.2. p4metrics</a></li>
+<li><a href="#_node_exporter">4.1.3. node exporter</a></li>
+<li><a href="#_prometheus">4.1.4. prometheus</a></li>
+<li><a href="#_grafana">4.1.5. Grafana</a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li><a href="#manual-installation">5. Manual Installation</a>
 <ul class="sectlevel2">
-<li><a href="#_package_installation_of_grafana">5.1. Package Installation of Grafana</a>
+<li><a href="#_install_prometheus">5.1. Install Prometheus</a>
 <ul class="sectlevel3">
-<li><a href="#_create_your_first_data_source">5.1.1. Create your first Data Source</a></li>
-<li><a href="#_setup_of_grafana_dashboards">5.1.2. Setup of Grafana dashboards</a></li>
-<li><a href="#_script_to_create_grafana_dashboard">5.1.3. Script to create Grafana dashboard</a></li>
+<li><a href="#_prometheus_config">5.1.1. Prometheus config</a></li>
 </ul>
 </li>
-<li><a href="#_install_prometheus">5.2. Install Prometheus</a>
+<li><a href="#_install_victoria_metrics_optional_but_recommended">5.2. Install victoria metrics (optional but recommended)</a></li>
+<li><a href="#_package_installation_of_grafana">5.3. Package Installation of Grafana</a>
 <ul class="sectlevel3">
-<li><a href="#_prometheus_config">5.2.1. Prometheus config</a></li>
-</ul>
-</li>
-<li><a href="#_install_victoria_metrics_optional_but_recommended">5.3. Install victoria metrics (optional but recommended)</a>
-<ul class="sectlevel3">
-<li><a href="#_substituting_victoria_metrics_for_prometheus_in_grafana">5.3.1. Substituting Victoria Metrics for Prometheus in Grafana</a></li>
-<li><a href="#_importing_prometheus_data_into_victoria_metrics">5.3.2. Importing Prometheus data into Victoria Metrics</a></li>
+<li><a href="#_create_your_first_data_source">5.3.1. Create your first Data Source</a></li>
+<li><a href="#_setup_of_grafana_dashboards">5.3.2. Setup of Grafana dashboards</a></li>
+<li><a href="#_script_to_create_grafana_dashboard">5.3.3. Script to create Grafana dashboard</a></li>
+<li><a href="#_substituting_victoria_metrics_for_prometheus_in_grafana">5.3.4. Substituting Victoria Metrics for Prometheus in Grafana</a></li>
+<li><a href="#_importing_prometheus_data_into_victoria_metrics">5.3.5. Importing Prometheus data into Victoria Metrics</a></li>
 </ul>
 </li>
 <li><a href="#_install_node_exporter">5.4. Install node exporter</a></li>
@@ -515,22 +524,13 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#_prometheus_config_to_reference_alertmanager_rules">5.7.3. Prometheus config to reference alertmanager rules</a></li>
 </ul>
 </li>
-<li><a href="#_troubleshooting">5.8. Troubleshooting</a>
+<li><a href="#_advanced_config_options">5.8. Advanced config options</a></li>
+<li><a href="#_windows_installation">5.9. Windows Installation</a>
 <ul class="sectlevel3">
-<li><a href="#_p4prometheus">5.8.1. p4prometheus</a></li>
-<li><a href="#_p4metrics">5.8.2. p4metrics</a></li>
-<li><a href="#_node_exporter">5.8.3. node exporter</a></li>
-<li><a href="#_prometheus">5.8.4. prometheus</a></li>
-<li><a href="#_grafana">5.8.5. Grafana</a></li>
-</ul>
-</li>
-<li><a href="#_advanced_config_options">5.9. Advanced config options</a></li>
-<li><a href="#_windows_installation">5.10. Windows Installation</a>
-<ul class="sectlevel3">
-<li><a href="#_windows_exporter">5.10.1. Windows Exporter</a></li>
-<li><a href="#_p4prometheus_on_windows">5.10.2. P4prometheus on Windows</a></li>
-<li><a href="#_running_p4metrics">5.10.3. Running p4metrics</a></li>
-<li><a href="#_installing_programs_as_services">5.10.4. Installing Programs as Services</a></li>
+<li><a href="#_windows_exporter">5.9.1. Windows Exporter</a></li>
+<li><a href="#_p4prometheus_on_windows">5.9.2. P4prometheus on Windows</a></li>
+<li><a href="#_running_p4metrics">5.9.3. Running p4metrics</a></li>
+<li><a href="#_installing_programs_as_services">5.9.4. Installing Programs as Services</a></li>
 </ul>
 </li>
 </ul>
@@ -1009,7 +1009,151 @@ curl http://localhost:9100/metrics | grep p4_</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p>On the monitoring server, verify Prometheus targets and dashboards after running the relevant installer. See <a href="#_troubleshooting">Section 5.8, &#8220;Troubleshooting&#8221;</a> for component-specific checks.</p>
+<p>On the monitoring server, verify Prometheus targets and dashboards after running the relevant installer. See <a href="#_troubleshooting">Section 4.1, &#8220;Troubleshooting&#8221;</a> for component-specific checks.</p>
+</div>
+<div class="sect2">
+<h3 id="_troubleshooting">4.1. Troubleshooting</h3>
+<div class="paragraph">
+<p>Make sure all <em>firewalls</em> are appropriately configured and the various components on each machine can see each other!</p>
+</div>
+<div class="paragraph">
+<p>Port defaults are:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Grafana: 3000</p>
+</li>
+<li>
+<p>Prometheus: 9090</p>
+</li>
+<li>
+<p>Victoria Metrics: 8428</p>
+</li>
+<li>
+<p>Node_exporter: 9100</p>
+</li>
+<li>
+<p>Alertmanager: 9093</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Use curl on the monitoring server to ensure that you can pull metrics from the other servers (from the target Node Exporter ports) - see below.</p>
+</div>
+<div class="sect3">
+<h4 id="_p4prometheus">4.1.1. p4prometheus</h4>
+<div class="paragraph">
+<p>If this is running correctly, it should write into the designated log file, e.g. <code>/hxlogs/metrics/p4_cmds.prom</code></p>
+</div>
+<div class="paragraph">
+<p>You can just grep for the most basic metric a couple of times (make sure it is increasing every minute or so):</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>$ grep lines /p4/metrics/p4_cmds.prom
+
+# HELP p4_prom_log_lines_read A count of log lines read
+# TYPE p4_prom_log_lines_read counter
+p4_prom_log_lines_read{serverid="master.1",sdpinst="1"} 7143</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_p4metrics">4.1.2. p4metrics</h4>
+<div class="paragraph">
+<p>Make sure <code>p4metrics</code> is working:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-bash" data-lang="bash">sudo systemctl status p4metrics
+sudo journalctl -u p4metrics --no-pager | less</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>You can test it via:</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>p4metrics --config p4metrics.yaml --debug --dry.run</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Check that appropriate files are listed in your metrics dir (and are being updated every minute), e.g.</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>ls -ltr /hxlogs/metrics/</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_node_exporter">4.1.3. node exporter</h4>
+<div class="paragraph">
+<p>Make sure node_exporter is working (it is easy for there to be permissions access problems to the metrics dir).</p>
+</div>
+<div class="paragraph">
+<p>Assuming you have installed the <code>/etc/systemd/system/node_exporter.service</code> then find the ExecStart line and run it manually and check for errors (optionally appending "--log.level=debug").</p>
+</div>
+<div class="paragraph">
+<p>Check that you can see values:</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>curl localhost:9100/metrics | grep p4_</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If the above is empty, then double check the permissions on `/hxlogs/metrics' or the directory you have configured. Look for errors in:</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>sudo journalctl -u node_exporter --no-pager | less</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_prometheus">4.1.4. prometheus</h4>
+<div class="paragraph">
+<p>Access page <a href="http://localhost:9090" class="bare">http://localhost:9090</a> in your browser and search for some metrics.</p>
+</div>
+<div class="paragraph">
+<p>Check the prometheus config file to ensure that it is correctly pointing to the appropriate targets and scrape intervals. The default location is usually <code>/etc/prometheus/prometheus.yml</code>.</p>
+</div>
+<div class="paragraph">
+<p>Use <code>curl</code> to check targets are accessible, e.g. if yaml contains:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-yaml" data-lang="yaml">    - targets:
+        - p4hms:9100
+        - p4main:9100
+        - p4_ha:9100</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Then:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-bash" data-lang="bash">curl p4hms:9100/metrics | grep p4_
+curl p4main:9100/metrics | grep p4_
+curl p4_ha:9100/metrics | grep p4_</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Problems are most likely due to incorrect target addresses (DNS?), network issues including firewalls, or the node exporter not running on the specified hosts.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_grafana">4.1.5. Grafana</h4>
+<div class="paragraph">
+<p>Check that a suitable data source is setup (i.e. Victoria Metrics or Prometheus - see below)</p>
+</div>
+<div class="paragraph">
+<p>Use the <code>Explore</code> option to look for some basic metrics, e.g. just start typing <code>p4_</code> and it should autocomplete if it has found <code>p4_</code> metrics being collected. Alternatively try <code>node_time_seconds</code></p>
+</div>
+</div>
 </div>
 </div>
 </div>
@@ -1020,200 +1164,7 @@ curl http://localhost:9100/metrics | grep p4_</code></pre>
 <p>The following component-by-component procedures are retained for sites that cannot use the scripts. They are not the recommended default installation path.</p>
 </div>
 <div class="sect2">
-<h3 id="_package_installation_of_grafana">5.1. Package Installation of Grafana</h3>
-<div class="paragraph">
-<p>This should be done on the monitoring server only. If not using <a href="#automated-installation">automated scripts</a> then follow these instructions.</p>
-</div>
-<div class="paragraph">
-<p>Use the appropriate link below depending if you using <code>apt</code> or <code>yum</code>:</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p><a href="https://grafana.com/docs/grafana/latest/installation/debian/" class="bare">https://grafana.com/docs/grafana/latest/installation/debian/</a></p>
-</li>
-<li>
-<p><a href="https://grafana.com/docs/grafana/latest/installation/rpm/" class="bare">https://grafana.com/docs/grafana/latest/installation/rpm/</a></p>
-</li>
-</ul>
-</div>
-<div class="sect3">
-<h4 id="_create_your_first_data_source">5.1.1. Create your first Data Source</h4>
-<div class="paragraph">
-<p>Assuming you are using Victoria Metrics (VM):</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p>Data source &gt; new</p>
-<div class="ulist">
-<ul>
-<li>
-<p>Type is Prometheus (VM is API compatible)</p>
-</li>
-<li>
-<p>Name is <code>Victoria Metrics</code></p>
-</li>
-<li>
-<p>Target/port: <code><a href="http://localhost:8428" class="bare">http://localhost:8428</a></code></p>
-</li>
-</ul>
-</div>
-</li>
-<li>
-<p>Click <code>Save and test</code></p>
-</li>
-</ul>
-</div>
-</div>
-<div class="sect3">
-<h4 id="_setup_of_grafana_dashboards">5.1.2. Setup of Grafana dashboards</h4>
-<div class="paragraph">
-<p>Once Grafana is installed (and Prometheus/Victoria Metrics) the following dashboards are recommended to be imported as starting points for further customisation:</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p><a href="https://grafana.com/grafana/dashboards/12278" class="bare">https://grafana.com/grafana/dashboards/12278</a> - P4 Stats</p>
-</li>
-<li>
-<p><a href="https://grafana.com/grafana/dashboards/15509" class="bare">https://grafana.com/grafana/dashboards/15509</a> - P4 Stats (non-SDP)</p>
-</li>
-<li>
-<p><a href="https://grafana.com/grafana/dashboards/405" class="bare">https://grafana.com/grafana/dashboards/405</a> - Node Exporter Server Info</p>
-</li>
-<li>
-<p><a href="https://grafana.com/grafana/dashboards/1860" class="bare">https://grafana.com/grafana/dashboards/1860</a> - Node Exporter Full</p>
-</li>
-<li>
-<p><a href="https://grafana.com/grafana/dashboards?search=node%20exporter" class="bare">https://grafana.com/grafana/dashboards?search=node%20exporter</a></p>
-</li>
-</ul>
-</div>
-<div class="paragraph">
-<p>They can be imported from Grafana dashboard management page.</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p>Dashboard &gt; New &gt; Import</p>
-</li>
-</ul>
-</div>
-<div class="paragraph">
-<p>Alternatively see below for experimental script to create dashboards which is easier to customize.</p>
-</div>
-<div class="paragraph">
-<p>See an example of <a href="https://brian-candler.medium.com/interpreting-prometheus-metrics-for-linux-disk-i-o-utilization-4db53dfedcfc">interpreting Linux prometheus performance metrics</a></p>
-</div>
-<div class="paragraph">
-<p>For Windows see <a href="#windows-installation">Windows Installation</a> since Windows Exporter is used instead of Node Exporter.</p>
-</div>
-<div class="paragraph">
-<p>If first time with Grafana, the default user/pwd: <code>admin</code>/<code>admin</code>. It will prompt you to create a proper password!</p>
-</div>
-</div>
-<div class="sect3">
-<h4 id="_script_to_create_grafana_dashboard">5.1.3. Script to create Grafana dashboard</h4>
-<div class="paragraph">
-<p>Download the following files:</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p><a href="../../scripts/create_dashboard.py">create_dashboard.py</a> or for use with wget, download raw file: <a href="https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/create_dashboard.py"><em>right click this link &gt; copy link address</em></a></p>
-</li>
-<li>
-<p><a href="../../scripts/dashboard.yaml">dashboard.yaml</a> or for use with wget, download raw file: <a href="https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/dashboard.yaml"><em>right click this link &gt; copy link address</em></a></p>
-</li>
-</ul>
-</div>
-<div class="paragraph">
-<p>Create a Grafana service account token (or legacy API key token) for your Grafana installation.</p>
-</div>
-<div class="paragraph">
-<p>Version notes (dashboard generation/upload):</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p>Tested with Grafana 9.x, 10.x, 11.x, and 12.x using the classic dashboard API endpoint <code>/api/dashboards/db</code>.</p>
-</li>
-<li>
-<p>Recommended Python package versions: <code>grafanalib&gt;=0.7,&lt;1.0</code> and <code>requests&gt;=2.28</code>.</p>
-</li>
-<li>
-<p>The script accepts both modern service account tokens (<code>GRAFANA_API_TOKEN</code>) and legacy API keys (<code>GRAFANA_API_KEY</code>).</p>
-</li>
-</ul>
-</div>
-<div class="paragraph">
-<p>Install Python dependencies (recommended: uv):</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv .venv
-source .venv/bin/activate
-uv pip install "grafanalib&gt;=0.7,&lt;1.0" "requests&gt;=2.28"</pre>
-</div>
-</div>
-<div class="paragraph">
-<p>Fallback (pip):</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>pip3 install grafanalib requests</pre>
-</div>
-</div>
-<div class="paragraph">
-<p>Optional: verify installed package versions</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>python3 -c "import grafanalib, requests; print('grafanalib', getattr(grafanalib, '__version__', 'unknown')); print('requests', requests.__version__)"</pre>
-</div>
-</div>
-<div class="paragraph">
-<p>Set environment variables:</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>export GRAFANA_SERVER=https://p4monitor:3000
-export GRAFANA_API_TOKEN="&lt;service account token created above&gt;"</pre>
-</div>
-</div>
-<div class="paragraph">
-<p>or legacy variable name:</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>export GRAFANA_API_KEY="&lt;API key created above&gt;"</pre>
-</div>
-</div>
-<div class="paragraph">
-<p>Review the <code>dashboard.yaml</code> file and adjust to your local site names where appropriate.</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>vi dashboard.yaml</pre>
-</div>
-</div>
-<div class="paragraph">
-<p>Create and upload the dashboard:</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>./create_dashboard.py --title "P4Prometheus" --url $GRAFANA_SERVER --api-key $GRAFANA_API_KEY</pre>
-</div>
-</div>
-<div class="paragraph">
-<p>You can re-upload the dashboard with the same title (it will create a new version).</p>
-</div>
-</div>
-</div>
-<div class="sect2">
-<h3 id="_install_prometheus">5.2. Install Prometheus</h3>
+<h3 id="_install_prometheus">5.1. Install Prometheus</h3>
 <div class="paragraph">
 <p>This must be done on the monitoring server only. If not using <a href="#automated-installation">automated scripts</a> then follow these instructions.</p>
 </div>
@@ -1286,7 +1237,7 @@ EOF</code></pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_prometheus_config">5.2.1. Prometheus config</h4>
+<h4 id="_prometheus_config">5.1.1. Prometheus config</h4>
 <div class="paragraph">
 <p><strong>It is important you edit and adjust the <code>targets</code> value appropriately below</strong> (see <code>#####</code> section) to scrape from your commit/edge/replica servers (and localhost).</p>
 </div>
@@ -1347,7 +1298,7 @@ EOF</code></pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_install_victoria_metrics_optional_but_recommended">5.3. Install victoria metrics (optional but recommended)</h3>
+<h3 id="_install_victoria_metrics_optional_but_recommended">5.2. Install victoria metrics (optional but recommended)</h3>
 <div class="paragraph">
 <p>This is a high performing component (up to 20x faster) and good for long term storage (data compression is up to 70x) so that much more data can be stored in the same space. If not using <a href="#automated-installation">automated scripts</a> then follow these instructions.</p>
 </div>
@@ -1450,8 +1401,201 @@ sudo systemctl status victoria-metrics</pre>
 make restart # Convenience command</pre>
 </div>
 </div>
+</div>
+<div class="sect2">
+<h3 id="_package_installation_of_grafana">5.3. Package Installation of Grafana</h3>
+<div class="paragraph">
+<p>This should be done on the monitoring server only. If not using <a href="#_automated_installation">Chapter 2, <em>Automated Installation</em></a> scripts, then follow these instructions.</p>
+</div>
+<div class="paragraph">
+<p>Use the appropriate link below depending if you using <code>apt</code> or <code>yum</code>:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><a href="https://grafana.com/docs/grafana/latest/installation/debian/" class="bare">https://grafana.com/docs/grafana/latest/installation/debian/</a></p>
+</li>
+<li>
+<p><a href="https://grafana.com/docs/grafana/latest/installation/rpm/" class="bare">https://grafana.com/docs/grafana/latest/installation/rpm/</a></p>
+</li>
+</ul>
+</div>
 <div class="sect3">
-<h4 id="_substituting_victoria_metrics_for_prometheus_in_grafana">5.3.1. Substituting Victoria Metrics for Prometheus in Grafana</h4>
+<h4 id="_create_your_first_data_source">5.3.1. Create your first Data Source</h4>
+<div class="paragraph">
+<p>Assuming you are using Victoria Metrics (VM):</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Data source &gt; new</p>
+<div class="ulist">
+<ul>
+<li>
+<p>Type is Prometheus (VM is API compatible)</p>
+</li>
+<li>
+<p>Name is <code>Victoria Metrics</code></p>
+</li>
+<li>
+<p>Target/port: <code><a href="http://localhost:8428" class="bare">http://localhost:8428</a></code></p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p>Click <code>Save and test</code></p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_setup_of_grafana_dashboards">5.3.2. Setup of Grafana dashboards</h4>
+<div class="paragraph">
+<p>Once Grafana is installed (and Prometheus/Victoria Metrics) the following dashboards are recommended to be imported as starting points for further customisation:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><a href="https://grafana.com/grafana/dashboards/12278" class="bare">https://grafana.com/grafana/dashboards/12278</a> - P4 Stats</p>
+</li>
+<li>
+<p><a href="https://grafana.com/grafana/dashboards/15509" class="bare">https://grafana.com/grafana/dashboards/15509</a> - P4 Stats (non-SDP)</p>
+</li>
+<li>
+<p><a href="https://grafana.com/grafana/dashboards/405" class="bare">https://grafana.com/grafana/dashboards/405</a> - Node Exporter Server Info</p>
+</li>
+<li>
+<p><a href="https://grafana.com/grafana/dashboards/1860" class="bare">https://grafana.com/grafana/dashboards/1860</a> - Node Exporter Full</p>
+</li>
+<li>
+<p><a href="https://grafana.com/grafana/dashboards?search=node%20exporter" class="bare">https://grafana.com/grafana/dashboards?search=node%20exporter</a></p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>They can be imported from Grafana dashboard management page.</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Dashboard &gt; New &gt; Import</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Alternatively see below for experimental script to create dashboards which is easier to customize.</p>
+</div>
+<div class="paragraph">
+<p>See an example of <a href="https://brian-candler.medium.com/interpreting-prometheus-metrics-for-linux-disk-i-o-utilization-4db53dfedcfc">interpreting Linux prometheus performance metrics</a></p>
+</div>
+<div class="paragraph">
+<p>For Windows see <a href="#windows-installation">Windows Installation</a> since Windows Exporter is used instead of Node Exporter.</p>
+</div>
+<div class="paragraph">
+<p>If first time with Grafana, the default user/pwd: <code>admin</code>/<code>admin</code>. It will prompt you to create a proper password!</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_script_to_create_grafana_dashboard">5.3.3. Script to create Grafana dashboard</h4>
+<div class="paragraph">
+<p>Download the following files:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><a href="../../scripts/create_dashboard.py">create_dashboard.py</a> or for use with wget, download raw file: <a href="https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/create_dashboard.py"><em>right click this link &gt; copy link address</em></a></p>
+</li>
+<li>
+<p><a href="../../scripts/dashboard.yaml">dashboard.yaml</a> or for use with wget, download raw file: <a href="https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/dashboard.yaml"><em>right click this link &gt; copy link address</em></a></p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Create a Grafana service account token (or legacy API key token) for your Grafana installation.</p>
+</div>
+<div class="paragraph">
+<p>Version notes (dashboard generation/upload):</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Tested with Grafana 9.x, 10.x, 11.x, and 12.x using the classic dashboard API endpoint <code>/api/dashboards/db</code>.</p>
+</li>
+<li>
+<p>Recommended Python package versions: <code>grafanalib&gt;=0.7,&lt;1.0</code> and <code>requests&gt;=2.28</code>.</p>
+</li>
+<li>
+<p>The script accepts both modern service account tokens (<code>GRAFANA_API_TOKEN</code>) and legacy API keys (<code>GRAFANA_API_KEY</code>).</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Install Python dependencies (recommended: uv):</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv .venv
+source .venv/bin/activate
+uv pip install "grafanalib&gt;=0.7,&lt;1.0" "requests&gt;=2.28"</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Fallback (pip):</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>pip3 install grafanalib requests</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Optional: verify installed package versions</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>python3 -c "import grafanalib, requests; print('grafanalib', getattr(grafanalib, '__version__', 'unknown')); print('requests', requests.__version__)"</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Set environment variables:</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>export GRAFANA_SERVER=https://p4monitor:3000
+export GRAFANA_API_TOKEN="&lt;service account token created above&gt;"</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>or legacy variable name:</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>export GRAFANA_API_KEY="&lt;API key created above&gt;"</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Review the <code>dashboard.yaml</code> file and adjust to your local site names where appropriate.</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>vi dashboard.yaml</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Create and upload the dashboard:</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>./create_dashboard.py --title "P4Prometheus" --url $GRAFANA_SERVER --api-key $GRAFANA_API_KEY</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>You can re-upload the dashboard with the same title (it will create a new version).</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_substituting_victoria_metrics_for_prometheus_in_grafana">5.3.4. Substituting Victoria Metrics for Prometheus in Grafana</h4>
 <div class="paragraph">
 <p>If using Victoria Metrics, then you should:</p>
 </div>
@@ -1470,7 +1614,7 @@ make restart # Convenience command</pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_importing_prometheus_data_into_victoria_metrics">5.3.2. Importing Prometheus data into Victoria Metrics</h4>
+<h4 id="_importing_prometheus_data_into_victoria_metrics">5.3.5. Importing Prometheus data into Victoria Metrics</h4>
 <div class="paragraph">
 <p>This can be fairly easily done, and will allow you to save the space used by Prometheus.</p>
 </div>
@@ -2092,124 +2236,7 @@ Checking perforce_rules.yml
 </div>
 </div>
 <div class="sect2">
-<h3 id="_troubleshooting">5.8. Troubleshooting</h3>
-<div class="paragraph">
-<p>Make sure all <em>firewalls</em> are appropriately configured and the various components on each machine can see each other!</p>
-</div>
-<div class="paragraph">
-<p>Port defaults are:</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p>Grafana: 3000</p>
-</li>
-<li>
-<p>Prometheus: 9090</p>
-</li>
-<li>
-<p>Victoria Metrics: 8428</p>
-</li>
-<li>
-<p>Node_exporter: 9100</p>
-</li>
-<li>
-<p>Alertmanager: 9093</p>
-</li>
-</ul>
-</div>
-<div class="paragraph">
-<p>Use curl on the monitoring server to ensure that you can pull metrics from the other servers (from the target Node Exporter ports) - see below.</p>
-</div>
-<div class="sect3">
-<h4 id="_p4prometheus">5.8.1. p4prometheus</h4>
-<div class="paragraph">
-<p>If this is running correctly, it should write into the designated log file, e.g. <code>/hxlogs/metrics/p4_cmds.prom</code></p>
-</div>
-<div class="paragraph">
-<p>You can just grep for the most basic metric a couple of times (make sure it is increasing every minute or so):</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>$ grep lines /p4/metrics/p4_cmds.prom
-
-# HELP p4_prom_log_lines_read A count of log lines read
-# TYPE p4_prom_log_lines_read counter
-p4_prom_log_lines_read{serverid="master.1",sdpinst="1"} 7143</pre>
-</div>
-</div>
-</div>
-<div class="sect3">
-<h4 id="_p4metrics">5.8.2. p4metrics</h4>
-<div class="paragraph">
-<p>Make sure <code>p4metrics</code> is working:</p>
-</div>
-<div class="listingblock">
-<div class="content">
-<pre class="highlight"><code class="language-bash" data-lang="bash">sudo systemctl status p4metrics
-sudo journalctl -u p4metrics --no-pager | less</code></pre>
-</div>
-</div>
-<div class="paragraph">
-<p>You can test it via:</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>p4metrics --config p4metrics.yaml --debug --dry.run</pre>
-</div>
-</div>
-<div class="paragraph">
-<p>Check that appropriate files are listed in your metrics dir (and are being updated every minute), e.g.</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>ls -ltr /hxlogs/metrics/</pre>
-</div>
-</div>
-</div>
-<div class="sect3">
-<h4 id="_node_exporter">5.8.3. node exporter</h4>
-<div class="paragraph">
-<p>Make sure node_exporter is working (it is easy for there to be permissions access problems to the metrics dir).</p>
-</div>
-<div class="paragraph">
-<p>Assuming you have installed the <code>/etc/systemd/system/node_exporter.service</code> then find the ExecStart line and run it manually and check for errors (optionally appending "--log.level=debug").</p>
-</div>
-<div class="paragraph">
-<p>Check that you can see values:</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>curl localhost:9100/metrics | grep p4_</pre>
-</div>
-</div>
-<div class="paragraph">
-<p>If the above is empty, then double check the permissions on `/hxlogs/metrics' or the directory you have configured. Look for errors in:</p>
-</div>
-<div class="literalblock">
-<div class="content">
-<pre>sudo journalctl -u node_exporter --no-pager | less</pre>
-</div>
-</div>
-</div>
-<div class="sect3">
-<h4 id="_prometheus">5.8.4. prometheus</h4>
-<div class="paragraph">
-<p>Access page <a href="http://localhost:9090" class="bare">http://localhost:9090</a> in your browser and search for some metrics.</p>
-</div>
-</div>
-<div class="sect3">
-<h4 id="_grafana">5.8.5. Grafana</h4>
-<div class="paragraph">
-<p>Check that a suitable data source is setup (i.e. Victoria Metrics or Prometheus - see below)</p>
-</div>
-<div class="paragraph">
-<p>Use the <code>Explore</code> option to look for some basic metrics, e.g. just start typing <code>p4_</code> and it should autocomplete if it has found <code>p4_</code> metrics being collected. Alternatively try <code>node_time_seconds</code></p>
-</div>
-</div>
-</div>
-<div class="sect2">
-<h3 id="_advanced_config_options">5.9. Advanced config options</h3>
+<h3 id="_advanced_config_options">5.8. Advanced config options</h3>
 <div class="paragraph">
 <p>For improved security:</p>
 </div>
@@ -2225,7 +2252,7 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_windows_installation">5.10. Windows Installation</h3>
+<h3 id="_windows_installation">5.9. Windows Installation</h3>
 <div class="paragraph">
 <p>The above instructions are all for Linux. However, all the components have Windows binaries, with the exception of the systemd timer service for <code>lslocks</code> monitoring (<code>monitor_wrapper.sh</code> and <code>monitor_metrics.py</code>). Note that <code>p4metrics</code> now has a Windows executable version (it wraps the <code>p4.exe</code> CLI)</p>
 </div>
@@ -2255,7 +2282,7 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 <p>For testing it is recommended just to run the various executables from command line first and test with Prometheus and Grafana. This allows you to test with firewalls/ports/access rights etc. When it is all working, you can wrap up and install each binary as a Service as noted below.</p>
 </div>
 <div class="sect3">
-<h4 id="_windows_exporter">5.10.1. Windows Exporter</h4>
+<h4 id="_windows_exporter">5.9.1. Windows Exporter</h4>
 <div class="paragraph">
 <p>This used to be called "WMI Exporter".</p>
 </div>
@@ -2284,13 +2311,13 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_p4prometheus_on_windows">5.10.2. P4prometheus on Windows</h4>
+<h4 id="_p4prometheus_on_windows">5.9.2. P4prometheus on Windows</h4>
 <div class="paragraph">
 <p>The executable takes the <code>--config</code> parameter and the yaml file is same format as for Linux version. You can specify paths with forward slashes if desired, e.g. <code>c:/p4/metrics</code></p>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_running_p4metrics">5.10.3. Running p4metrics</h4>
+<h4 id="_running_p4metrics">5.9.3. Running p4metrics</h4>
 <div class="paragraph">
 <p>Starting with the version <a href="../../cmd/p4metrics/p4metrics.yaml">draft version of p4metrics</a> create locally and adjust path settings, e.g. <code>c:/p4/metrics</code></p>
 </div>
@@ -2307,7 +2334,7 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_installing_programs_as_services">5.10.4. Installing Programs as Services</h4>
+<h4 id="_installing_programs_as_services">5.9.4. Installing Programs as Services</h4>
 <div class="paragraph">
 <p>To install as a service using for example <a href="https://nssm.cc/">NSSM - Non Sucking Service Manager!</a> to wrap the Prometheus/Windows Exporter/P4Prometheus binaries downloaded above.</p>
 </div>
@@ -2328,7 +2355,7 @@ sudo journalctl -u p4metrics --no-pager | less</code></pre>
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-09-17 12:58:41 +0100
+Last updated 2026-09-17 13:21:24 +0100
 </div>
 </div>
 </body>
