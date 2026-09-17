@@ -218,7 +218,7 @@ systemctl status p4prometheus p4metrics node_exporter
 curl http://localhost:9100/metrics | grep p4_
 ----
 
-On the monitoring server, verify Prometheus targets and dashboards after running the relevant installer. See <<troubleshooting>> for component-specific checks.
+On the monitoring server, verify Prometheus targets and dashboards after running the relevant installer. See <<_troubleshooting>> for component-specific checks.
 
 [[manual-installation]]
 == Manual Installation
