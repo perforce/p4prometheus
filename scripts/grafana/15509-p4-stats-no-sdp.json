@@ -55,7 +55,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 44,
+       "id": null,
   "links": [],
   "panels": [
     {
@@ -530,7 +530,7 @@
             "type": "prometheus",
             "uid": "${ds_prometheus}"
           },
-          "expr": "rate(p4_completed_cmds_per_day{instance=\"p4poke-chi:9100\",serverid=\"$serverid\"}[10m])",
+           "expr": "rate(p4_completed_cmds_per_day{serverid=\"$serverid\"}[10m])",
           "format": "time_series",
           "intervalFactor": 1,
           "refId": "A"
@@ -1589,6 +1589,6 @@
   "timepicker": {},
   "timezone": "",
   "title": "P4 Stats (no SDP)",
-  "uid": "mkFEKg4Wz2",
+  "uid": null,
   "version": 2
 }
