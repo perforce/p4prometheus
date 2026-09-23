@@ -107,16 +107,6 @@ groups:
       description: "{{ $labels.instance }} has been low for 6 hours."
       runbook_id: _p4d_license_expiry
 
-  - alert: P4D license data missing
-    expr: absent(p4_license_time_remaining{serverid!~".*ffr.*|.*edge.*"}) == 1
-    for: 1h
-    labels:
-      severity: "low"
-    annotations:
-      summary: "Endpoint {{ $labels.instance }} license metric p4_license_time_remaining missing"
-      description: "{{ $labels.instance }} has been low for 1 hour."
-      runbook_id: _p4d_license_data_missing
-
   - alert: Checkpoint Not Taken
     # If it was more than 25 hours since last checkpoint taken
     expr: ((time() - p4_sdp_checkpoint_log_time{serverid=~".*master.*|.*edge.*|.*EDGE.*",instance!~".*p4p.*|.*proxy.*|.*[-_]ha.*"}) / (60 * 60)) > 25
@@ -140,7 +130,7 @@ groups:
       runbook_id: _p4d_ssl_certificate_expiry
 
   - alert: HAS SSL certificate expiry
-    expr: ((p4_has_ssl_cert_expires - time()) / (3600 * 24)) < 14
+    expr: ((p4_auth_ssl_cert_expires - time()) / (3600 * 24)) < 14
     for: 2h
     labels:
       severity: "warning"
