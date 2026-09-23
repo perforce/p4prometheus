@@ -951,7 +951,7 @@ Data directories:
   Alertmanager:      ${data_root}/alertmanager/
   Grafana:           ${data_root}/grafana/  (if -d was specified)
   Pushgateway:       ${data_root}/pushgateway/  (if installed)
-    Pint config:       /etc/prometheus/pint_vm.hcl  (if -pint)
+  Pint config:       /etc/prometheus/pint_vm.hcl  (if -pint)
 
 Config files to review:
   /etc/prometheus/prometheus.yml     (scrape targets, rule files)
