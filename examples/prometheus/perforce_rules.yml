@@ -172,13 +172,13 @@ groups:
       runbook_id: _replication_slow
 
   - alert: Diskspace Percentage Used Above Percentage Threshold
-    # Within 10% of filling up - note we also do a query to return a useful indicator of how much space is free.
+    # Within 10% of filling up - note we also do a query in the summary to return a useful indicator of how much space is free.
     # Only drawback of doing this is that we can't replay such a query using the Victoria Metrics feature
     expr: >
-        (100.0 - 100 * (
-             node_filesystem_avail_bytes{mountpoint=~"/hx.*"}
-             / on (instance, mountpoint) node_filesystem_size_bytes{mountpoint=~"/hx.*"}
-        )) > 90
+         (100.0 - 100 * min by (instance, mountpoint) (
+           node_filesystem_avail_bytes{mountpoint=~"/hx.*"}
+           / on (instance, mountpoint, device) node_filesystem_size_bytes{mountpoint=~"/hx.*"}
+         )) > 90
     for: 2h
     labels:
       severity: "warning"
@@ -192,9 +192,9 @@ groups:
 
   - alert: Diskspace Below Filesys Config /hxlogs - P4D STOPPED!
     expr: >
-        node_filesystem_free_bytes{mountpoint="/hxlogs"} -
+      min by (instance, mountpoint) (node_filesystem_avail_bytes{mountpoint="/hxlogs"}) -
             on (instance) p4_filesys_min{filesys="P4LOG"} < 0 or
-        node_filesystem_free_bytes{mountpoint="/hxlogs"} -
+      min by (instance, mountpoint) (node_filesystem_avail_bytes{mountpoint="/hxlogs"}) -
             on (instance) p4_filesys_min{filesys="P4JOURNAL"} < 0
     for: 3m
     labels:
@@ -206,7 +206,7 @@ groups:
 
   - alert: Diskspace Below Filesys Config /hxmetadata - P4D STOPPED!
     expr: >
-        node_filesystem_free_bytes{mountpoint="/hxmetadata"} -
+        min by (instance, mountpoint) (node_filesystem_avail_bytes{mountpoint="/hxmetadata"}) -
             on (instance) p4_filesys_min{filesys="P4ROOT"} < 0
     for: 3m
     labels:
@@ -218,7 +218,7 @@ groups:
 
   - alert: Diskspace Below Filesys Config /hxdepots - P4D STOPPED!
     expr: >
-        node_filesystem_free_bytes{mountpoint="/hxdepots",instance!~".*proxy.*"} -
+        min by (instance, mountpoint) (node_filesystem_avail_bytes{mountpoint="/hxdepots",instance!~".*proxy.*"}) -
             on (instance) p4_filesys_min{filesys="depot"} < 0
     for: 3m
     labels:
@@ -231,7 +231,7 @@ groups:
   # Enable if proxies exist
   # - alert: Diskspace Low - Proxy STOPPED!
   #   expr: >
-  #       node_filesystem_free_bytes{mountpoint="/hxdepots",instance=~".*proxy.*"} -
+  #       min by (instance, mountpoint) (node_filesystem_avail_bytes{mountpoint="/hxdepots",instance=~".*proxy.*"}) -
   #           on (instance) p4_filesys_min{filesys="depot",instance=~".*proxy.*"} < 0
   #   for: 3m
   #   labels:
@@ -243,7 +243,7 @@ groups:
 
   - alert: HX Diskspace Predicted Low /hxdepots
     expr: >
-        predict_linear(node_filesystem_free_bytes{mountpoint="/hxdepots"}[1h], 1 * 24 * 3600) -
+        min by (instance, mountpoint) (predict_linear(node_filesystem_avail_bytes{mountpoint="/hxdepots"}[1h], 1 * 24 * 3600)) -
            on (instance) p4_filesys_min{filesys="depot"} < 0
     for: 4h
     labels:
@@ -255,9 +255,9 @@ groups:
 
   - alert: HX Diskspace Predicted Low /hxlogs
     expr: >
-        predict_linear(node_filesystem_free_bytes{mountpoint="/hxlogs"}[1h], 1 * 24 * 3600) -
+          min by (instance, mountpoint) (predict_linear(node_filesystem_avail_bytes{mountpoint="/hxlogs"}[1h], 1 * 24 * 3600)) -
            on (instance) p4_filesys_min{filesys="P4LOG"} < 0 or
-        predict_linear(node_filesystem_free_bytes{mountpoint="/hxlogs"}[1h], 1 * 24 * 3600) -
+          min by (instance, mountpoint) (predict_linear(node_filesystem_avail_bytes{mountpoint="/hxlogs"}[1h], 1 * 24 * 3600)) -
            on (instance) p4_filesys_min{filesys="P4JOURNAL"} < 0
     for: 4h
     labels:
@@ -269,7 +269,7 @@ groups:
 
   - alert: HX Diskspace Predicted Low /hxmetadata
     expr: >
-        predict_linear(node_filesystem_free_bytes{mountpoint="/hxmetadata"}[1h], 1 * 24 * 3600) -
+        min by (instance, mountpoint) (predict_linear(node_filesystem_avail_bytes{mountpoint="/hxmetadata"}[1h], 1 * 24 * 3600)) -
            on (instance) p4_filesys_min{filesys="P4ROOT"} < 0
     for: 4h
     labels:
@@ -281,7 +281,7 @@ groups:
 
   - alert: Root Diskspace Predicted Low
     expr: >
-        predict_linear(node_filesystem_free_bytes{mountpoint="/"}[1h], 1 * 24 * 3600)  < 0
+        predict_linear(node_filesystem_avail_bytes{mountpoint="/"}[1h], 1 * 24 * 3600)  < 0
     for: 2h
     labels:
       severity: "warning"
@@ -323,10 +323,10 @@ groups:
 
   - alert: Hansoft Diskspace Low
     expr: >
-        predict_linear(node_filesystem_free_bytes{instance=~".*hansoft.*",mountpoint="/"}[1h], 7 * 24 * 3600) < 0 or
-        predict_linear(node_filesystem_free_bytes{instance=~".*hansoft.*",mountpoint="/opt/HansoftServer"}[1h], 7 * 24 * 3600) < 0 or
-        node_filesystem_free_bytes{instance=~".*hansoft.*",mountpoint="/"} / (1024 * 1024 * 1024) < 5 or
-        node_filesystem_free_bytes{instance=~".*hansoft.*",mountpoint="/opt/HansoftServer"} / (1024 * 1024 * 1024) < 15
+        predict_linear(node_filesystem_avail_bytes{instance=~".*hansoft.*",mountpoint="/"}[1h], 7 * 24 * 3600) < 0 or
+        predict_linear(node_filesystem_avail_bytes{instance=~".*hansoft.*",mountpoint="/opt/HansoftServer"}[1h], 7 * 24 * 3600) < 0 or
+        node_filesystem_avail_bytes{instance=~".*hansoft.*",mountpoint="/"} / (1024 * 1024 * 1024) < 5 or
+        node_filesystem_avail_bytes{instance=~".*hansoft.*",mountpoint="/opt/HansoftServer"} / (1024 * 1024 * 1024) < 15
     for: 4h
     labels:
       severity: "warning"
