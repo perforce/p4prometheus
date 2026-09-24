@@ -734,7 +734,7 @@ create_vmagent_configs_from_push_config() {
 
     if [[ ! -f "$config_file" ]]; then
         msg "Warning: Config file $config_file not found, skipping vmagent config creation"
-        return
+        return 1
     fi
 
     # shellcheck disable=SC1090
@@ -747,7 +747,7 @@ create_vmagent_configs_from_push_config() {
 
     if [[ -z "$customer" || -z "$instance" || -z "$host" ]]; then
         msg "Warning: Required metrics values not found in $config_file"
-        return
+        return 1
     fi
 
     local vm_host="${host/:9091/:9093}"
@@ -803,10 +803,22 @@ EOF
         chown "$OSUSER:$OSGROUP" "$vm_cfg_dir/.vmpassword"
         chmod 600 "$vm_cfg_dir/.vmpassword"
     else
-        msg "Warning: metrics_passwd not found in $config_file"
+        msg "Warning: metrics_passwd not found in $config_file; creating a placeholder password file"
+        echo "MySecurePassword_CHANGEME" > "$vm_cfg_dir/.vmpassword"
+        chown "$OSUSER:$OSGROUP" "$vm_cfg_dir/.vmpassword"
+        chmod 600 "$vm_cfg_dir/.vmpassword"
     fi
 
     comment_out_push_metrics_cron "$OSUSER"
+    return 0
+}
+
+vmagent_config_is_complete() {
+    local vm_cfg_dir=${vmagent_config_dir:-/var/vmagent}
+    [[ -f "$vm_cfg_dir/vmagent.env" &&
+       -f "$vm_cfg_dir/relabelConfig.yml" &&
+       -f "$vm_cfg_dir/vmagent.yml" &&
+       -f "$vm_cfg_dir/.vmpassword" ]]
 }
 
 create_vmagent_temp_configs() {
@@ -901,8 +913,13 @@ install_vmagent() {
 
     if [[ "$mode" == "temp" ]]; then
         create_vmagent_temp_configs
+    elif vmagent_config_is_complete; then
+        msg "Keeping existing vmagent configuration in $vm_cfg_dir"
+    elif ! create_vmagent_configs_from_push_config; then
+        msg "Creating placeholder vmagent configuration in $vm_cfg_dir for review"
+        create_vmagent_temp_configs
     else
-        create_vmagent_configs_from_push_config
+        msg "Created vmagent configuration from ${p4prom_config_dir}/.push_metrics.cfg"
     fi
 
     write_vmagent_service_file /etc/systemd/system/vmagent.service

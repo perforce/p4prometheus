@@ -87,7 +87,9 @@ update_p4prom.sh -h
     --local-tarballs-dir  Directory of pre-staged release tarballs (air-gap installs).
                           Skips all downloads; file names must match GitHub release assets.
     -vmagent              Install vmagent to replace legacy push_metrics cron jobs.
-                          Not relevant for most installations - intended for P4RA only.
+                          Intended for P4RA only. Migrates a valid .push_metrics.cfg,
+                          preserves a complete existing configuration, or creates
+                          placeholder files for review before starting vmagent.
 
 Specify either the SDP instance (e.g. 1), or -nosdp
 
