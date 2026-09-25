@@ -211,14 +211,92 @@ Per a new (evolving-toward-standard) convention:
 - Practical implication: don't casually gitignore a future top-level `ai/`
   again — only `ai_dev_support/` is meant to be excluded.
 
+## Follow-up: filed the two deferred issues (#123, #124)
+
+After further discussion, decided to permanently version `ai_dev_support/`
+(see "Convention change" section below) rather than treat it as temporary/
+gitignored. Once that was settled, drafted and filed the two issues that
+had been deferred out of #122's scope:
+
+- **#123 — Improve support for air-gapped installation**:
+  https://github.com/perforce/p4prometheus/issues/123
+  Loosely-scoped exploration issue covering (1) Grafana install via
+  `apt`/`yum` assuming network access, and (2) whether/how `/etc/*` config
+  could optionally relocate under `-d`. Deliberately non-committal on
+  solutions pending investigation — may split into two issues later.
+- **#124 — Add an uninstall/reset script for P4Prometheus components**:
+  https://github.com/perforce/p4prometheus/issues/124
+  SDP `DANGER_CLEAN.sh`-inspired (but likely more calmly-named, given a
+  lower blast radius than tearing down a P4 server with depot data)
+  uninstall/reset script per role, with confirmation-gating, dry-run
+  support (matching the existing `--dry.run` convention), and an open
+  decision point on default data-directory handling (leave in place by
+  default vs. remove).
+
+Workflow used: drafted both as untracked `.md` files first
+(`github-issue-draft-123.md`, `github-issue-draft-124.md`, tentative
+numbers guessed correctly), got sign-off, then filed both via the GitHub
+Issues API in a single Python/curl-style batch using the PAT (see "PAT
+usage tip" above for the pattern). Both landed exactly at the guessed
+numbers (123, 124), so no renaming was needed this time.
+
+## Convention change: `ai/` → `ai_dev_support/`, and permanently versioned
+
+Partway through this session, renamed `ai/` → `ai_dev_support/` (see
+below) and initially kept it gitignored, matching the pre-existing `ai/`
+behavior. After more thought (see chat discussion), decided to
+**permanently version** `ai_dev_support/` instead, for two reasons:
+
+- **Training value**: session logs capture reasoning/trade-offs/dead ends
+  that the code diff alone doesn't show.
+- **Audit trail value**: a durable record of AI-assisted changes over
+  time.
+
+This is distinct from the earlier idea of a future `ai/dev/` and `ai/ops/`
+tree, which will be versioned for a different reason — those *will* be
+part of the shipped product (AI skills for developing/testing and
+operating P4Prometheus, respectively). `ai_dev_support/` remains
+explicitly **not** part of the product; the folder name is intended to
+make that clear to anyone who clones the repo.
+
+Added `ai_dev_support/README.md` documenting: the folder's purpose, the
+`session-log-YYYY-MM-DD-<short-tag>.md` naming convention, and explicit
+guidance on keeping secrets (especially GitHub PATs) out of committed
+session logs (since committed history is effectively permanent — a later
+"remove the secret" commit does not remove it from history).
+
+Renamed the old, pre-convention session log for clarity/consistency:
+`session-log.md` → `session-log-2026-07-14-advanced-install-options.md`.
+
+### Clarified Git mechanics (for future reference)
+
+- A `git push` to a branch is "quiet" — it doesn't create a PR, notify
+  anyone, or request review. It's pure storage/sync to the remote.
+- Once pushed, you can keep pushing more commits to the same branch
+  indefinitely, before *or after* opening a PR — opening a PR does not
+  freeze the branch or require starting over; it's just a GitHub-side
+  comparison/discussion view on top of the branch's current state.
+- A plain `git clone <url>` brings down *all* branches' history, but only
+  checks out the default branch (`master`) locally. To get another
+  branch: `git checkout <branch-name>` (git auto-creates a local tracking
+  branch from `origin/<branch-name>` on first checkout in a fresh clone).
+- The `.git` suffix on a clone URL is optional — it's the traditional
+  bare-repo directory-naming convention on the server side; GitHub accepts
+  URLs with or without it interchangeably.
+
 ## Status at end of session
 
-- Branch `122-preflight-checks-docs` pushed, 2 commits, no PR filed yet
-  (by design — review/comment period first).
+- Branch `122-preflight-checks-docs` pushed, 4 commits total, no PR filed
+  yet (by design — review/comment period first; clarified this doesn't
+  block further commits either way).
 - Doc HTML/PDF regenerated and committed alongside the `.adoc` change.
-- Lab test plan written for handoff (not part of the git repo).
-- Two follow-up issues intentionally not yet filed (uninstall/reset script;
-  air-gapped packaged-component installs) — captured here and in prior
-  session notes for whenever we pick that up.
-- New `ai_dev_support/` naming convention for session logs established;
-  this file is the first to use it.
+- Lab test plan written for handoff (`ai_dev_support/test_plan_122.md` is
+  actually still under the gitignored `test/` dir as of this session —
+  not moved).
+- `ai_dev_support/` folder renamed from `ai/`, permanently un-gitignored,
+  and given a README with a secrets-handling policy.
+- Two previously-deferred issues filed: #123 (air-gapped installation
+  improvements) and #124 (uninstall/reset script).
+- New `ai_dev_support/session-log-YYYY-MM-DD-<short-tag>.md` naming
+  convention established and documented; this file and the renamed
+  2026-07-14 log are the first two using it.
