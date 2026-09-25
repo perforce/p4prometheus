@@ -155,6 +155,8 @@ else
     msg "  (Run install_prom_graf.sh first, or specify -d / -b / -r flags)"
 fi
 
+preflight_check_dirs -d "$data_root" "/var/lib" -b "$bin_dir" "/usr/local/bin"
+
 # ============================================================
 # OS detection (needed for Grafana package manager choice)
 

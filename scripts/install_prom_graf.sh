@@ -185,6 +185,8 @@ if [[ $(id -u) -ne 0 ]]; then
    exit 1
 fi
 
+preflight_check_dirs -d "$data_root" "/var/lib" -b "$bin_dir" "/usr/local/bin"
+
 declare -i SELinuxEnabled=0
 
 if command -v getenforce > /dev/null; then

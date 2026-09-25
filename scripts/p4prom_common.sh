@@ -10,6 +10,29 @@ P4PROM_COMMON_SH_LOADED=1
 function msg () { echo -e "$*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
+# preflight_check_dirs: verify that any custom -d/-b directories already exist
+# before proceeding. This is deliberate: silently `mkdir -p`-ing a top-level
+# path (e.g. a dedicated volume that failed to mount) would otherwise write
+# data to the wrong disk (typically the root filesystem) without warning.
+# Callers pass pairs of: <flag name> <path> <default path>
+# The check is skipped for any path that still equals its documented default,
+# since defaults (e.g. /var/lib, /usr/local/bin) are expected to always exist.
+preflight_check_dirs () {
+    local flag path default
+    while [[ $# -gt 0 ]]; do
+        flag=$1; path=$2; default=$3; shift 3
+        if [[ "$path" == "$default" ]]; then
+            continue
+        fi
+        if [[ ! -d "$path" ]]; then
+            bail "Directory specified with ${flag} does not exist: ${path}\nCreate or mount this directory before running the installer (e.g. mount a dedicated volume here). The installer will not auto-create top-level custom paths, to avoid silently writing data to the wrong disk if a volume failed to mount."
+        fi
+        if [[ ! -w "$path" ]]; then
+            bail "Directory specified with ${flag} is not writable: ${path}"
+        fi
+    done
+}
+
 systemd_enable_and_restart() {
     local service_file=$1
     local service_name=$2

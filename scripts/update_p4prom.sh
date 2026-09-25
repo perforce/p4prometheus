@@ -153,20 +153,12 @@ if [[ $(id -u) -ne 0 ]]; then
    exit 1
 fi
 
-# Check if the local_bin_dir exists
-if [[ ! -d "$local_bin_dir" ]]; then
-    echo "Error: Directory $local_bin_dir does not exist. Please create it before running this script!"
-    exit 1
-fi
-
 command -v wget 2> /dev/null || bail "Failed to find wget in path - please install it"
 
 if command -v getenforce > /dev/null; then
     selinux=$(getenforce)
     [[ "$selinux" == "Enforcing" ]] && SELinuxEnabled=1
 fi
-
-[[ -d "$metrics_root" ]] || bail "Specified metrics directory '$metrics_root' does not exist - please create it!"
 
 if [[ $UseSDP -eq 1 ]]; then
     SDP_INSTANCE=${SDP_INSTANCE:-Unset}
@@ -247,6 +239,13 @@ fi
 p4prom_config_file="$p4prom_config_dir/p4prometheus.yaml"
 p4metrics_config_file="$p4prom_config_dir/p4metrics.yaml"
 monitor_metrics_config_file="$p4prom_config_dir/monitor_metrics.yaml"
+
+# Preflight checks - run after state file loading, since local_bin_dir/metrics_root
+# may have been overridden by saved state above. Custom (non-default) paths must
+# already exist; the script will not silently mkdir -p a top-level custom path,
+# to avoid writing data to the wrong disk if a dedicated volume failed to mount.
+preflight_check_dirs -b "$local_bin_dir" "/usr/local/bin"
+[[ -d "$metrics_root" ]] || bail "Specified metrics directory '$metrics_root' does not exist - please create it!"
 
 [[ -f "$p4prom_config_file" ]] || bail "Config file '$p4prom_config_file' does not exist - please run install_p4prom.sh instead of this script!"
 
