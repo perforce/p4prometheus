@@ -32,13 +32,48 @@ Install the following components for each role:
 |link:../scripts/install_node.sh[install_node.sh]: node_exporter only, for example on Swarm, Hansoft, or Helix TeamHub hosts.
 |===
 
+=== Expected systemd Services by Role
+
+Use this table to confirm which services should be running (`systemctl status <service>`) on a given machine after installation:
+
+[cols="1,3"]
+|===
+|Role |systemd services (installed/enabled by the installer)
+
+|Monitoring server
+|`node_exporter`, `prometheus`, `victoria-metrics`, `grafana-server` (package-managed), and optionally `alertmanager`, `pushgateway`, `pint`
+
+|Helix Core server
+|`node_exporter`, `p4prometheus`, `p4metrics`, `monitor_locks.timer` (which runs `monitor_locks.service`), and optionally `vmagent` (with `-push`)
+
+|Other monitored server (Swarm, Hansoft, HTH, etc.)
+|`node_exporter` only
+|===
+
+NOTE: Only `node_exporter` runs on "other monitored server" hosts; there is no p4prometheus, p4metrics, or monitoring-stack component to install there.
+
+=== Combined-Role Hosts
+
+Some hosts serve more than one role, e.g. a Helix Core replica that also runs Swarm. Do **not** run `install_node.sh` on a host where `install_p4prom.sh` has already been (or will be) run: both scripts install and manage `node_exporter`, and running both leads to duplicate/conflicting systemd unit definitions.
+
+For a combined Helix Core + Swarm (or other monitored application) host:
+
+- Run only `install_p4prom.sh` (it already installs `node_exporter`).
+- Ensure the `node_exporter` `--collector.textfile.directories` value covers metrics written by any other locally-run application (this project only writes p4prometheus/p4metrics `.prom` files, so metrics from Swarm, etc. would require their own textfile-collector export mechanism configured separately).
+- Run `update_p4prom.sh` for upgrades on this host; do not additionally run `update_node.sh`.
+
 == Automated Installation
 
-Run the relevant installer as `root`. Download the script from a checkout, or download its raw GitHub URL, make it executable, and review the available options before installing:
+Run the relevant installer as `root`. Download the script from a checkout, or download its raw GitHub URL, make it executable, and review the available options before installing.
+
+`p4prom_common.sh` is a shared library required by all four install/update scripts (`install_prom_graf.sh`, `update_prom_graf.sh`, `install_p4prom.sh`, `update_p4prom.sh`). If missing, each script attempts to auto-download it from `master` on GitHub — but this will fail on a host with no internet access. Always download `p4prom_common.sh` into the same directory as whichever script you are running, especially for air-gapped installs (see <<air-gapped-installation>>).
+
+For the monitoring server:
 
 [source,bash]
 ----
 wget https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh
+wget https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/p4prom_common.sh
 chmod +x install_prom_graf.sh
 ./install_prom_graf.sh -h
 ----
@@ -163,6 +198,8 @@ sudo ./install_prom_graf.sh -d /data
 sudo ./update_prom_graf.sh
 ----
 
+IMPORTANT: The `-d` (and `-b`) path must already exist (e.g. a volume you have deliberately created or mounted) before running the installer. The scripts will fail with an error rather than create missing top-level paths automatically — this avoids silently writing data to the root filesystem if an intended dedicated volume failed to mount.
+
 The selected path is retained in `/etc/p4prometheus-monitoring/install.env`. To move an existing installation, use:
 
 [source,bash]
@@ -171,6 +208,30 @@ sudo ./migrate_prom_graf_data.sh -d /data --dry-run
 sudo ./migrate_prom_graf_data.sh -d /data
 sudo ./migrate_prom_graf_data.sh -d /data --cleanup-old
 ----
+
+==== What `-d` does and does not relocate
+
+`-d` relocates the runtime *data* directories only (Prometheus TSDB, VictoriaMetrics storage, Alertmanager state, Grafana's data directory, Pushgateway persistence file). It does **not** move package/config files, which always remain under `/etc/*` and `/usr/share/*` regardless of `-d`:
+
+[cols="1,2"]
+|===
+|Path |Contents (never relocated by `-d`)
+
+|`/etc/grafana/grafana.ini`
+|Grafana's own config file (it is edited in place to *point at* the relocated data dir, but the file itself stays here)
+
+|`/etc/prometheus/prometheus.yml`, `/etc/prometheus/perforce_rules*.yml`
+|Prometheus configuration and alerting rules
+
+|`/etc/alertmanager/alertmanager.yml`
+|Alertmanager configuration
+
+|`/usr/share/grafana/`
+|Grafana application files (package-managed)
+
+|`/etc/systemd/system/*.service`
+|systemd unit files (fixed location by systemd convention)
+|===
 
 === Retention, Binaries, and Targets
 
@@ -183,6 +244,7 @@ sudo ./install_prom_graf.sh -d /data -r 12 -b /opt/monitoring/bin
 sudo ./install_prom_graf.sh -target myp4server:9100 -target replica1:9100
 ----
 
+[[air-gapped-installation]]
 === Air-Gapped Installation
 
 Download the required GitHub release assets on a connected machine, transfer them to the target, then pass their directory with `--local-tarballs-dir`:
@@ -193,7 +255,7 @@ sudo ./install_prom_graf.sh -d /data --local-tarballs-dir /opt/installers
 sudo ./install_p4prom.sh --local-tarballs-dir /opt/installers
 ----
 
-`p4prom_common.sh` must be alongside `install_p4prom.sh` or `update_p4prom.sh` on air-gapped Helix Core servers.
+`p4prom_common.sh` must be pre-staged alongside whichever script you are running on an air-gapped host — this applies to all four scripts (`install_prom_graf.sh`, `update_prom_graf.sh`, `install_p4prom.sh`, `update_p4prom.sh`), not just the Helix Core server ones. Each script attempts to auto-download it from GitHub if missing, which will fail with no network access.
 
 === Install State and Fleet Configuration
 
