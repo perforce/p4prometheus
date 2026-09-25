@@ -149,11 +149,7 @@ if [[ $(id -u) -ne 0 ]]; then
    exit 1
 fi
 
-# Check if the local_bin_dir exists
-if [[ ! -d "$local_bin_dir" ]]; then
-    echo "Error: Directory $local_bin_dir does not exist. Please create it before running this script."
-    exit 1
-fi
+preflight_check_dirs -b "$local_bin_dir" "/usr/local/bin"
 
 command -v wget 2> /dev/null || bail "Failed to find wget in path"
 
