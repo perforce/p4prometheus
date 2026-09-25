@@ -11,11 +11,11 @@ go.work.sum
 misc/
 test/
 
-# AI session logs and generated planning files (not part of the product).
-# Future ai/dev and ai/ops folders are intended to become part of the
-# product itself (AI skills for developing/testing and operating
-# P4Prometheus, respectively) and should NOT be added here.
-ai_dev_support/
+# ai_dev_support/ (session logs, issue drafts, test plans) IS versioned,
+# deliberately, for training/audit-trail value -- see ai_dev_support/README.md.
+# It is NOT part of the shipped product. Future ai/dev and ai/ops folders
+# (not yet created) will be part of the product itself (AI skills for
+# developing/testing and operating P4Prometheus, respectively).
 
 # AI agent instruction files in repo root (agent-specific names / symlinks)
 # .github/copilot-instructions.md is intentionally NOT ignored (proper location)
