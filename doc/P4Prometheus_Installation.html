@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="generator" content="Asciidoctor 2.0.22">
+<meta name="generator" content="Asciidoctor 2.0.23">
 <meta name="author" content="Perforce Professional Services">
 <title>Perforce P4Prometheus - Installation Guide</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,300italic,400,400italic,600,600italic%7CNoto+Serif:400,400italic,700,700italic%7CDroid+Sans+Mono:400,700">
@@ -449,7 +449,12 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div id="toctitle">Table of Contents</div>
 <ul class="sectlevel1">
 <li><a href="#_preface">Preface</a></li>
-<li><a href="#_deployment_roles">1. Deployment Roles</a></li>
+<li><a href="#_deployment_roles">1. Deployment Roles</a>
+<ul class="sectlevel2">
+<li><a href="#_expected_systemd_services_by_role">1.1. Expected systemd Services by Role</a></li>
+<li><a href="#_combined_role_hosts">1.2. Combined-Role Hosts</a></li>
+</ul>
+</li>
 <li><a href="#_automated_installation">2. Automated Installation</a>
 <ul class="sectlevel2">
 <li><a href="#_updating_config_files_for_new_installation">2.1. Updating config files for new installation</a></li>
@@ -469,9 +474,13 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 <li><a href="#_enterprise_options">3. Enterprise Options</a>
 <ul class="sectlevel2">
-<li><a href="#_dedicated_data_volume">3.1. Dedicated Data Volume</a></li>
+<li><a href="#_dedicated_data_volume">3.1. Dedicated Data Volume</a>
+<ul class="sectlevel3">
+<li><a href="#_what_d_does_and_does_not_relocate">3.1.1. What <code>-d</code> does and does not relocate</a></li>
+</ul>
+</li>
 <li><a href="#_retention_binaries_and_targets">3.2. Retention, Binaries, and Targets</a></li>
-<li><a href="#_air_gapped_installation">3.3. Air-Gapped Installation</a></li>
+<li><a href="#air-gapped-installation">3.3. Air-Gapped Installation</a></li>
 <li><a href="#_install_state_and_fleet_configuration">3.4. Install State and Fleet Configuration</a></li>
 </ul>
 </li>
@@ -588,17 +597,90 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </tr>
 </tbody>
 </table>
+<div class="sect2">
+<h3 id="_expected_systemd_services_by_role">1.1. Expected systemd Services by Role</h3>
+<div class="paragraph">
+<p>Use this table to confirm which services should be running (<code>systemctl status &lt;service&gt;</code>) on a given machine after installation:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 75%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Role</th>
+<th class="tableblock halign-left valign-top">systemd services (installed/enabled by the installer)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Monitoring server</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>node_exporter</code>, <code>prometheus</code>, <code>victoria-metrics</code>, <code>grafana-server</code> (package-managed), and optionally <code>alertmanager</code>, <code>pushgateway</code>, <code>pint</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Helix Core server</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>node_exporter</code>, <code>p4prometheus</code>, <code>p4metrics</code>, <code>monitor_locks.timer</code> (which runs <code>monitor_locks.service</code>), and optionally <code>vmagent</code> (with <code>-push</code>)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Other monitored server (Swarm, Hansoft, HTH, etc.)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>node_exporter</code> only</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+Only <code>node_exporter</code> runs on "other monitored server" hosts; there is no p4prometheus, p4metrics, or monitoring-stack component to install there.
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_combined_role_hosts">1.2. Combined-Role Hosts</h3>
+<div class="paragraph">
+<p>Some hosts serve more than one role, e.g. a Helix Core replica that also runs Swarm. Do <strong>not</strong> run <code>install_node.sh</code> on a host where <code>install_p4prom.sh</code> has already been (or will be) run: both scripts install and manage <code>node_exporter</code>, and running both leads to duplicate/conflicting systemd unit definitions.</p>
+</div>
+<div class="paragraph">
+<p>For a combined Helix Core + Swarm (or other monitored application) host:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Run only <code>install_p4prom.sh</code> (it already installs <code>node_exporter</code>).</p>
+</li>
+<li>
+<p>Ensure the <code>node_exporter</code> <code>--collector.textfile.directories</code> value covers metrics written by any other locally-run application (this project only writes p4prometheus/p4metrics <code>.prom</code> files, so metrics from Swarm, etc. would require their own textfile-collector export mechanism configured separately).</p>
+</li>
+<li>
+<p>Run <code>update_p4prom.sh</code> for upgrades on this host; do not additionally run <code>update_node.sh</code>.</p>
+</li>
+</ul>
+</div>
+</div>
 </div>
 </div>
 <div class="sect1">
 <h2 id="_automated_installation">2. Automated Installation</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>Run the relevant installer as <code>root</code>. Download the script from a checkout, or download its raw GitHub URL, make it executable, and review the available options before installing:</p>
+<p>Run the relevant installer as <code>root</code>. Download the script from a checkout, or download its raw GitHub URL, make it executable, and review the available options before installing.</p>
+</div>
+<div class="paragraph">
+<p><code>p4prom_common.sh</code> is a shared library required by all four install/update scripts (<code>install_prom_graf.sh</code>, <code>update_prom_graf.sh</code>, <code>install_p4prom.sh</code>, <code>update_p4prom.sh</code>). If missing, each script attempts to auto-download it from <code>master</code> on GitHub — but this will fail on a host with no internet access. Always download <code>p4prom_common.sh</code> into the same directory as whichever script you are running, especially for air-gapped installs (see <a href="#air-gapped-installation">Section 3.3, &#8220;Air-Gapped Installation&#8221;</a>).</p>
+</div>
+<div class="paragraph">
+<p>For the monitoring server:</p>
 </div>
 <div class="listingblock">
 <div class="content">
 <pre class="highlight"><code class="language-bash" data-lang="bash">wget https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/install_prom_graf.sh
+wget https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/p4prom_common.sh
 chmod +x install_prom_graf.sh
 ./install_prom_graf.sh -h</code></pre>
 </div>
@@ -786,7 +868,9 @@ update_p4prom.sh -h
     --local-tarballs-dir  Directory of pre-staged release tarballs (air-gap installs).
                           Skips all downloads; file names must match GitHub release assets.
     -vmagent              Install vmagent to replace legacy push_metrics cron jobs.
-                          Not relevant for most installations - intended for P4RA only.
+                          Intended for P4RA only. Migrates a valid .push_metrics.cfg,
+                          preserves a complete existing configuration, or creates
+                          placeholder files for review before starting vmagent.
 
 Specify either the SDP instance (e.g. 1), or -nosdp
 
@@ -949,6 +1033,18 @@ sudo ./update_p4prom.sh 1</code></pre>
 sudo ./update_prom_graf.sh</code></pre>
 </div>
 </div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-important" title="Important"></i>
+</td>
+<td class="content">
+The <code>-d</code> (and <code>-b</code>) path must already exist (e.g. a volume you have deliberately created or mounted) before running the installer. The scripts will fail with an error rather than create missing top-level paths automatically — this avoids silently writing data to the root filesystem if an intended dedicated volume failed to mount.
+</td>
+</tr>
+</table>
+</div>
 <div class="paragraph">
 <p>The selected path is retained in <code>/etc/p4prometheus-monitoring/install.env</code>. To move an existing installation, use:</p>
 </div>
@@ -958,6 +1054,46 @@ sudo ./update_prom_graf.sh</code></pre>
 sudo ./migrate_prom_graf_data.sh -d /data
 sudo ./migrate_prom_graf_data.sh -d /data --cleanup-old</code></pre>
 </div>
+</div>
+<div class="sect3">
+<h4 id="_what_d_does_and_does_not_relocate">3.1.1. What <code>-d</code> does and does not relocate</h4>
+<div class="paragraph">
+<p><code>-d</code> relocates the runtime <strong>data</strong> directories only (Prometheus TSDB, VictoriaMetrics storage, Alertmanager state, Grafana&#8217;s data directory, Pushgateway persistence file). It does <strong>not</strong> move package/config files, which always remain under <code>/etc/<strong></code> and <code>/usr/share/</strong></code> regardless of <code>-d</code>:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 66.6667%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Path</th>
+<th class="tableblock halign-left valign-top">Contents (never relocated by <code>-d</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/etc/grafana/grafana.ini</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Grafana&#8217;s own config file (it is edited in place to <strong>point at</strong> the relocated data dir, but the file itself stays here)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/etc/prometheus/prometheus.yml</code>, <code>/etc/prometheus/perforce_rules*.yml</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Prometheus configuration and alerting rules</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/etc/alertmanager/alertmanager.yml</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Alertmanager configuration</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/usr/share/grafana/</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Grafana application files (package-managed)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/etc/systemd/system/*.service</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">systemd unit files (fixed location by systemd convention)</p></td>
+</tr>
+</tbody>
+</table>
 </div>
 </div>
 <div class="sect2">
@@ -973,7 +1109,7 @@ sudo ./install_prom_graf.sh -target myp4server:9100 -target replica1:9100</code>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_air_gapped_installation">3.3. Air-Gapped Installation</h3>
+<h3 id="air-gapped-installation">3.3. Air-Gapped Installation</h3>
 <div class="paragraph">
 <p>Download the required GitHub release assets on a connected machine, transfer them to the target, then pass their directory with <code>--local-tarballs-dir</code>:</p>
 </div>
@@ -984,7 +1120,7 @@ sudo ./install_p4prom.sh --local-tarballs-dir /opt/installers</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p><code>p4prom_common.sh</code> must be alongside <code>install_p4prom.sh</code> or <code>update_p4prom.sh</code> on air-gapped Helix Core servers.</p>
+<p><code>p4prom_common.sh</code> must be pre-staged alongside whichever script you are running on an air-gapped host — this applies to all four scripts (<code>install_prom_graf.sh</code>, <code>update_prom_graf.sh</code>, <code>install_p4prom.sh</code>, <code>update_p4prom.sh</code>), not just the Helix Core server ones. Each script attempts to auto-download it from GitHub if missing, which will fail with no network access.</p>
 </div>
 </div>
 <div class="sect2">
@@ -2405,7 +2541,7 @@ Checking perforce_rules.yml
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-09-17 13:35:44 +0100
+Last updated 2026-09-25 11:05:34 -0400
 </div>
 </div>
 </body>
