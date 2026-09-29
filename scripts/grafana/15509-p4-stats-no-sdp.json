@@ -901,7 +901,7 @@
       "type": "timeseries"
     },
     {
-      "collapsed": true,
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1100,7 +1100,7 @@
       "type": "row"
     },
     {
-      "collapsed": true,
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1495,7 +1495,7 @@
       "gridPos": {"h": 4, "w": 6, "x": 0, "y": 44},
       "id": 41,
       "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_monitoring_up{serverid=\"$serverid\"}", "refId": "A"}],
+      "targets": [{"expr": "p4_monitoring_up{serverid=\"$serverid\"}", "refId": "A"}],
       "title": "p4metrics collector health",
       "type": "stat"
     },
@@ -1505,7 +1505,7 @@
       "gridPos": {"h": 4, "w": 6, "x": 6, "y": 44},
       "id": 42,
       "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_license_time_remaining{serverid=\"$serverid\"}", "refId": "A"}],
+      "targets": [{"expr": "p4_license_time_remaining{serverid=\"$serverid\"}", "refId": "A"}],
       "title": "License time remaining",
       "type": "stat"
     },
@@ -1515,7 +1515,7 @@
       "gridPos": {"h": 4, "w": 6, "x": 12, "y": 44},
       "id": 43,
       "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_ssl_cert_expires{serverid=\"$serverid\"} - time()", "refId": "A"}],
+      "targets": [{"expr": "p4_ssl_cert_expires{serverid=\"$serverid\"} - time()", "refId": "A"}],
       "title": "SSL certificate time remaining",
       "type": "stat"
     },
@@ -1525,7 +1525,7 @@
       "gridPos": {"h": 4, "w": 6, "x": 18, "y": 44},
       "id": 44,
       "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_locks_cmds_blocked{serverid=\"$serverid\"}", "refId": "A"}],
+      "targets": [{"expr": "p4_locks_cmds_blocked{serverid=\"$serverid\"}", "refId": "A"}],
       "title": "Blocked processes",
       "type": "stat"
     }
