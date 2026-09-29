@@ -153,10 +153,6 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "p4_monitor_by_cmd{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}",
           "format": "time_series",
           "intervalFactor": 1,
@@ -164,10 +160,6 @@
           "refId": "A"
         },
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "sum(p4_monitor_by_cmd{sdpinst=\"$sdpinst\",serverid=\"$serverid\"})",
           "format": "time_series",
           "intervalFactor": 1,
@@ -260,10 +252,6 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "p4_monitor_by_user{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}",
           "format": "time_series",
           "intervalFactor": 1,
@@ -271,10 +259,6 @@
           "refId": "A"
         },
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "sum(p4_monitor_by_user{sdpinst=\"$sdpinst\",serverid=\"$serverid\"})",
           "format": "time_series",
           "intervalFactor": 1,
@@ -332,10 +316,6 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "p4_server_uptime{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}",
           "format": "time_series",
           "intervalFactor": 1,
@@ -393,10 +373,6 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "time() - p4_sdp_checkpoint_log_time{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}",
           "format": "time_series",
           "intervalFactor": 1,
@@ -489,10 +465,6 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "time() - p4_sdp_checkpoint_log_time{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}",
           "format": "time_series",
           "intervalFactor": 1,
@@ -585,10 +557,6 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "p4_sdp_checkpoint_duration{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}",
           "format": "time_series",
           "intervalFactor": 1,
@@ -681,10 +649,6 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "rate(p4_prom_log_lines_read{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}[1m])",
           "format": "time_series",
           "intervalFactor": 1,
@@ -777,20 +741,12 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
            "expr": "rate(p4_completed_cmds_per_day{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}[10m])",
           "format": "time_series",
           "intervalFactor": 1,
           "refId": "A"
         },
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "sum(rate(p4_cmd_counter{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}[10m]))",
           "format": "time_series",
           "intervalFactor": 1,
@@ -896,10 +852,6 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "p4_replica_curr_jnl{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}",
           "format": "time_series",
           "intervalFactor": 1,
@@ -994,10 +946,6 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "p4_replica_curr_pos{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}",
           "format": "time_series",
           "intervalFactor": 1,
@@ -1091,10 +1039,6 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "p4_pull_queue{sdpinst=\"$sdpinst\"}",
           "format": "time_series",
           "intervalFactor": 1,
@@ -1188,10 +1132,6 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "p4_pull_errors{sdpinst=\"$sdpinst\"}",
           "format": "time_series",
           "intervalFactor": 1,
@@ -1298,10 +1238,6 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "topk(10,rate(p4_cmd_cumulative_seconds{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}[1m]))",
           "format": "time_series",
           "intervalFactor": 1,
@@ -1395,10 +1331,6 @@
       "pluginVersion": "11.6.14+security-01",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${ds_prometheus}"
-          },
           "expr": "sum without (instance, job)(topk(10,rate(p4_cmd_counter{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}[1m])))",
           "format": "time_series",
           "intervalFactor": 1,
@@ -1501,10 +1433,6 @@
           "pluginVersion": "11.6.14+security-01",
           "targets": [
             {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${ds_prometheus}"
-              },
               "expr": "sum without (instance, job)(topk(10,rate(p4_total_read_held_seconds{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}[1m])))",
               "format": "time_series",
               "intervalFactor": 1,
@@ -1597,10 +1525,6 @@
           "pluginVersion": "11.6.14+security-01",
           "targets": [
             {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${ds_prometheus}"
-              },
               "expr": "sum without (instance, job)(topk(10,rate(p4_total_read_wait_seconds{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}[1m])))",
               "format": "time_series",
               "intervalFactor": 1,
@@ -1693,10 +1617,6 @@
           "pluginVersion": "11.6.14+security-01",
           "targets": [
             {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${ds_prometheus}"
-              },
               "expr": "sum without (instance, job)(topk(10,rate(p4_total_write_held_seconds{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}[1m])))",
               "format": "time_series",
               "intervalFactor": 1,
@@ -1789,10 +1709,6 @@
           "pluginVersion": "11.6.14+security-01",
           "targets": [
             {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${ds_prometheus}"
-              },
               "expr": "sum without (instance, job)(topk(10,rate(p4_total_write_wait_seconds{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}[1m])))",
               "format": "time_series",
               "intervalFactor": 1,
