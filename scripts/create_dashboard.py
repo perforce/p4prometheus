@@ -376,18 +376,26 @@ class CreateDashboard():
                 dashboard.rows.append(G.Row(title='', showTitle=False))
                 panelsInRow = x = y = 0
                 continue
-            if 'type' in metric and metric['type'] == 'gauge':
-                pass
-            else: # graph
-                panelsInRow += 1
-                if panelsInRow > 2:
-                    y += 30
-                if panelsInRow % 2 == 0:
-                    x = 12
+            if metric.get('sdp_only') and not self.options.use_sdp:
+                continue
+            panelsInRow += 1
+            if panelsInRow > 2:
+                y += 30
+            if panelsInRow % 2 == 0:
+                x = 12
+            panel_type = metric.get('type', 'graph')
+            if panel_type in ('gauge', 'stat'):
+                panel = G.Stat(title=metric['title'],
+                               dataSource=dataSource,
+                               format=metric.get('yformat', 'short'),
+                               graphMode='none',
+                               reduceCalc='lastNotNull',
+                               gridPos=G.GridPos(h=4, w=12, x=x, y=y))
+            else:
                 yAxis = G.single_y_axis(format="short")
                 if 'yformat' in metric:
                     yAxis = G.single_y_axis(format=metric['yformat'])
-                graph = G.Graph(title=metric['title'],
+                panel = G.Graph(title=metric['title'],
                                 dataSource=dataSource,
                                 maxDataPoints=1000,
                                 legend=G.Legend(show=True, alignAsTable=True,
@@ -395,26 +403,26 @@ class CreateDashboard():
                                                 sort='max', sortDesc=True),
                                 yAxes=yAxis,
                                 gridPos=G.GridPos(h=0, w=12, x=x, y=y)) # Half width panels
-                refId = 'A'
-                for targ in metric['target']:
-                    texp = targ['expr']
-                    legend = ""
-                    if self.options.customer:
-                        legend = "{{customer}}, "
-                    legend += "instance {{instance}}, serverid {{serverid}}"
-                    if 'legend' in targ:
-                        legend += ' %s' % targ['legend']
-                    if not self.options.use_sdp: # Remove the SDP tag
-                        texp = texp.replace('sdpinst="$sdpinst",', '')
-                    if self.options.customer: # Add customer tag
-                        texp = texp.replace('{', '{customer="$customer",')
-                    else:
-                        texp = texp.replace('on (customer, ', 'on (') # Remove customer from any on expressions
-                    graph.targets.append(G.Target(expr=texp,
-                                                  legendFormat=legend,
-                                                  refId=refId))
-                    refId = chr(ord(refId) + 1)
-                dashboard.rows[-1].panels.append(graph)
+            refId = 'A'
+            for targ in metric['target']:
+                texp = targ['expr']
+                legend = ""
+                if self.options.customer:
+                    legend = "{{customer}}, "
+                legend += "instance {{instance}}, serverid {{serverid}}"
+                if 'legend' in targ:
+                    legend += ' %s' % targ['legend']
+                if not self.options.use_sdp: # Remove the SDP tag
+                    texp = texp.replace('sdpinst="$sdpinst",', '')
+                if self.options.customer: # Add customer tag
+                    texp = texp.replace('{', '{customer="$customer",')
+                else:
+                    texp = texp.replace('on (customer, ', 'on (') # Remove customer from any on expressions
+                panel.targets.append(G.Target(expr=texp,
+                                              legendFormat=legend,
+                                              refId=refId))
+                refId = chr(ord(refId) + 1)
+            dashboard.rows[-1].panels.append(panel)
 
         # Auto-number panels - returns new dashboard
         dashboard = dashboard.auto_panel_ids()

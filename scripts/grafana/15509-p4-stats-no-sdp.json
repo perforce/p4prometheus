@@ -1552,6 +1552,54 @@
       ],
       "title": "Table Locking",
       "type": "row"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 43},
+      "id": 40,
+      "panels": [],
+      "title": "Health Summary",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${ds_prometheus}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 44},
+      "id": 41,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_monitoring_up{serverid=\"$serverid\"}", "refId": "A"}],
+      "title": "p4metrics collector health",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${ds_prometheus}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 604800}, {"color": "green", "value": 2592000}]}, "unit": "dtdurations"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 44},
+      "id": 42,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_license_time_remaining{serverid=\"$serverid\"}", "refId": "A"}],
+      "title": "License time remaining",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${ds_prometheus}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 604800}, {"color": "green", "value": 2592000}]}, "unit": "dtdurations"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 44},
+      "id": 43,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_ssl_cert_expires{serverid=\"$serverid\"} - time()", "refId": "A"}],
+      "title": "SSL certificate time remaining",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${ds_prometheus}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}, {"color": "red", "value": 5}]}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 44},
+      "id": 44,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_locks_cmds_blocked{serverid=\"$serverid\"}", "refId": "A"}],
+      "title": "Blocked processes",
+      "type": "stat"
     }
   ],
   "preload": false,

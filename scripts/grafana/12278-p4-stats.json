@@ -1805,6 +1805,120 @@
       ],
       "title": "Table Locking",
       "type": "row"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 64
+      },
+      "id": 40,
+      "panels": [],
+      "title": "Health Summary",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ds_prometheus}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 65},
+      "id": 41,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_monitoring_up{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}", "refId": "A"}],
+      "title": "p4metrics collector health",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${ds_prometheus}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 604800}, {"color": "green", "value": 2592000}]}, "unit": "dtdurations"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 65},
+      "id": 42,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_license_time_remaining{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}", "refId": "A"}],
+      "title": "License time remaining",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${ds_prometheus}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 604800}, {"color": "green", "value": 2592000}]}, "unit": "dtdurations"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 65},
+      "id": 43,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_ssl_cert_expires{sdpinst=\"$sdpinst\",serverid=\"$serverid\"} - time()", "refId": "A"}],
+      "title": "SSL certificate time remaining",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${ds_prometheus}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}, {"color": "red", "value": 5}]}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 65},
+      "id": 44,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_locks_cmds_blocked{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}", "refId": "A"}],
+      "title": "Blocked processes",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 69},
+      "id": 45,
+      "panels": [],
+      "title": "SDP Maintenance",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${ds_prometheus}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 70},
+      "id": 46,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_sdp_checkpoint_error{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}", "refId": "A"}],
+      "title": "SDP checkpoint error",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${ds_prometheus}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 70},
+      "id": 47,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "p4_sdp_verify_errors{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}", "refId": "A"}],
+      "title": "SDP verify errors",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${ds_prometheus}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 70},
+      "id": 48,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "increase(p4_journals_rotated{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}[24h])", "refId": "A"}],
+      "title": "Journal rotations (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${ds_prometheus}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 70},
+      "id": 49,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${ds_prometheus}"}, "expr": "increase(p4_logs_rotated{sdpinst=\"$sdpinst\",serverid=\"$serverid\"}[24h])", "refId": "A"}],
+      "title": "Log rotations (24h)",
+      "type": "stat"
     }
   ],
   "preload": false,

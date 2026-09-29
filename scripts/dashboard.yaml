@@ -49,6 +49,48 @@
 # p4_cmd_user_detail_counter
 # p4_cmd_user_detail_cumulative_seconds
 
+- section: Health Summary
+- title: p4metrics collector health
+  type: stat
+  target:
+  - expr: p4_monitoring_up{sdpinst="$sdpinst",serverid="$serverid"}
+- title: License time remaining
+  type: stat
+  target:
+  - expr: p4_license_time_remaining{sdpinst="$sdpinst",serverid="$serverid"}
+  yformat: dtdurations
+- title: SSL certificate time remaining
+  type: stat
+  target:
+  - expr: p4_ssl_cert_expires{sdpinst="$sdpinst",serverid="$serverid"} - time()
+  yformat: dtdurations
+- title: Blocked processes
+  type: stat
+  target:
+  - expr: p4_locks_cmds_blocked{sdpinst="$sdpinst",serverid="$serverid"}
+
+- section: SDP Maintenance
+- title: SDP checkpoint error
+  type: stat
+  sdp_only: true
+  target:
+  - expr: p4_sdp_checkpoint_error{sdpinst="$sdpinst",serverid="$serverid"}
+- title: SDP verify errors
+  type: stat
+  sdp_only: true
+  target:
+  - expr: p4_sdp_verify_errors{sdpinst="$sdpinst",serverid="$serverid"}
+- title: Journal rotations (24h)
+  type: stat
+  sdp_only: true
+  target:
+  - expr: increase(p4_journals_rotated{sdpinst="$sdpinst",serverid="$serverid"}[24h])
+- title: Log rotations (24h)
+  type: stat
+  sdp_only: true
+  target:
+  - expr: increase(p4_logs_rotated{sdpinst="$sdpinst",serverid="$serverid"}[24h])
+
 - section: Disk Space (_UPDATE_FOR_YOUR_SITE_ - check mountpoints)
 - title: Free Space Alert - filesys.*.min
   target:
