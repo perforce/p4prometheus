@@ -1,0 +1,10 @@
+#@data/values
+---
+#! These values are applied after default-values.yml and override matching keys.
+license:
+  warning_days: 30
+custom:
+  log_rate:
+    minimum_lines_per_second: 100
+  checkpoint:
+    maximum_duration_minutes: 200

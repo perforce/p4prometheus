@@ -1,0 +1,28 @@
+#@ load("@ytt:data", "data")
+#@yaml/text-templated-strings
+#! Example custom alert rules. Load this file after perforce_rules.yml and
+#! retain only site-specific policy exceptions here.
+#!
+#! rule_files:
+#!   - "perforce_rules.yml"
+#!   - "custom_perforce_rules.yml"
+groups:
+- name: custom.local.rules
+  rules:
+  - alert: No Logs
+    expr: rate(p4_prom_log_lines_read{sdpinst="(@= data.values.custom.sdp_instance @)",serverid="(@= data.values.custom.server_id @)"}[1m]) < (@= str(data.values.custom.log_rate.minimum_lines_per_second) @)
+    for: 10m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} too few log lines"
+      description: '{{ $labels.instance }} of job {{ $labels.job }} has been below target (value {{ $value | humanize }}) for more than 10 minutes.'
+
+  - alert: Checkpoint Slow
+    expr: p4_sdp_checkpoint_duration{sdpinst="(@= data.values.custom.sdp_instance @)",serverid="(@= data.values.custom.server_id @)"} / 60 > (@= str(data.values.custom.checkpoint.maximum_duration_minutes) @)
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Endpoint {{ $labels.instance }} checkpoint duration warning"
+      description: '{{ $labels.instance }} has been above target (curr value {{ $value | printf "%.02f" }} mins) for more than 10 minutes.'

@@ -1,0 +1,25 @@
+#@data/values
+---
+license:
+  excluded_serverids: ".*ffr.*|.*edge.*|.*EDGE.*|.*[-_]ha.*"
+  urgent_days: 5
+  warning_days: 14
+checkpoint:
+  serverids: ".*master.*|.*edge.*|.*EDGE.*"
+  excluded_instances: ".*p4p.*|.*proxy.*|.*[-_]ha.*"
+  max_age_hours: 25
+  for_duration: 1h
+mountpoints:
+  selector: "/hx.*"
+  logs: "/hxlogs"
+  metadata: "/hxmetadata"
+  depots: "/hxdepots"
+rules:
+  enable_hansoft_disk_alert: true
+custom:
+  sdp_instance: "1"
+  server_id: master
+  log_rate:
+    minimum_lines_per_second: 1
+  checkpoint:
+    maximum_duration_minutes: 60

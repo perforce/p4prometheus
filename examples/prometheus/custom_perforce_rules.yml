@@ -1,0 +1,19 @@
+groups:
+- name: custom.local.rules
+  rules:
+  - alert: No Logs
+    expr: rate(p4_prom_log_lines_read{sdpinst="1",serverid="master"}[1m]) < 100
+    for: 10m
+    labels:
+      severity: critical
+    annotations:
+      summary: Endpoint {{ $labels.instance }} too few log lines
+      description: '{{ $labels.instance }} of job {{ $labels.job }} has been below target (value {{ $value | humanize }}) for more than 10 minutes.'
+  - alert: Checkpoint Slow
+    expr: p4_sdp_checkpoint_duration{sdpinst="1",serverid="master"} / 60 > 200
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: Endpoint {{ $labels.instance }} checkpoint duration warning
+      description: '{{ $labels.instance }} has been above target (curr value {{ $value | printf "%.02f" }} mins) for more than 10 minutes.'
