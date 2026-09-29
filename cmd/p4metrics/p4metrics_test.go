@@ -282,6 +282,28 @@ func TestP4MetricsLicense(t *testing.T) {
 
 }
 
+func TestParseLicenseResponseReplacesPreviousValues(t *testing.T) {
+	cfg := config.Config{}
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+
+	p4m.parseLicenseResponse([]string{
+		"... licenseExpires 1790812800",
+		"... licenseTimeRemaining 208424",
+	})
+	p4m.parseLicenseResponse([]string{
+		"... isLicensed yes",
+		"... userCount 728",
+		"... supportExpires 1811721600",
+	})
+
+	assert.Equal(t, map[string]string{
+		"isLicensed":     "yes",
+		"userCount":      "728",
+		"supportExpires": "1811721600",
+	}, p4m.p4license)
+}
+
 func TestP4ConfigParsing(t *testing.T) {
 	cfg := config.Config{}
 	initLogger()

@@ -1321,6 +1321,16 @@ func (p4m *P4MonitorMetrics) parseLicense() {
 	}
 }
 
+func (p4m *P4MonitorMetrics) parseLicenseResponse(licenseArr []string) {
+	p4m.p4license = make(map[string]string)
+	for _, s := range licenseArr {
+		parts := strings.Split(s, " ")
+		if len(parts) == 3 {
+			p4m.p4license[parts[1]] = parts[2]
+		}
+	}
+}
+
 func (p4m *P4MonitorMetrics) monitorLicense() {
 	// Server license expiry - parsed from "p4 license -u"
 	p4m.startMonitor("monitorLicense", "p4_license")
@@ -1340,12 +1350,7 @@ func (p4m *P4MonitorMetrics) monitorLicense() {
 		p4m.handleP4Error("Error running %s: %v, err:%q", p4cmd, err, errbuf)
 		return
 	}
-	for _, s := range licenseArr {
-		parts := strings.Split(s, " ")
-		if len(parts) == 3 {
-			p4m.p4license[parts[1]] = parts[2]
-		}
-	}
+	p4m.parseLicenseResponse(licenseArr)
 	p4m.logger.Debugf("License: %q, %q", licenseArr, p4m.p4license)
 	p4m.parseLicense()
 	p4m.writeMetricsFile()
