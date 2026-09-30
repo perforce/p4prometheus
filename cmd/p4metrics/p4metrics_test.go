@@ -733,6 +733,16 @@ serverlog.file.1 (type ext4 mounted on /hxlogs) : 2.3M free, 56K used, 1G total 
 	assert.Equal(t, int64(57344), vols["serverlog.file.1"].Used)
 	assert.Equal(t, int64(1073741824), vols["serverlog.file.1"].Total)
 	assert.Equal(t, int(34), vols["serverlog.file.1"].PercentFull)
+
+	volume, err := p4m.parseVolumeInfo("P4ROOT (type xfs) : 64.3G free, 185.7G used, 249.9G total (74% full)")
+	assert.NoError(t, err)
+	assert.Equal(t, "P4ROOT", volume.Name)
+	assert.Equal(t, "xfs", volume.Type)
+	assert.Empty(t, volume.MountPoint)
+	assert.Equal(t, int64(69041599283), volume.Free)
+	assert.Equal(t, int64(199393856716), volume.Used)
+	assert.Equal(t, int64(268328081817), volume.Total)
+	assert.Equal(t, 74, volume.PercentFull)
 }
 
 type SwarmTest struct {

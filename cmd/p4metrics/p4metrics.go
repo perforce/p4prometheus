@@ -1367,6 +1367,7 @@ func (p4m *P4MonitorMetrics) convertToBytes(size string) int64 {
 
 // Examples:
 // P4ROOT (type ext4 mounted on /hxmetadata) : 100.3G free, 273.2G used, 393.5G total (73% full)
+// P4ROOT (type xfs) : 64.3G free, 185.7G used, 249.9G total (74% full)
 // P4JOURNAL (type ext4 mounted on /hxlogs) : 48.6G free, 26G used, 78.6G total (34% full)
 // P4LOG (type ext4 mounted on /hxlogs) : 48.6G free, 26G used, 78.6G total (34% full)
 // TEMP (type ext4 mounted on /hxlogs) : 48.6G free, 26G used, 78.6G total (34% full)
@@ -1377,8 +1378,8 @@ func (p4m *P4MonitorMetrics) convertToBytes(size string) int64 {
 func (p4m *P4MonitorMetrics) parseVolumeInfo(line string) (VolumeInfo, error) {
 	v := VolumeInfo{}
 	// Regular expression to parse the line format
-	// Example: P4ROOT (type ext4 mounted on /hxmetadata) : 100.3G free, 273.2G used, 393.5G total (73% full)
-	re := regexp.MustCompile(`^(\S+)\s*\(type\s+(\w+)\s+mounted\s+on\s+(.+?)\)\s*:\s*(.+?)\s+free,\s*(.+?)\s+used,\s*(.+?)\s+total\s*\((\d+)%\s+full\)`)
+	// The mount point is omitted by some p4d versions or configurations.
+	re := regexp.MustCompile(`^(\S+)\s*\(type\s+(\w+)(?:\s+mounted\s+on\s+(.+?))?\)\s*:\s*(.+?)\s+free,\s*(.+?)\s+used,\s*(.+?)\s+total\s*\((\d+)%\s+full\)`)
 	matches := re.FindStringSubmatch(strings.TrimSpace(line))
 	if len(matches) != 8 {
 		return v, fmt.Errorf("parseVolumeInfo: invalid line format: %s", line)
