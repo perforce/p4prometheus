@@ -150,6 +150,19 @@ groups:
         Endpoint {{ $labels.instance }} for {{ $labels.mountpoint }} disk space percentage is {{ $value | printf "%.02f" }}% full ({{ printf "node_filesystem_avail_bytes{mountpoint='%s',instance='%s'}" $labels.mountpoint $labels.instance | query | first | value | humanize1024 }} free of {{ printf "node_filesystem_size_bytes{mountpoint='%s',instance='%s'}" $labels.mountpoint $labels.instance | query | first | value | humanize1024 }} total)
       description: '{{ $labels.instance }} has been true for 2 hours.'
       runbook_id: _diskspace_percentage_used_above_percentage_threshold
+  - alert: Swarm Opt Diskspace High
+    expr: |
+      (100.0 - 100 * min by (customer, instance, mountpoint) (
+        node_filesystem_avail_bytes{instance=~"(?i).*swarm.*",mountpoint="/opt"}
+        / on (customer, instance, mountpoint, device) node_filesystem_size_bytes{instance=~"(?i).*swarm.*",mountpoint="/opt"}
+      )) > 80
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Endpoint {{ $labels.instance }} Swarm /opt disk space is {{ $value | printf "%.02f" }}% full
+      description: Swarm data and logs are on /opt; investigate growth or expand the volume.
+      runbook_id: _diskspace_percentage_used_above_percentage_threshold
   - alert: Diskspace Below Filesys Config /hxlogs - P4D STOPPED!
     expr: |
       min by (instance, mountpoint) (node_filesystem_avail_bytes{mountpoint="/hxlogs"}) -
