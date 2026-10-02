@@ -198,6 +198,6 @@ notifications:
   slack:
     enabled: false
     mode: "webhook"
-    webhook_url: "https://hooks.slack.com/services/..."
-    # bot_token: "xoxb-..."
+    # webhook_url_env: "P4METRICS_SLACK_WEBHOOK_URL"
+    # bot_token_env: "P4METRICS_SLACK_BOT_TOKEN"
     # channel_id: "C0123456789"

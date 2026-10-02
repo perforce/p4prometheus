@@ -6,6 +6,7 @@ Description=p4prometheus lock monitoring for p4d metrics gathering
 Wants=p4monitor_locks.timer
 
 [Service]
+EnvironmentFile=-/p4/common/site/config/p4monitor_locks.env
 User=perforce
 Type=oneshot
 ExecStart=/p4/common/site/bin/p4monitor_locks.sh 1

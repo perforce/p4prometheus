@@ -1,26 +1,27 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
 
 const defaultConfig = `
-metrics_root:				/hxlogs/metrics
-sdp_instance: 				1
-update_interval: 			60s
-monitor_swarm:		 		false
+metrics_root:                           /hxlogs/metrics
+sdp_instance:                           1
+update_interval:                        60s
+monitor_swarm:                          false
 `
 
 const config2 = `
-metrics_root:				/hxlogs/metrics
-sdp_instance: 				1
-update_interval: 			60s
-monitor_swarm:		 		false
-max_journal_size:			100M
-max_journal_percent:		40
-max_log_size:				10.3G
-max_log_percent:			30
+metrics_root:                           /hxlogs/metrics
+sdp_instance:                           1
+update_interval:                        60s
+monitor_swarm:                          false
+max_journal_size:                       100M
+max_journal_percent:            40
+max_log_size:                           10.3G
+max_log_percent:                        30
 `
 
 func checkValue(t *testing.T, fieldname string, val string, expected string) {
@@ -60,33 +61,33 @@ func TestValidConfig2(t *testing.T) {
 }
 
 const config3 = `
-metrics_root:				/hxlogs/metrics
-sdp_instance: 				1
-max_journal_size:			100A
+metrics_root:                           /hxlogs/metrics
+sdp_instance:                           1
+max_journal_size:                       100A
 `
 
 const configParseJournalFalse = `
-metrics_root:				/hxlogs/metrics
-sdp_instance:				1
-parse_journal:				false
+metrics_root:                           /hxlogs/metrics
+sdp_instance:                           1
+parse_journal:                          false
 `
 
 const config4 = `
-metrics_root:				/hxlogs/metrics
-sdp_instance: 				1
-max_journal_percent:		101
+metrics_root:                           /hxlogs/metrics
+sdp_instance:                           1
+max_journal_percent:            101
 `
 
 const config5 = `
-metrics_root:				/hxlogs/metrics
-sdp_instance: 				1
-max_log_size:				10.3Z
+metrics_root:                           /hxlogs/metrics
+sdp_instance:                           1
+max_log_size:                           10.3Z
 `
 
 const config6 = `
-metrics_root:				/hxlogs/metrics
-sdp_instance: 				1
-max_log_percent:			30$
+metrics_root:                           /hxlogs/metrics
+sdp_instance:                           1
+max_log_percent:                        30$
 `
 
 func TestInvalidConfig(t *testing.T) {
@@ -130,6 +131,32 @@ func TestValidSlackNotificationsConfig(t *testing.T) {
 	}
 }
 
+const configWithSlackNotificationEnvironment = `
+metrics_root: /hxlogs/metrics
+sdp_instance: 1
+notifications:
+  slack:
+    enabled: true
+    mode: "bot"
+    bot_token_env: "P4METRICS_TEST_SLACK_TOKEN"
+    channel_id: "C1234567890"
+`
+
+func TestSlackNotificationEnvironmentConfig(t *testing.T) {
+	t.Setenv("P4METRICS_TEST_SLACK_TOKEN", "xoxb-environment-token")
+	cfg := loadOrFail(t, configWithSlackNotificationEnvironment)
+	if cfg.Notifications.Slack.BotToken != "xoxb-environment-token" {
+		t.Fatalf("Expected bot_token_env to resolve bot token")
+	}
+}
+
+func TestSlackNotificationMissingEnvironmentConfig(t *testing.T) {
+	_, err := Unmarshal([]byte(configWithSlackNotificationEnvironment))
+	if err == nil || !strings.Contains(err.Error(), "P4METRICS_TEST_SLACK_TOKEN") {
+		t.Fatalf("Expected missing bot_token_env error, got %v", err)
+	}
+}
+
 func ensureFail(t *testing.T, cfgString string, desc string) {
 	_, err := Unmarshal([]byte(cfgString))
 	if err == nil {
@@ -147,8 +174,8 @@ func loadOrFail(t *testing.T, cfgString string) *Config {
 }
 
 const configWithMonitorGroups = `
-metrics_root:				/hxlogs/metrics
-sdp_instance: 				1
+metrics_root:                           /hxlogs/metrics
+sdp_instance:                           1
 monitor_groups:
 - commands: "sync|transmit"
   label: sync_transmit
@@ -157,32 +184,32 @@ monitor_groups:
 `
 
 const configWithInvalidGroupRegex = `
-metrics_root:				/hxlogs/metrics
-sdp_instance: 				1
+metrics_root:                           /hxlogs/metrics
+sdp_instance:                           1
 monitor_groups:
 - commands: "sync|[invalid"
   label: sync_ops
 `
 
 const configWithInvalidGroupName = `
-metrics_root:				/hxlogs/metrics
-sdp_instance: 				1
+metrics_root:                           /hxlogs/metrics
+sdp_instance:                           1
 monitor_groups:
 - commands: "sync|transmit"
   label: "sync transmit"
 `
 
 const configWithEmptyCommands = `
-metrics_root:				/hxlogs/metrics
-sdp_instance: 				1
+metrics_root:                           /hxlogs/metrics
+sdp_instance:                           1
 monitor_groups:
 - commands: ""
   label: sync_ops
 `
 
 const configWithEmptyGroup = `
-metrics_root:				/hxlogs/metrics
-sdp_instance: 				1
+metrics_root:                           /hxlogs/metrics
+sdp_instance:                           1
 monitor_groups:
 - commands: "sync"
   label: ""

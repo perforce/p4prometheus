@@ -44,13 +44,15 @@ type MemLimits struct {
 
 // SlackConfig stores Slack notification settings for alerts.
 type SlackConfig struct {
-	Enabled    bool   `yaml:"enabled"`
-	Mode       string `yaml:"mode"`
-	WebhookURL string `yaml:"webhook_url"`
-	BotToken   string `yaml:"bot_token"`
-	ChannelID  string `yaml:"channel_id"`
-	MaxLines   int    `yaml:"max_lines"`
-	ReplyText  string `yaml:"reply_message"`
+	Enabled       bool   `yaml:"enabled"`
+	Mode          string `yaml:"mode"`
+	WebhookURL    string `yaml:"webhook_url"`
+	WebhookURLEnv string `yaml:"webhook_url_env"`
+	BotToken      string `yaml:"bot_token"`
+	BotTokenEnv   string `yaml:"bot_token_env"`
+	ChannelID     string `yaml:"channel_id"`
+	MaxLines      int    `yaml:"max_lines"`
+	ReplyText     string `yaml:"reply_message"`
 }
 
 // NotificationConfig groups outbound notification integrations.
@@ -295,8 +297,9 @@ notifications:
   slack:
     enabled: false
     mode: "webhook"
-    webhook_url: "https://hooks.slack.com/services/..."
-    # bot_token: "xoxb-..."
+    # These are environment variables for security
+    # webhook_url_env: "P4METRICS_SLACK_WEBHOOK_URL"
+    # bot_token_env: "P4METRICS_SLACK_BOT_TOKEN"
     # channel_id: "C0123456789"
 
 `
@@ -370,11 +373,33 @@ func Unmarshal(config []byte) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid configuration: %v. make sure to use 'single quotes' around strings with special characters (like match patterns or label templates), and make sure to use '-' only for lists (metrics) but not for maps (labels)", err.Error())
 	}
+	if err := cfg.resolveNotificationSecretEnv(); err != nil {
+		return nil, err
+	}
 	err = cfg.validate()
 	if err != nil {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+func (c *Config) resolveNotificationSecretEnv() error {
+	slack := &c.Notifications.Slack
+	if slack.WebhookURLEnv != "" {
+		value, ok := os.LookupEnv(slack.WebhookURLEnv)
+		if !ok || strings.TrimSpace(value) == "" {
+			return fmt.Errorf("notifications.slack.webhook_url_env references unset environment variable %q", slack.WebhookURLEnv)
+		}
+		slack.WebhookURL = value
+	}
+	if slack.BotTokenEnv != "" {
+		value, ok := os.LookupEnv(slack.BotTokenEnv)
+		if !ok || strings.TrimSpace(value) == "" {
+			return fmt.Errorf("notifications.slack.bot_token_env references unset environment variable %q", slack.BotTokenEnv)
+		}
+		slack.BotToken = value
+	}
+	return nil
 }
 
 // LoadConfigFile - loads p4prometheus config file

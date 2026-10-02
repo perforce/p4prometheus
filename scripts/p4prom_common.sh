@@ -375,6 +375,7 @@ EOF
 
 write_p4metrics_service_file() {
     local service_file=$1
+    local secrets_file=${p4metrics_secrets_file:-"${p4prom_config_dir}/p4metrics.env"}
     # For SDP installs, use the HMS-aware wrapper script.
     local exec_start
     if [[ "${UseSDP:-0}" -eq 1 ]]; then
@@ -392,6 +393,7 @@ StartLimitIntervalSec=300
 StartLimitBurst=5
 
 [Service]
+EnvironmentFile=-${secrets_file}
 User=$OSUSER
 Group=$OSGROUP
 Type=simple
@@ -667,8 +669,8 @@ notifications:
   slack:
     enabled: false
     mode: "webhook"
-    webhook_url: "https://hooks.slack.com/services/..."
-    # bot_token: "xoxb-..."
+        # webhook_url_env: "P4METRICS_SLACK_WEBHOOK_URL"
+        # bot_token_env: "P4METRICS_SLACK_BOT_TOKEN"
     # channel_id: "C0123456789"
 
 EOF
@@ -676,6 +678,85 @@ EOF
 
     chown "$OSUSER:$OSGROUP" "$p4metrics_config_file"
     chmod 640 "$p4metrics_config_file"
+}
+
+ensure_p4metrics_secrets_file_exists() {
+    local secrets_file=${1:-${p4metrics_secrets_file:-}}
+
+    if [[ -z "$secrets_file" ]]; then
+        bail "p4metrics_secrets_file is not set and no secrets path was supplied"
+    fi
+    if [[ -f "$secrets_file" ]]; then
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$secrets_file")"
+    install -m 600 /dev/null "$secrets_file"
+    cat << 'EOF' > "$secrets_file"
+# Environment-backed p4metrics notification credentials.
+# Keep this file out of source control. It is loaded by systemd only.
+# P4METRICS_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+# P4METRICS_SLACK_BOT_TOKEN=xoxb-...
+EOF
+    chown root:root "$secrets_file"
+    chmod 600 "$secrets_file"
+    msg "Created root-only p4metrics secrets template: $secrets_file"
+}
+
+migrate_p4metrics_notification_secret() {
+    local yaml_key=$1
+    local env_key=$2
+    local env_name=$3
+    local config_file=${p4metrics_config_file:-}
+    local secrets_file=${p4metrics_secrets_file:-}
+    local config_line
+    local value
+    local temp_file
+
+    [[ -f "$config_file" && -f "$secrets_file" ]] || return 0
+    config_line=$(grep -m 1 -E "^[[:space:]]*${yaml_key}:[[:space:]]*[^[:space:]#]" "$config_file" || true)
+    [[ -n "$config_line" ]] || return 0
+
+    value=${config_line#*:}
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+        value=${value:1:${#value}-2}
+    elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+        value=${value:1:${#value}-2}
+    fi
+
+    if [[ -z "$value" || "$value" =~ [[:space:]\\\"\'] ]]; then
+        msg "Warning: Cannot safely migrate notifications.slack.${yaml_key}; update $secrets_file manually"
+        return 0
+    fi
+    if grep -qE "^${env_name}=" "$secrets_file"; then
+        msg "Warning: $env_name already exists in $secrets_file; leaving notifications.slack.${yaml_key} unchanged"
+        return 0
+    fi
+
+    printf '%s=%s\n' "$env_name" "$value" >> "$secrets_file"
+    temp_file=$(mktemp "${config_file}.XXXXXX") || bail "Failed to create temporary p4metrics config file"
+    awk -v yaml_key="$yaml_key" -v env_key="$env_key" -v env_name="$env_name" '
+        $0 ~ "^[[:space:]]*" yaml_key ":[[:space:]]*[^[:space:]#]" {
+            match($0, /^[[:space:]]*/)
+            print substr($0, 1, RLENGTH) env_key ": \"" env_name "\""
+            next
+        }
+        { print }
+    ' "$config_file" > "$temp_file"
+    if ! cp "$temp_file" "$config_file"; then
+        rm -f "$temp_file"
+        msg "Warning: Copied $env_name to $secrets_file but could not update $config_file"
+        return 0
+    fi
+    rm -f "$temp_file"
+    msg "Migrated notifications.slack.${yaml_key} to $secrets_file"
+}
+
+migrate_p4metrics_notification_secrets() {
+    migrate_p4metrics_notification_secret "webhook_url" "webhook_url_env" "P4METRICS_SLACK_WEBHOOK_URL"
+    migrate_p4metrics_notification_secret "bot_token" "bot_token_env" "P4METRICS_SLACK_BOT_TOKEN"
 }
 
 write_default_p4monitor_locks_config() {
@@ -686,6 +767,8 @@ write_default_p4monitor_locks_config() {
 #
 # Pass this file via p4monitor_locks.sh -c <config_file>
 # Requires pyyaml: pip install pyyaml
+# Keep credentials in p4monitor_locks.env (created with mode 0600 by the installer)
+# and reference them with the explicit *_env settings below.
 
 notifications:
     # Minimum number of blocked commands before any notification is sent.
@@ -710,7 +793,8 @@ notifications:
 
     slack:
         enabled: false
-        webhook_url: "https://<some>/<webhook>/<url>"
+        # webhook_url_env: "P4MONITOR_SLACK_WEBHOOK_URL"
+        # bot_token_env: "P4MONITOR_SLACK_BOT_TOKEN"
         # Optional overrides:
         # max_lines: 40
         # runbook_url: ""
@@ -722,7 +806,7 @@ notifications:
         smtp_port: 25
         use_tls: false
         username: ""
-        password: ""
+        # password_env: "P4MONITOR_SMTP_PASSWORD"
         from_addr: "p4monitor@example.com"
         to_addrs:
             - "admin@example.com"
@@ -730,7 +814,7 @@ notifications:
 
     teams:
         enabled: false
-        webhook_url: "https://<some>/<webhook>/<url>"
+        # webhook_url_env: "P4MONITOR_TEAMS_WEBHOOK_URL"
         # Optional overrides:
         # max_lines: 40
         # runbook_url: ""
@@ -740,6 +824,31 @@ notifications:
         enabled: false
         command: "/usr/local/bin/p4_lock_notify.sh"
 EOF
+}
+
+ensure_p4monitor_locks_secrets_file_exists() {
+    local secrets_file=${1:-${p4monitor_locks_secrets_file:-}}
+
+    if [[ -z "$secrets_file" ]]; then
+        bail "p4monitor_locks_secrets_file is not set and no secrets path was supplied"
+    fi
+    if [[ -f "$secrets_file" ]]; then
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$secrets_file")"
+    install -m 600 /dev/null "$secrets_file"
+    cat << 'EOF' > "$secrets_file"
+# Environment-backed notification credentials for p4monitor_locks.
+# Keep this file out of source control. It is loaded by systemd only.
+# P4MONITOR_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+# P4MONITOR_SLACK_BOT_TOKEN=xoxb-...
+# P4MONITOR_TEAMS_WEBHOOK_URL=https://outlook.office.com/webhook/...
+# P4MONITOR_SMTP_PASSWORD=...
+EOF
+    chown root:root "$secrets_file"
+    chmod 600 "$secrets_file"
+    msg "Created root-only p4monitor_locks secrets template: $secrets_file"
 }
 
 ensure_p4monitor_locks_config_file_exists() {

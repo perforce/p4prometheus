@@ -207,7 +207,9 @@ fi
 
 p4prom_config_file="$p4prom_config_dir/p4prometheus.yaml"
 p4metrics_config_file="$p4prom_config_dir/p4metrics.yaml"
+p4metrics_secrets_file="$p4prom_config_dir/p4metrics.env"
 p4monitor_locks_config_file="$p4prom_config_dir/p4monitor_locks.yaml"
+p4monitor_locks_secrets_file="$p4prom_config_dir/p4monitor_locks.env"
 
 install_node_exporter () {
 
@@ -365,6 +367,8 @@ install_p4metrics () {
 
     write_or_update_p4metrics_config_file
     chown "$OSUSER:$OSGROUP" "$p4metrics_config_file"
+    ensure_p4metrics_secrets_file_exists
+    migrate_p4metrics_notification_secrets
 
     service_name="${progname}"
     service_file="/etc/systemd/system/${service_name}.service"
@@ -404,6 +408,7 @@ install_monitor_locks () {
 
     # Create default p4monitor_locks.yaml if it doesn't already exist
     ensure_p4monitor_locks_config_file_exists
+    ensure_p4monitor_locks_secrets_file_exists
 
     for legacy_service in monitor_metrics monitor_locks; do
         systemctl disable --now "${legacy_service}.timer" 2>/dev/null || true
@@ -425,6 +430,7 @@ Wants=p4monitor_locks.timer network-online.target
 After=network-online.target
 
 [Service]
+EnvironmentFile=-${p4monitor_locks_secrets_file}
 User=$OSUSER
 Type=oneshot
 ExecStart=${abs_bin_dir}/p4monitor_locks.sh ${service_args} -c ${p4monitor_locks_config_file}

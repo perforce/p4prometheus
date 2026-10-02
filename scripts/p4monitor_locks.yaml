@@ -3,6 +3,8 @@
 # Pass this file to the script with: monitor_locks.py --config p4monitor_locks.yaml
 #
 # Requires pyyaml: pip install pyyaml
+# Keep credentials in p4monitor_locks.env (created with mode 0600 by the installer)
+# and reference them with the explicit *_env settings below.
 
 notifications:
   # Minimum number of blocked commands before any notification is sent.
@@ -36,12 +38,12 @@ notifications:
     # See the sample slack_manifest.json for an example Slack App configuration.
     # This needs to be created by you and installed in your Slack Workspace by your admins.
     # mode: "bot"
-    # bot_token: "xoxb-..."
+    # bot_token_env: "P4MONITOR_SLACK_BOT_TOKEN"
     # channel_id: "C0123456789"
     # When a later run finds fewer blocked commands, bot mode replies in the
     # original alert thread with the updated blocking tree.
     # Create a webhook at https://api.slack.com/messaging/webhooks
-    webhook_url: "https://<some>/<webhook>/<url>"
+    # webhook_url_env: "P4MONITOR_SLACK_WEBHOOK_URL"
     # Optional override of notifications.max_lines for Slack only.
     # max_lines: 40
     # Message style: "simple" (default, JSON tree) or "detailed" (server info,
@@ -59,7 +61,7 @@ notifications:
     use_tls: false
     # Leave username/password empty for unauthenticated relay
     username: ""
-    password: ""
+    # password_env: "P4MONITOR_SMTP_PASSWORD"
     from_addr: "p4monitor@example.com"
     to_addrs:
       - "admin@example.com"
@@ -71,7 +73,7 @@ notifications:
   teams:
     enabled: false
     # Create a webhook in Teams: Channel > Connectors > Incoming Webhook
-    webhook_url: "https://<some>/<webhook>/<url>"
+    # webhook_url_env: "P4MONITOR_TEAMS_WEBHOOK_URL"
     # Optional override of notifications.max_lines for Teams only.
     # max_lines: 40
 

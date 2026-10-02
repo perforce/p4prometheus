@@ -109,6 +109,29 @@ class MonitorMetrics:
         self.monitorCommands = {}
 
 
+def resolve_notification_secret_env(config, logger):
+    """Resolve explicit notification credential environment-variable names."""
+    secret_fields = (
+        ("slack", "webhook_url_env", "webhook_url"),
+        ("slack", "bot_token_env", "bot_token"),
+        ("teams", "webhook_url_env", "webhook_url"),
+        ("email", "password_env", "password"),
+    )
+    for section_name, env_field, credential_field in secret_fields:
+        section = config.get(section_name)
+        if not isinstance(section, dict):
+            continue
+        env_name = str(section.get(env_field, "")).strip()
+        if not env_name:
+            continue
+        credential = os.environ.get(env_name)
+        if credential:
+            section[credential_field] = credential
+        else:
+            logger.warning("Notification %s is configured to use unset environment variable %s",
+                           section_name, env_name)
+
+
 class Notifier:
     """Sends notifications when blocked commands exceed a configured threshold.
 
@@ -1078,6 +1101,7 @@ class P4Monitor(object):
                 full_cfg = yaml.safe_load(f)
             notif_cfg = (full_cfg or {}).get("notifications", {})
             if notif_cfg:
+                resolve_notification_secret_env(notif_cfg, self.logger)
                 self.logger.info("Loaded notification config from %s", cfg_path)
                 return Notifier(notif_cfg, self.logger)
         except Exception as e:

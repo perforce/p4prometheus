@@ -16,7 +16,7 @@ from unittest import mock
 curr_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(curr_dir))
 
-from monitor_locks import P4Monitor, Notifier, build_slack_tree_sections
+from monitor_locks import P4Monitor, Notifier, build_slack_tree_sections, resolve_notification_secret_env
 
 # os.environ["LOGS"] = "."
 # LOGGER_NAME = "testMonitorMetrics"
@@ -65,6 +65,44 @@ class TestMonitorMetrics(unittest.TestCase):
         self.assertEqual(0, m.metaWriteLocks)
         self.assertEqual(0, m.blockedCommands)
         self.assertEqual(0, len(m.msgs))
+
+    def testNotificationSecretsFromEnvironment(self):
+        config = {
+            "slack": {
+                "webhook_url_env": "P4MONITOR_TEST_SLACK_WEBHOOK",
+                "bot_token_env": "P4MONITOR_TEST_SLACK_TOKEN",
+            },
+            "teams": {"webhook_url_env": "P4MONITOR_TEST_TEAMS_WEBHOOK"},
+            "email": {"password_env": "P4MONITOR_TEST_SMTP_PASSWORD"},
+        }
+        logger = mock.Mock()
+        environment = {
+            "P4MONITOR_TEST_SLACK_WEBHOOK": "https://slack.example/webhook",
+            "P4MONITOR_TEST_SLACK_TOKEN": "xoxb-test-token",
+            "P4MONITOR_TEST_TEAMS_WEBHOOK": "https://teams.example/webhook",
+            "P4MONITOR_TEST_SMTP_PASSWORD": "smtp-password",
+        }
+
+        with mock.patch.dict(os.environ, environment, clear=False):
+            resolve_notification_secret_env(config, logger)
+
+        self.assertEqual("https://slack.example/webhook", config["slack"]["webhook_url"])
+        self.assertEqual("xoxb-test-token", config["slack"]["bot_token"])
+        self.assertEqual("https://teams.example/webhook", config["teams"]["webhook_url"])
+        self.assertEqual("smtp-password", config["email"]["password"])
+        logger.warning.assert_not_called()
+
+    def testNotificationSecretMissingEnvironmentWarning(self):
+        config = {"slack": {"bot_token_env": "P4MONITOR_TEST_MISSING_TOKEN"}}
+        logger = mock.Mock()
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            resolve_notification_secret_env(config, logger)
+
+        self.assertNotIn("bot_token", config["slack"])
+        logger.warning.assert_called_once_with(
+            "Notification %s is configured to use unset environment variable %s",
+            "slack", "P4MONITOR_TEST_MISSING_TOKEN")
 
     def testNoLocks(self):
         """Check parsing of lockdata when no results returned"""
