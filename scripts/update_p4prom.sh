@@ -27,8 +27,8 @@ local_tarballs_dir=""
 
 
 VER_NODE_EXPORTER="1.12.1"
-VER_P4PROMETHEUS="0.11.3"
-VER_VICTORIA_METRICS="1.131.0"
+VER_P4PROMETHEUS="0.11.4"
+VER_VICTORIA_METRICS="1.153.0"
 
 # Default to amd but allow arm architecture
 arch="amd64"
