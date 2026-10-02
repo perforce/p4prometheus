@@ -67,6 +67,34 @@ download_gz () {
     fi
 }
 
+install_ytt() {
+    local ytt_version=${VER_YTT:-}
+    local ytt_arch=${arch:-amd64}
+    local ytt_bin_dir=${bin_dir:-/usr/local/bin}
+    local ytt_file="ytt-linux-${ytt_arch}"
+    local ytt_url="https://github.com/carvel-dev/ytt/releases/download/v${ytt_version}/${ytt_file}"
+    local staged_ytt
+
+    [[ -n "$ytt_version" ]] || bail "VER_YTT is not set"
+    staged_ytt=$(mktemp)
+
+    if [[ -n "${local_tarballs_dir:-}" ]]; then
+        local local_ytt="${local_tarballs_dir}/${ytt_file}"
+        [[ -f "$local_ytt" ]] || bail "Air-gap mode: expected ytt binary not found: $local_ytt"
+        msg "Using local ytt binary: $local_ytt"
+        cp "$local_ytt" "$staged_ytt"
+    else
+        msg "Downloading ytt ${ytt_version}"
+        wget -q -O "$staged_ytt" "$ytt_url" || bail "Failed to download $ytt_url"
+    fi
+
+    chmod 755 "$staged_ytt"
+    "$staged_ytt" --version >/dev/null || bail "Downloaded ytt binary failed its version check"
+    install -m 755 "$staged_ytt" "${ytt_bin_dir}/ytt"
+    rm -f "$staged_ytt"
+    apply_bin_selinux_context "${ytt_bin_dir}/ytt"
+}
+
 bootstrap_monitor_python_env () {
     local target_dir=$1
     local venv_dir="${target_dir}/.venv"

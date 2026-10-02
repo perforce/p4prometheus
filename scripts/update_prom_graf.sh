@@ -26,6 +26,7 @@ VER_PROMETHEUS="2.54.1"
 VER_ALERTMANAGER="0.27.0"
 VER_PUSHGATEWAY="1.9.0"
 VER_VICTORIA_METRICS="1.105.0"
+VER_YTT="0.55.2"
 
 # Configurable paths - overridden by state file or CLI flags
 data_root="/var/lib"
@@ -185,6 +186,22 @@ get_binary_version() {
     local binary=$1
     local pattern=$2   # awk pattern to extract version field
     "$binary" --version 2>&1 | awk "$pattern" | head -1
+}
+
+stage_prometheus_rule_source() {
+    local source_name=$1
+    local destination=$2
+    local source_url="https://raw.githubusercontent.com/perforce/p4prometheus/master/examples/prometheus/rules-src/${source_name}"
+    local local_source=""
+
+    if [[ -n "$local_tarballs_dir" ]]; then
+        local_source="${local_tarballs_dir}/rules-src/${source_name}"
+        [[ -f "$local_source" ]] || local_source="${local_tarballs_dir}/${source_name}"
+        [[ -f "$local_source" ]] || return 1
+        cp "$local_source" "$destination"
+    else
+        wget -q -O "$destination" "$source_url" || return 1
+    fi
 }
 
 # ============================================================
@@ -552,64 +569,51 @@ update_perforce_rules() {
     local rules_dir="/etc/prometheus"
     local upstream_file="${rules_dir}/perforce_rules.yml"
     local local_file="${rules_dir}/perforce_rules_local.yml"
-    local tmp_upstream="/tmp/perforce_rules_upstream.yml"
+    local source_dir="${rules_dir}/rules-src"
+    local staged_template staged_values staged_output
     local prometheus_userid="prometheus"
+    local previous_rendered_checksum current_checksum rendered_checksum backup
 
-    msg "Checking perforce_rules.yml (issue #117 split-file management)..."
-
-    # Download latest upstream rules
-    local rules_url="https://raw.githubusercontent.com/perforce/p4prometheus/master/examples/prometheus/perforce_rules.yml"
-    if [[ -n "$local_tarballs_dir" ]]; then
-        local local_rules="${local_tarballs_dir}/perforce_rules.yml"
-        if [[ ! -f "$local_rules" ]]; then
-            msg "  Air-gap mode: perforce_rules.yml not found at $local_rules - skipping"
-            return
-        fi
-        cp "$local_rules" "$tmp_upstream"
-    else
-        if ! wget -q -O "$tmp_upstream" "$rules_url"; then
-            msg "  Warning: Could not download perforce_rules.yml - skipping rule update"
-            return
-        fi
+    msg "Rendering managed perforce_rules.yml..."
+    staged_template=$(mktemp)
+    staged_values=$(mktemp)
+    staged_output=$(mktemp "${rules_dir}/.perforce_rules.yml.XXXXXX")
+    if ! stage_prometheus_rule_source "perforce_rules.yml" "$staged_template" || \
+       ! stage_prometheus_rule_source "default-values.yml" "$staged_values"; then
+        msg "  Warning: Could not retrieve rule templates; keeping existing rules unchanged"
+        rm -f "$staged_template" "$staged_values" "$staged_output"
+        return 0
+    fi
+    if ! "${bin_dir}/ytt" -f "$staged_template" -f "$staged_values" > "$staged_output" || \
+       ! "${bin_dir}/promtool" check rules "$staged_output"; then
+        msg "  Warning: Rendered rules failed validation; keeping existing rules unchanged"
+        rm -f "$staged_template" "$staged_values" "$staged_output"
+        return 0
     fi
 
-    # Load last known upstream checksum from state file
-    local last_upstream_checksum
-    last_upstream_checksum=$(grep '^PERFORCE_RULES_UPSTREAM_CHECKSUM=' "$state_file" 2>/dev/null | cut -d= -f2)
-    local new_upstream_checksum
-    new_upstream_checksum=$(sha256sum "$tmp_upstream" | awk '{print $1}')
-
-    if [[ "$new_upstream_checksum" == "$last_upstream_checksum" && -f "$upstream_file" ]]; then
-        msg "  perforce_rules.yml is up-to-date (checksum unchanged)"
-        rm -f "$tmp_upstream"
-    else
-        # Check if local copy has been customized since last update
-        local local_checksum=""
-        [[ -f "$upstream_file" ]] && local_checksum=$(sha256sum "$upstream_file" | awk '{print $1}')
-
-        if [[ -f "$upstream_file" && -n "$last_upstream_checksum" && \
-              "$local_checksum" != "$last_upstream_checksum" ]]; then
-            # Local file differs from last upstream - customer has made changes
-            local backup="${upstream_file}.$(date +%Y%m%d)"
-            msg "  perforce_rules.yml has local modifications."
-            msg "  Preserving local version as: $backup"
+    rendered_checksum=$(sha256sum "$staged_output" | awk '{print $1}')
+    previous_rendered_checksum=$(grep '^PERFORCE_RULES_RENDERED_CHECKSUM=' "$state_file" 2>/dev/null | cut -d= -f2)
+    if [[ -f "$upstream_file" ]]; then
+        current_checksum=$(sha256sum "$upstream_file" | awk '{print $1}')
+        if [[ -z "$previous_rendered_checksum" && "$current_checksum" != "$rendered_checksum" ]] || \
+           [[ -n "$previous_rendered_checksum" && "$current_checksum" != "$previous_rendered_checksum" ]]; then
+            backup="${upstream_file}.pre-ytt-$(date +%Y%m%d%H%M%S)"
             cp "$upstream_file" "$backup"
             chown "$prometheus_userid:$prometheus_userid" "$backup" 2>/dev/null || true
-            msg "  Installing new upstream perforce_rules.yml"
-            msg "  Review $backup and merge any needed changes into $local_file"
-        else
-            msg "  Updating perforce_rules.yml (upstream changed, no local modifications)"
+            msg "  Preserved existing rules as $backup"
+            msg "  Review any local changes and move them to $local_file"
         fi
-
-        cp "$tmp_upstream" "$upstream_file"
-        chown "$prometheus_userid:$prometheus_userid" "$upstream_file"
-        chmod 644 "$upstream_file"
-        rm -f "$tmp_upstream"
-
-        # Record new upstream checksum for next update
-        # (Updated in write_state_file below via PERFORCE_RULES_UPSTREAM_CHECKSUM)
-        PERFORCE_RULES_UPSTREAM_CHECKSUM="$new_upstream_checksum"
     fi
+
+    install -d -m 755 "$source_dir"
+    install -m 644 "$staged_template" "${source_dir}/perforce_rules.yml"
+    install -m 644 "$staged_values" "${source_dir}/default-values.yml"
+    chown -R "$prometheus_userid:$prometheus_userid" "$source_dir"
+    chown "$prometheus_userid:$prometheus_userid" "$staged_output"
+    chmod 644 "$staged_output"
+    mv "$staged_output" "$upstream_file"
+    rm -f "$staged_template" "$staged_values"
+    PERFORCE_RULES_RENDERED_CHECKSUM="$rendered_checksum"
 
     # Create perforce_rules_local.yml if it doesn't exist (customer customization file)
     if [[ ! -f "$local_file" ]]; then
@@ -670,6 +674,7 @@ VER_ALERTMANAGER=${VER_ALERTMANAGER}
 VER_VICTORIA_METRICS=${VER_VICTORIA_METRICS}
 VER_PUSHGATEWAY=${VER_PUSHGATEWAY}
 PERFORCE_RULES_UPSTREAM_CHECKSUM=${PERFORCE_RULES_UPSTREAM_CHECKSUM:-}
+PERFORCE_RULES_RENDERED_CHECKSUM=${PERFORCE_RULES_RENDERED_CHECKSUM:-}
 EOF
     chmod 644 "$state_file"
     msg "Install state updated: $state_file"
@@ -737,6 +742,7 @@ msg "Retention:    ${retention_months} months"
 [[ -n "$local_tarballs_dir" ]] && msg "Air-gap mode: using tarballs from $local_tarballs_dir"
 
 check_os
+install_ytt
 
 update_node_exporter
 update_prometheus

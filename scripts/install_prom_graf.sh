@@ -29,6 +29,7 @@ VER_ALERTMANAGER="0.27.0"
 VER_PUSHGATEWAY="1.9.0"
 VER_VICTORIA_METRICS="1.105.0"
 VER_PINT="0.87.0"
+VER_YTT="0.55.2"
 
 # Configurable paths - override with CLI flags
 data_root="/var/lib"
@@ -95,6 +96,52 @@ function bail () { msg "\nError: ${1:-Unknown Error}\n"; cleanup; exit "${2:-1}"
 function check_service_exists() {
     local service=$1
     systemctl list-unit-files | grep -q "^${service}.service" && return 0 || return 1
+}
+
+download_prometheus_rule_source() {
+    local source_name=$1
+    local destination=$2
+    local source_url="https://raw.githubusercontent.com/perforce/p4prometheus/master/examples/prometheus/rules-src/${source_name}"
+
+    if [[ -n "$local_tarballs_dir" ]]; then
+        local local_source="${local_tarballs_dir}/rules-src/${source_name}"
+        [[ -f "$local_source" ]] || local_source="${local_tarballs_dir}/${source_name}"
+        [[ -f "$local_source" ]] || bail "Air-gap mode: expected rule source not found: ${local_tarballs_dir}/rules-src/${source_name}"
+        cp "$local_source" "$destination"
+    else
+        wget -q -O "$destination" "$source_url" || bail "Failed to download $source_url"
+    fi
+}
+
+install_default_perforce_rules() {
+    local rules_dir="/etc/prometheus"
+    local source_dir="${rules_dir}/rules-src"
+    local output_file="${rules_dir}/perforce_rules.yml"
+    local staged_template staged_values staged_output
+
+    staged_template=$(mktemp)
+    staged_values=$(mktemp)
+    staged_output=$(mktemp "${rules_dir}/.perforce_rules.yml.XXXXXX")
+    download_prometheus_rule_source "perforce_rules.yml" "$staged_template"
+    download_prometheus_rule_source "default-values.yml" "$staged_values"
+
+    if ! "${bin_dir}/ytt" -f "$staged_template" -f "$staged_values" > "$staged_output"; then
+        rm -f "$staged_template" "$staged_values" "$staged_output"
+        bail "Failed to render default Perforce alert rules"
+    fi
+    if ! "${bin_dir}/promtool" check rules "$staged_output"; then
+        rm -f "$staged_template" "$staged_values" "$staged_output"
+        bail "Rendered Perforce alert rules failed promtool validation"
+    fi
+
+    install -d -m 755 "$source_dir"
+    install -m 644 "$staged_template" "${source_dir}/perforce_rules.yml"
+    install -m 644 "$staged_values" "${source_dir}/default-values.yml"
+    chown -R "$userid:$userid" "$source_dir"
+    chown "$userid:$userid" "$staged_output"
+    chmod 644 "$staged_output"
+    mv "$staged_output" "$output_file"
+    rm -f "$staged_template" "$staged_values"
 }
 
 function usage
@@ -626,14 +673,8 @@ install_prometheus () {
     chown -R "$userid:$userid" /etc/prometheus/consoles
     chown -R "$userid:$userid" /etc/prometheus/console_libraries
 
-    local perforce_rules_file="/etc/prometheus/perforce_rules.yml"
-    local perforce_rules_url="https://raw.githubusercontent.com/perforce/p4prometheus/master/examples/prometheus/perforce_rules.yml"
-    msg "Downloading default Perforce alert rules to ${perforce_rules_file}"
-    if ! wget -q -O "$perforce_rules_file" "$perforce_rules_url"; then
-        bail "Failed to download Perforce alert rules from $perforce_rules_url"
-    fi
-    chown "$userid:$userid" "$perforce_rules_file"
-    chmod 644 "$perforce_rules_file"
+    msg "Rendering default Perforce alert rules"
+    install_default_perforce_rules
 
     # Note that we don't retain much data in Prometheus itself - we use VictoriaMetrics for long-term storage.
     # So only 7 days
@@ -926,6 +967,7 @@ msg "Retention:    ${retention_months} months"
 [[ -n "$local_tarballs_dir" ]] && msg "Air-gap mode: using tarballs from $local_tarballs_dir"
 
 check_os
+install_ytt
 
 msg "Installing components..."
 install_node_exporter

@@ -527,7 +527,11 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#_alertmanager_config">5.7.1. Alertmanager config</a></li>
 <li><a href="#_alerting_rules">5.7.2. Alerting rules</a>
 <ul class="sectlevel4">
-<li><a href="#_split_file_alerting_rules_recommended">5.7.2.1. Split-file alerting rules (recommended)</a></li>
+<li><a href="#_split_file_alerting_rules_recommended">5.7.2.1. Split-file alerting rules (recommended)</a>
+<ul class="sectlevel5">
+<li><a href="#_template_based_custom_rules">Template-based custom rules</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li><a href="#_prometheus_config_to_reference_alertmanager_rules">5.7.3. Prometheus config to reference alertmanager rules</a></li>
@@ -786,7 +790,9 @@ update_p4prom.sh -h
     --local-tarballs-dir  Directory of pre-staged release tarballs (air-gap installs).
                           Skips all downloads; file names must match GitHub release assets.
     -vmagent              Install vmagent to replace legacy push_metrics cron jobs.
-                          Not relevant for most installations - intended for P4RA only.
+                          Intended for P4RA only. Migrates a valid .push_metrics.cfg,
+                          preserves a complete existing configuration, or creates
+                          placeholder files for review before starting vmagent.
 
 Specify either the SDP instance (e.g. 1), or -nosdp
 
@@ -2225,6 +2231,29 @@ Found:
   - "perforce_rules_local.yml"</code></pre>
 </div>
 </div>
+<div class="sect5">
+<h6 id="_template_based_custom_rules">Template-based custom rules</h6>
+<div class="paragraph">
+<p>The <a href="../../examples/prometheus/rules-src/custom_perforce_rules.yml">custom rule template</a> and
+<a href="../../examples/prometheus/rules-src/custom-values.yml">custom values</a> provide two examples of
+site-specific rules. The values file is rendered after
+<a href="../../examples/prometheus/rules-src/default-values.yml">the default values</a>, so it can override
+only the thresholds or selectors that differ at your site while inheriting the remaining defaults.</p>
+</div>
+<div class="paragraph">
+<p>Copy these files to a working directory and adjust <code>custom-values.yml</code> as required. Render the
+rules with <code>ytt</code>, then install the result as the local rules file:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-bash" data-lang="bash">cd /path/to/p4prometheus/examples/prometheus
+make custom_perforce_rules.yml
+sudo install -m 0644 custom_perforce_rules.yml /etc/prometheus/perforce_rules_local.yml</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Custom rules must use alert names that do not duplicate alerts in <code>perforce_rules.yml</code>.</p>
+</div>
 <div class="paragraph">
 <p>Then uncomment the relevant section in <code>prometheus.yml</code>:</p>
 </div>
@@ -2240,6 +2269,7 @@ alerting:
 # Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
 rule_files:
   - "perforce_rules.yml"</code></pre>
+</div>
 </div>
 </div>
 </div>
@@ -2405,7 +2435,7 @@ Checking perforce_rules.yml
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-09-17 13:35:44 +0100
+Last updated 2026-09-29 17:41:01 +0100
 </div>
 </div>
 </body>

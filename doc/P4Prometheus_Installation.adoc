@@ -1097,6 +1097,26 @@ rule_files:
   - "perforce_rules_local.yml"
 ----
 
+====== Template-based custom rules
+
+The link:../../examples/prometheus/rules-src/custom_perforce_rules.yml[custom rule template] and
+link:../../examples/prometheus/rules-src/custom-values.yml[custom values] provide two examples of
+site-specific rules. The values file is rendered after
+link:../../examples/prometheus/rules-src/default-values.yml[the default values], so it can override
+only the thresholds or selectors that differ at your site while inheriting the remaining defaults.
+
+Copy these files to a working directory and adjust `custom-values.yml` as required. Render the
+rules with `ytt`, then install the result as the local rules file:
+
+[source,bash]
+----
+cd /path/to/p4prometheus/examples/prometheus
+make custom_perforce_rules.yml
+sudo install -m 0644 custom_perforce_rules.yml /etc/prometheus/perforce_rules_local.yml
+----
+
+Custom rules must use alert names that do not duplicate alerts in `perforce_rules.yml`.
+
 Then uncomment the relevant section in `prometheus.yml`:
 
 [source,yaml]
