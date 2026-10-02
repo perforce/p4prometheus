@@ -32,6 +32,7 @@ def test_core_binaries_exist_and_executable(host):
         "/usr/local/bin/alertmanager",
         "/usr/local/bin/node_exporter",
         "/usr/local/bin/pint",
+        "/usr/local/bin/ytt",
     ]:
         f = host.file(binary)
         assert f.exists
@@ -42,6 +43,8 @@ def test_expected_config_files_exist(host):
     for path in [
         "/etc/prometheus/prometheus.yml",
         "/etc/prometheus/perforce_rules.yml",
+        "/etc/prometheus/rules-src/perforce_rules.yml",
+        "/etc/prometheus/rules-src/default-values.yml",
         "/etc/prometheus/pint_vm.hcl",
         "/etc/alertmanager/alertmanager.yml",
         "/etc/alertmanager/templates/perforce.tmpl",
@@ -103,6 +106,18 @@ def test_prometheus_and_alertmanager_configs_validate(host):
 
     amtool = host.run("/usr/local/bin/amtool check-config /etc/alertmanager/alertmanager.yml")
     assert amtool.rc == 0
+
+
+def test_installed_perforce_rules_are_rendered_and_valid(host):
+    rendered = host.run(
+        "/usr/local/bin/ytt -f /etc/prometheus/rules-src/perforce_rules.yml "
+        "-f /etc/prometheus/rules-src/default-values.yml "
+        "> /tmp/perforce_rules.rendered.yml && "
+        "cmp -s /tmp/perforce_rules.rendered.yml /etc/prometheus/perforce_rules.yml && "
+        "/usr/local/bin/promtool check rules /etc/prometheus/perforce_rules.yml; "
+        "result=$?; rm -f /tmp/perforce_rules.rendered.yml; exit $result"
+    )
+    assert rendered.rc == 0
 
 
 def test_expected_file_ownership_and_permissions(host):

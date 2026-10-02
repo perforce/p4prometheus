@@ -71,6 +71,14 @@ if ! ./install_prom_graf.sh -d /data -target localhost:9100 -target myp4:9100 -t
     bail "install_prom_graf.sh failed, so tests were not run"
 fi
 
+cd /root/prometheus-rules
+cp perforce_rules.yml /tmp/perforce_rules.yml.expected
+cp custom_perforce_rules.yml /tmp/custom_perforce_rules.yml.expected
+make render
+cmp -s /tmp/perforce_rules.yml.expected perforce_rules.yml
+cmp -s /tmp/custom_perforce_rules.yml.expected custom_perforce_rules.yml
+
+cd /root
 echo "After install - about to run tests for Prometheus and Grafana"
 sleep 5
 pytest -v test_prom_graf.py

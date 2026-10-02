@@ -119,8 +119,8 @@ install_default_perforce_rules() {
     local output_file="${rules_dir}/perforce_rules.yml"
     local staged_template staged_values staged_output
 
-    staged_template=$(mktemp)
-    staged_values=$(mktemp)
+    staged_template=$(mktemp --suffix=.yml)
+    staged_values=$(mktemp --suffix=.yml)
     staged_output=$(mktemp "${rules_dir}/.perforce_rules.yml.XXXXXX")
     download_prometheus_rule_source "perforce_rules.yml" "$staged_template"
     download_prometheus_rule_source "default-values.yml" "$staged_values"
