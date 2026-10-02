@@ -128,6 +128,68 @@ func TestParseSyncReplicaLog(t *testing.T) {
 	assert.Equal(t, time.Date(2026, 9, 10, 9, 1, 36, 0, time.UTC), end)
 }
 
+func TestVerifyHostDisabled(t *testing.T) {
+	tests := []struct {
+		name     string
+		lines    []string
+		disabled bool
+	}{
+		{
+			name: "explicit false",
+			lines: []string{
+				"Verify-Host:",
+				"\tfalse",
+			},
+			disabled: true,
+		},
+		{
+			name: "explicit true",
+			lines: []string{
+				"Verify-Host:",
+				"\ttrue",
+			},
+		},
+		{
+			name: "default value",
+			lines: []string{
+				"Verify-Host:",
+				"\t... use default value",
+			},
+		},
+		{
+			name: "not configured",
+			lines: []string{
+				"Service-URL:",
+				"\thttps://ppn.perforce.com:3000",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.disabled, verifyHostDisabled(test.lines))
+		})
+	}
+}
+
+func TestGetCertificateExpiryTLSVerification(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := config.Config{}
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+
+	_, err := p4m.getCertificateExpiry(server.URL, false)
+	assert.Error(t, err)
+
+	expiry, err := p4m.getCertificateExpiry(server.URL, true)
+	assert.NoError(t, err)
+	assert.Equal(t, server.Certificate().NotAfter, expiry)
+}
+
 func TestOOMSlackMessageFormatting(t *testing.T) {
 	cfg := config.Config{
 		Notifications: config.NotificationConfig{

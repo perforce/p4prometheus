@@ -1763,9 +1763,19 @@ func (p4m *P4MonitorMetrics) extractServiceURL(lines []string) string {
 	return ""
 }
 
+func verifyHostDisabled(lines []string) bool {
+	for i, line := range lines {
+		if strings.TrimSpace(line) != "Verify-Host:" || i+1 >= len(lines) {
+			continue
+		}
+		return strings.EqualFold(strings.TrimSpace(lines[i+1]), "false")
+	}
+	return false
+}
+
 // GetCertificateExpiry takes a URL string and returns the expiration date
 // of its SSL certificate. It returns the expiry time and any error encountered.
-func (p4m *P4MonitorMetrics) getCertificateExpiry(certURL string) (time.Time, error) {
+func (p4m *P4MonitorMetrics) getCertificateExpiry(certURL string, skipTLSVerify bool) (time.Time, error) {
 	// Parse the URL to ensure it's valid
 	parsedURL, err := url.Parse(certURL)
 	if err != nil {
@@ -1776,18 +1786,14 @@ func (p4m *P4MonitorMetrics) getCertificateExpiry(certURL string) (time.Time, er
 		return time.Time{}, fmt.Errorf("URL must use HTTPS scheme")
 	}
 
-	// Create a custom transport to skip certificate verification
-	// as we just want to inspect the certificate
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
-	}
-
 	client := &http.Client{
-		Transport: transport,
 		// Set a reasonable timeout
 		Timeout: 30 * time.Second,
+	}
+	if skipTLSVerify {
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
 	}
 
 	// Make a HEAD request to get the certificate
@@ -1865,13 +1871,14 @@ func (p4m *P4MonitorMetrics) monitorHelixAuthSvc() {
 		p4m.handleP4Error("Error running %s: %v, err:%q", p4cmd, err, errbuf)
 		return
 	}
+	skipTLSVerify := verifyHostDisabled(lines)
 	urlAuth := p4m.extractServiceURL(lines)
 	if !strings.HasPrefix(urlAuth, "https") {
 		p4m.logger.Debug("Auth URL not https so exiting")
 		return
 	}
 	p4m.logger.Debugf("Auth URL: %q", urlAuth)
-	certExpiryTime, err := p4m.getCertificateExpiry(urlAuth)
+	certExpiryTime, err := p4m.getCertificateExpiry(urlAuth, skipTLSVerify)
 	if err != nil {
 		p4m.logger.Errorf("Error getting cert url expiry %s: %v", urlAuth, err)
 		return
