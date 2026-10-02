@@ -1,0 +1,6 @@
+*
+!scripts/
+!scripts/**
+!examples/
+!examples/prometheus/
+!examples/prometheus/**

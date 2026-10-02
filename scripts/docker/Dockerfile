@@ -2,27 +2,24 @@ FROM rockylinux/rockylinux:9-ubi-init AS p4promtestbase
 LABEL maintainer="rcowham@perforce.com"
 ENV PATH="/root/.local/bin:/root/.venv/bin:/home/perforce/.local/bin:/home/perforce/.venv/bin:${PATH}"
 
-RUN yum update -y; \
-    echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections; \
-    echo  "postfix postfix/mailname string `hostname`" | debconf-set-selections; \
-    echo "postfix postfix/main_mailer_type string 'No configuration'" | debconf-set-selections; \
-    yum install -y openssh-server; \
-    yum install -y wget; \
-    yum install -y sudo; \
-    yum install -y curl; \
-    yum install -y vim; \
-    yum install -y cron; \
-    yum install -y gawk; \
-    yum install -y cronie; \
-    yum install -y hostname; \
-    yum install -y rsync; \
-    yum install -y policycoreutils-python-utils; \
-    yum install -y passwd; \
-    yum install -y bc; \
-    yum install -y jq; \
-    yum install -y make; \
-    yum autoremove; \
-    yum clean all
+RUN yum install -y \
+        bc \
+        cron \
+        cronie \
+        curl \
+        gawk \
+        hostname \
+        jq \
+        make \
+        openssh-server \
+        passwd \
+        policycoreutils-python-utils \
+        rsync \
+        sudo \
+        vim \
+        wget && \
+    yum clean all && \
+    rm -rf /var/cache/yum
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     export PATH="/root/.local/bin:$PATH" && \
@@ -37,7 +34,9 @@ FROM rockylinux/rockylinux:9-ubi AS p4promrulestest
 ARG PROMETHEUS_VERSION=2.54.1
 ARG YTT_VERSION=0.55.2
 
-RUN yum install -y curl-minimal diffutils make tar && yum clean all && \
+RUN yum install -y curl-minimal diffutils make tar && \
+    yum clean all && \
+    rm -rf /var/cache/yum && \
     case "$(uname -m)" in \
         x86_64) arch=amd64 ;; \
         aarch64) arch=arm64 ;; \
@@ -50,8 +49,8 @@ RUN yum install -y curl-minimal diffutils make tar && yum clean all && \
     install -m 755 "/tmp/prometheus-${PROMETHEUS_VERSION}.linux-${arch}/promtool" /usr/local/bin/promtool && \
     rm -rf /tmp/prometheus.tar.gz "/tmp/prometheus-${PROMETHEUS_VERSION}.linux-${arch}"
 
-ADD examples/prometheus /rules/
-ADD scripts/docker/run_rules_tests.sh /usr/local/bin/run_rules_tests
+COPY examples/prometheus /rules/
+COPY scripts/docker/run_rules_tests.sh /usr/local/bin/run_rules_tests
 RUN chmod 755 /usr/local/bin/run_rules_tests
 WORKDIR /rules
 CMD ["/usr/local/bin/run_rules_tests"]
@@ -70,21 +69,21 @@ CMD ["/usr/local/bin/run_rules_tests"]
 # This is the Prometheus/Grafana test container - no P4
 FROM p4promtestbase AS p4promgraftest
 
-ADD scripts/docker/run_prom_graf_tests.sh /root/
-ADD scripts/tests/test_prom_graf.py /root/
-ADD scripts/install_p4prom.sh /root/
-ADD scripts/update_p4prom.sh /root/
-ADD scripts/p4prom_common.sh /root/
-ADD scripts/install_prom_graf.sh /root/
-ADD scripts/update_prom_graf.sh /root/
-ADD scripts/migrate_prom_graf_data.sh /root/
-ADD examples/prometheus /root/prometheus-rules/
+COPY scripts/docker/run_prom_graf_tests.sh /root/
+COPY scripts/tests/test_prom_graf.py /root/
+COPY scripts/install_p4prom.sh /root/
+COPY scripts/update_p4prom.sh /root/
+COPY scripts/p4prom_common.sh /root/
+COPY scripts/install_prom_graf.sh /root/
+COPY scripts/update_prom_graf.sh /root/
+COPY scripts/migrate_prom_graf_data.sh /root/
+COPY examples/prometheus /root/prometheus-rules/
 
 # -----------------------------
 # This is the SDP version of the P4Prometheus test container.
 FROM p4promtestbase AS p4promtest-sdp
 
-ADD scripts/docker/setup_sdp.sh /root/
+COPY scripts/docker/setup_sdp.sh /root/
 RUN /root/setup_sdp.sh
 RUN sudo -u perforce bash -lc 'curl -LsSf https://astral.sh/uv/install.sh | sh && \
     export PATH="$HOME/.local/bin:$PATH" && \
@@ -92,11 +91,11 @@ RUN sudo -u perforce bash -lc 'curl -LsSf https://astral.sh/uv/install.sh | sh &
     uv venv --python 3.14 "$HOME/.venv" && \
     . "$HOME/.venv/bin/activate" && \
     uv pip install pytest-testinfra p4python'
-ADD scripts/docker/run_p4prom_tests.sh /root/
-ADD scripts/tests/test_sdp.py /root/
-ADD scripts/install_p4prom.sh /root/
-ADD scripts/update_p4prom.sh /root/
-ADD scripts/p4prom_common.sh /root/
+COPY scripts/docker/run_p4prom_tests.sh /root/
+COPY scripts/tests/test_sdp.py /root/
+COPY scripts/install_p4prom.sh /root/
+COPY scripts/update_p4prom.sh /root/
+COPY scripts/p4prom_common.sh /root/
 
 CMD ["/sbin/init"]
 
