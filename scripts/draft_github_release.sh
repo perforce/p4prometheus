@@ -111,6 +111,10 @@ command -v gh >/dev/null 2>&1 || fail "GitHub CLI (gh) is required"
 gh auth status --hostname github.com >/dev/null 2>&1 || \
     fail "Authenticate GitHub CLI first with: gh auth login --hostname github.com"
 
+head_commit=$(git rev-parse HEAD)
+git ls-remote origin | awk -v commit="$head_commit" '$1 == commit { found = 1 } END { exit !found }' || \
+    fail "HEAD ($head_commit) is not on origin; push the release commit before creating a release"
+
 if gh release view "$tag" >/dev/null 2>&1; then
     is_draft=$(gh release view "$tag" --json isDraft --jq '.isDraft')
     [[ "$is_draft" == true ]] || fail "Release $tag already exists and is not a draft"
@@ -118,7 +122,7 @@ if gh release view "$tag" >/dev/null 2>&1; then
 else
     gh release create "$tag" "${assets[@]}" \
         --draft \
-        --target HEAD \
+        --target "$head_commit" \
         --title "$tag" \
         --generate-notes
 fi
