@@ -206,6 +206,8 @@ comment_out_legacy_monitor_cron() {
 migrate_sdp_monitor_log_rotation() {
     local backup_functions="/p4/common/bin/backup_functions.sh"
     local log_dir="${LOGS:-}"
+    local old_log
+    local migrated_log
     local old_archive
     local new_archive
 
@@ -243,6 +245,17 @@ migrate_sdp_monitor_log_rotation() {
 
     if [[ -z "$log_dir" || ! -d "$log_dir" ]]; then
         return 0
+    fi
+
+    old_log="$log_dir/monitor_metrics.log"
+    if [[ -f "$old_log" ]]; then
+        migrated_log="$log_dir/p4monitor_locks.log.$(date +%Y-%m-%d_%H-%M-%S).gz"
+        if ! gzip -c "$old_log" > "$migrated_log"; then
+            rm -f "$migrated_log"
+            msg "Warning: Failed to archive $old_log"
+        elif ! rm -f "$old_log"; then
+            msg "Warning: Archived $old_log but could not remove the original"
+        fi
     fi
 
     for old_archive in "$log_dir"/monitor_metrics.log.*.gz; do
