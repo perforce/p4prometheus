@@ -1,0 +1,15 @@
+# p4monitor_locks.timer
+# Timer for service to run p4prometheus p4monitor_locks.sh - ensuring single threading
+
+[Unit]
+Description=p4prometheus lock monitoring for p4d metrics gathering
+Requires=p4monitor_locks.service
+
+[Timer]
+Unit=p4monitor_locks.service
+# Runs once a minute
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

@@ -207,7 +207,7 @@ fi
 
 p4prom_config_file="$p4prom_config_dir/p4prometheus.yaml"
 p4metrics_config_file="$p4prom_config_dir/p4metrics.yaml"
-monitor_metrics_config_file="$p4prom_config_dir/monitor_metrics.yaml"
+p4monitor_locks_config_file="$p4prom_config_dir/p4monitor_locks.yaml"
 
 install_node_exporter () {
 
@@ -388,7 +388,7 @@ install_monitor_locks () {
     # We install in /p4/common/site/bin but need to reference the ultimate path without links for SELinux/systemd
     abs_bin_dir=$(readlink -f "$bin_dir")
     cd "$bin_dir" || bail "Failed to cd to $bin_dir"
-    for scriptname in monitor_metrics.py monitor_wrapper.sh; do
+    for scriptname in monitor_locks.py p4monitor_locks.sh; do
         [[ -f "$scriptname" ]] && rm "$scriptname"
         echo "downloading $scriptname"
         wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/$scriptname"
@@ -402,26 +402,32 @@ install_monitor_locks () {
 
     bootstrap_monitor_python_env "$bin_dir"
 
-    # Create default monitor_metrics.yaml if it doesn't already exist
-    ensure_monitor_metrics_config_file_exists
+    # Create default p4monitor_locks.yaml if it doesn't already exist
+    ensure_p4monitor_locks_config_file_exists
 
-    service_name="monitor_locks"
+    for legacy_service in monitor_metrics monitor_locks; do
+        systemctl disable --now "${legacy_service}.timer" 2>/dev/null || true
+        systemctl disable --now "${legacy_service}.service" 2>/dev/null || true
+        rm -f "/etc/systemd/system/${legacy_service}.service" "/etc/systemd/system/${legacy_service}.timer"
+    done
+
+    service_name="p4monitor_locks"
     service_file="/etc/systemd/system/${service_name}.service"
     msg "Creating service file for ${service_name}"
     cat << EOF > "${service_file}"
-# monitor_locks.service
-# Service file to run p4prometheus monitor_wrapper.sh - ensuring single threading
+# p4monitor_locks.service
+# Service file to run p4prometheus p4monitor_locks.sh - ensuring single threading
 
 [Unit]
-Description=p4prometheus monitor_wrapper.sh for p4d lock monitoring
+Description=p4prometheus lock monitoring for p4d metrics gathering
 Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
-Wants=monitor_locks.timer network-online.target
+Wants=p4monitor_locks.timer network-online.target
 After=network-online.target
 
 [Service]
 User=$OSUSER
 Type=oneshot
-ExecStart=${abs_bin_dir}/monitor_wrapper.sh ${service_args} -c ${monitor_metrics_config_file}
+ExecStart=${abs_bin_dir}/p4monitor_locks.sh ${service_args} -c ${p4monitor_locks_config_file}
 
 [Install]
 WantedBy=multi-user.target
@@ -432,16 +438,16 @@ EOF
     msg "Creating timer file for ${service_name}"
     service_file="/etc/systemd/system/${service_name}.timer"
     cat << EOF > "${service_file}"
-# monitor_locks.timer
-# Timer for service to run p4prometheus monitor_locks.sh - ensuring single threading
+# p4monitor_locks.timer
+# Timer for service to run p4prometheus p4monitor_locks.sh - ensuring single threading
 
 [Unit]
-Description=p4prometheus monitor_locks.sh for p4d metrics gathering
+Description=p4prometheus lock monitoring for p4d metrics gathering
 Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
-Requires=monitor_locks.service
+Requires=p4monitor_locks.service
 
 [Timer]
-Unit=monitor_locks.service
+Unit=p4monitor_locks.service
 # Runs once a minute
 OnCalendar=*-*-* *:*:00
 AccuracySec=5s
@@ -453,11 +459,9 @@ EOF
     chmod 644 "${service_file}"
 
     systemctl daemon-reload
-    for svc in monitor_locks; do
-        systemctl enable $svc.timer
-        systemctl start $svc.timer
-        systemctl status $svc.timer --no-pager
-    done
+    systemctl enable "${service_name}.timer"
+    systemctl restart "${service_name}.timer"
+    systemctl status "${service_name}.timer" --no-pager
 
     mon_installer="/tmp/_install_mon.sh"
     cat << EOF > $mon_installer
@@ -503,7 +507,7 @@ Installation complete.
 Config files:
   p4prometheus:  ${p4prom_config_file}
   p4metrics:     ${p4metrics_config_file}
-  monitor_metrics: ${monitor_metrics_config_file}
+    p4monitor_locks: ${p4monitor_locks_config_file}
 
 Metrics directory: ${metrics_root}
 $(if [[ $UseSDP -eq 1 ]]; then echo "Metrics symlink:   ${metrics_link}"; fi)

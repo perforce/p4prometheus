@@ -1,15 +1,15 @@
 #!/bin/bash
 # Generate lock monitoring metrics and log file for use with Prometheus (collected via node_exporter)
-# Calls the underlying script monitor_metrics.py
+# Calls the underlying script monitor_locks.py
 # Note that the Python script requires the 'lslocks' utility to be installed.
 #
 # If used, put this job into perforce user crontab, for SDP, e.g. where INSTANCE=1:
 #
-#   */1 * * * * /p4/common/site/bin/monitor_wrapper.sh $INSTANCE > /dev/null 2>&1 ||:
+#   */1 * * * * /p4/common/site/bin/p4monitor_locks.sh $INSTANCE > /dev/null 2>&1 ||:
 #
 # For non-SDP installation, either specify port/user or ensure P4PORT and P4USER are set in environment:
 #
-#   */1 * * * * /p4/common/site/bin/monitor_wrapper.sh -nosdp -p server:1666 -u p4admin > /dev/null 2>&1 ||:
+#   */1 * * * * /p4/common/site/bin/p4monitor_locks.sh -nosdp -p server:1666 -u p4admin > /dev/null 2>&1 ||:
 #
 # If not using SDP then please ensure that appropriate LONG TERM TICKET is setup in the environment
 # that this script is running.
@@ -35,19 +35,19 @@ function usage
       echo -e "\\n\\nUsage Error:\\n\\n$errorMessage\\n\\n" >&2
    fi
  
-   echo "USAGE for monitor_wrapper.sh:
+    echo "USAGE for p4monitor_locks.sh:
  
-monitor_wrapper.sh [<instance> | -nosdp] [-p <port>] | [-u <user>] | [-m <metrics_dir>] [-L <log_file>] [-c <config_file>]
+p4monitor_locks.sh [<instance> | -nosdp] [-p <port>] | [-u <user>] | [-m <metrics_dir>] [-L <log_file>] [-c <config_file>]
 
    or
 
-monitor_wrapper.sh -h
+p4monitor_locks.sh -h
 
 E.g.
 
-monitor_wrapper.sh 1
-monitor_wrapper.sh 1 -c /p4/common/config/monitor_metrics.yaml
-monitor_wrapper.sh -nosdp -p server:1666 -u p4admin -m /var/metrics -L /var/metrics/monitor_metrics.log -c /etc/p4/monitor_metrics.yaml
+p4monitor_locks.sh 1
+p4monitor_locks.sh 1 -c /p4/common/config/p4monitor_locks.yaml
+p4monitor_locks.sh -nosdp -p server:1666 -u p4admin -m /var/metrics -L /var/metrics/p4monitor_locks.log -c /etc/p4/p4monitor_locks.yaml
 
 "
 }
@@ -103,7 +103,7 @@ else
     export P4PORT=${p4port}
     export P4USER=${p4user}
     export P4BIN=${P4BIN:-p4}
-    [[ -z "$logfile" ]] && logfile="$metrics_root/monitor_metrics.log"
+    [[ -z "$logfile" ]] && logfile="$metrics_root/p4monitor_locks.log"
 fi
 
 # Build optional arguments
@@ -118,8 +118,8 @@ declare config_arg=""
 [[ -f "$SCRIPT_DIR/.venv/bin/activate" ]] && source "$SCRIPT_DIR/.venv/bin/activate"
 if [[ $UseSDP -eq 1 ]]; then
     # shellcheck disable=SC2086
-    "$SCRIPT_DIR"/monitor_metrics.py -i "$SDP_INSTANCE" -m "$metrics_root" $config_arg
+    "$SCRIPT_DIR"/monitor_locks.py -i "$SDP_INSTANCE" -m "$metrics_root" $config_arg
 else
     # shellcheck disable=SC2086
-    "$SCRIPT_DIR"/monitor_metrics.py -m "$metrics_root" -p "$p4port" -u "$p4user" -L "$logfile" $config_arg
+    "$SCRIPT_DIR"/monitor_locks.py -m "$metrics_root" -p "$p4port" -u "$p4user" -L "$logfile" $config_arg
 fi

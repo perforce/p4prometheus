@@ -914,13 +914,13 @@ Look in the log file `/p4/1/logs/monitor++_++metrics.log` (or wherever you have 
 e.g. the following will find all info messages
 
 ....
-grep "blocked by pid" /p4/1/logs/monitor_metrics.log | less
+grep "blocked by pid" /p4/1/logs/p4monitor_locks.log | less
 ....
 
 Other options to remove client locks (which are output with paths like `.../server.locks/clients/90,d/++<++client name++>++`):
 
 ....
-grep "blocked by pid" /p4/1/logs/monitor_metrics.log | grep -v /clients | less
+grep "blocked by pid" /p4/1/logs/p4monitor_locks.log | grep -v /clients | less
 ....
 
 Output might contain lines like:
@@ -932,7 +932,7 @@ Output might contain lines like:
 It may also be worth checking for commands which are "blocking" others, e.g.
 
 ....
-grep blocking /p4/1/logs/monitor_metrics.log
+grep blocking /p4/1/logs/p4monitor_locks.log
 
 2024-04-04 00:29:02: blocking cmd: elapsed 02:09:23, pid 284460, user perforce, cmd sync, blocking 2, indirectly 203
 2024-04-04 00:29:02: blocking cmd: elapsed 00:59:35, pid 374896, user fred, cmd dm-CommitSubmit, blocking 203, indirectly 0

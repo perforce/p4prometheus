@@ -9,12 +9,12 @@
 
 """
 NAME:
-    monitor_metrics.py
+    monitor_locks.py
 
 DESCRIPTION:
     This script monitors locks using lslocks and p4 monitor show for Perforce server metrics for use with Prometheus.
 
-    Assumes it is wrapped by a simple bash script monitor_wrapper.sh
+    Assumes it is wrapped by a simple bash script p4monitor_locks.sh
     that configures SDP env or equivalent env vars.
 
     The script takes a config file as an argument. This allows customization of notification settings and other parameters.
@@ -52,20 +52,18 @@ except ImportError:
 
 python3 = (sys.version_info[0] >= 3)
 
-LOGGER_NAME = 'monitor_metrics'
+LOGGER_NAME = 'p4monitor_locks'
 logger = logging.getLogger(LOGGER_NAME)
 
 metrics_root = "/p4/metrics"
 metrics_file = "locks.prom"
 
-script_name = os.path.basename(os.path.splitext(__file__)[0])
 LOGDIR = os.getenv('LOGS', '/p4/1/logs')
 
-DEFAULT_LOG_FILE = "%s.log" % script_name
+DEFAULT_LOG_FILE = "p4monitor_locks.log"
 if os.path.exists(LOGDIR):
-    DEFAULT_LOG_FILE = os.path.join(LOGDIR, "%s.log" % script_name)
+    DEFAULT_LOG_FILE = os.path.join(LOGDIR, DEFAULT_LOG_FILE)
 DEFAULT_VERBOSITY = 'DEBUG'
-LOGGER_NAME = 'monitor_metrics'
 
 
 class MonitorPid:
@@ -1042,7 +1040,7 @@ class P4Monitor(object):
                             help="YAML config file for notifications and other options.")
         parser.add_argument('-L', '--log', default=default_log_file, help="Default: " + default_log_file)
         parser.add_argument('-i', '--sdp-instance', help="SDP instance")
-        parser.add_argument('-t', '--test-file', help="Test file (section of log file from monitor_metrics.py)")
+        parser.add_argument('-t', '--test-file', help="Test file (section of log file from monitor_locks.py)")
         parser.add_argument('--notify-test', action='store_true', default=False,
                             help="Force a notification when used with --test-file, bypassing threshold and cooldown. "
                                  "Useful for verifying Slack/email/Teams/script config.")
@@ -1402,15 +1400,15 @@ class P4Monitor(object):
 
     def parseTestFile(self):
         # Parses test file and outputs result
-        # DEBUG 2024-04-03 23:57:02,118 monitor_metrics.py 137: Running: sudo lslocks -o +BLOCKER -J
-        # DEBUG 2024-04-03 23:57:02,211 monitor_metrics.py 144: Output:
+        # DEBUG 2024-04-03 23:57:02,118 monitor_locks.py 137: Running: sudo lslocks -o +BLOCKER -J
+        # DEBUG 2024-04-03 23:57:02,211 monitor_locks.py 144: Output:
         # {
         # "locks": [
         #     {"command":"snapd", "pid":1249, "type":"FLOCK", "size":null, "mode":"WRITE", "m":false, "start":0, "end":0, "path":"/var/lib/snapd/state.lock", "blocker":null},
         # }
         #
-        # DEBUG 2024-04-03 23:57:02,211 monitor_metrics.py 137: Running: /p4/1/bin/p4_1 -u p4sdp -p ssl:1667 -F "%id% %runstate% %user% %elapsed% %function% %args%" monitor show -al
-        # DEBUG 2024-04-03 23:57:02,313 monitor_metrics.py 144: Output:
+        # DEBUG 2024-04-03 23:57:02,211 monitor_locks.py 137: Running: /p4/1/bin/p4_1 -u p4sdp -p ssl:1667 -F "%id% %runstate% %user% %elapsed% %function% %args%" monitor show -al
+        # DEBUG 2024-04-03 23:57:02,313 monitor_locks.py 144: Output:
         # 2030 B svc_master-1666 05:24:42 ldapsync -g -i 1800
         # 162476 I svc_p4d_fs_brk 00:00:01 IDLE none
         #

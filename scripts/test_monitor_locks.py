@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # # -*- encoding: UTF8 -*-
-# Test harness for monitor_metrics.py
+# Test harness for monitor_locks.py
 
 from __future__ import print_function
 
@@ -16,7 +16,7 @@ from unittest import mock
 curr_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(curr_dir))
 
-from monitor_metrics import P4Monitor, Notifier, build_slack_tree_sections
+from monitor_locks import P4Monitor, Notifier, build_slack_tree_sections
 
 # os.environ["LOGS"] = "."
 # LOGGER_NAME = "testMonitorMetrics"
@@ -464,28 +464,28 @@ Server root: /p4/1/root
         """parseTestFile() must skip unrelated Running:/Output: blocks (e.g. "info -s")
         and self-produced debug JSON dumps (e.g. "Blocking tree:"), and only treat the
         block following a "monitor show" command as monitor data."""
-        log_text = """DEBUG 2026-01-01 00:00:00,000 monitor_metrics.py 1: Running: sudo lslocks -o +BLOCKER -J
-DEBUG 2026-01-01 00:00:00,001 monitor_metrics.py 2: Output:
+        log_text = """DEBUG 2026-01-01 00:00:00,000 monitor_locks.py 1: Running: sudo lslocks -o +BLOCKER -J
+    DEBUG 2026-01-01 00:00:00,001 monitor_locks.py 2: Output:
 {
    "locks": [
       {"command":"p4d_1", "pid":910, "mode":"WRITE*", "path":"/hxmetadata/p4/1/db1/db.sendq", "blocker":920}
    ]
 }
 
-DEBUG 2026-01-01 00:00:00,002 monitor_metrics.py 3: Running: /p4/1/bin/p4_1 -u p4admin -p ssl:1666 info -s
-DEBUG 2026-01-01 00:00:00,003 monitor_metrics.py 4: Output:
+DEBUG 2026-01-01 00:00:00,002 monitor_locks.py 3: Running: /p4/1/bin/p4_1 -u p4admin -p ssl:1666 info -s
+DEBUG 2026-01-01 00:00:00,003 monitor_locks.py 4: Output:
 ServerID: p4d_edge_idc
 Server services: edge-server
 
-DEBUG 2026-01-01 00:00:00,004 monitor_metrics.py 5: Blocking tree:
+DEBUG 2026-01-01 00:00:00,004 monitor_locks.py 5: Blocking tree:
 pid, user [table,] cmd, args
 {
     "920": {
         "910": {}
     }
 }
-DEBUG 2026-01-01 00:00:00,005 monitor_metrics.py 6: Running: /p4/1/bin/p4_1 -u p4admin -p ssl:1666 -F "%id% %runstate% %user% %elapsed% %function% %args%" monitor show -al
-DEBUG 2026-01-01 00:00:00,006 monitor_metrics.py 7: Output:
+DEBUG 2026-01-01 00:00:00,005 monitor_locks.py 6: Running: /p4/1/bin/p4_1 -u p4admin -p ssl:1666 -F "%id% %runstate% %user% %elapsed% %function% %args%" monitor show -al
+DEBUG 2026-01-01 00:00:00,006 monitor_locks.py 7: Output:
 920 R teddkim    00:02:59 change -i
 910 R teddkim    00:02:51 fstat -Olhp //PUBG/Solar_D...
 
@@ -589,7 +589,7 @@ DEBUG 2026-01-01 00:00:00,006 monitor_metrics.py 7: Output:
                 return {"ok": True, "ts": "987.654"} if "thread_ts" not in payload else {"ok": True}
 
             notifier._slack_api_request = fake_api_request
-            with mock.patch("monitor_metrics.time.time", return_value=now):
+            with mock.patch("monitor_locks.time.time", return_value=now):
                 notifier.maybe_notify(
                     blocked_count, ["blocking totals: {}".format(blocked_count)], [], {"2001": {}})
 
@@ -631,7 +631,7 @@ DEBUG 2026-01-01 00:00:00,006 monitor_metrics.py 7: Output:
             notifier._send_script = lambda payload, cfg: sent_payloads.append(payload)
             blines = ["blocking totals: {}".format(blocked_count)]
             detail_msgs = [] if signature == "payload" else ["changed"]
-            with mock.patch("monitor_metrics.time.time", return_value=now):
+            with mock.patch("monitor_locks.time.time", return_value=now):
                 notifier.maybe_notify(blocked_count, blines, detail_msgs, {"2001": {}})
             self.assertEqual(expected_sends, len(sent_payloads))
 
@@ -650,7 +650,7 @@ DEBUG 2026-01-01 00:00:00,006 monitor_metrics.py 7: Output:
             "detected_at": datetime.datetime(2026, 9, 10, 17, 9),
             "tzname": "KST",
         }
-        with mock.patch("monitor_metrics.time.time", return_value=1000):
+        with mock.patch("monitor_locks.time.time", return_value=1000):
             Notifier(config, logging.getLogger("test_monitor_metrics")).maybe_notify(
                 2, [], [], {}, tree_context=first_context)
 
@@ -660,7 +660,7 @@ DEBUG 2026-01-01 00:00:00,006 monitor_metrics.py 7: Output:
             "detected_at": datetime.datetime(2026, 9, 10, 17, 10),
             "tzname": "KST",
         }
-        with mock.patch("monitor_metrics.time.time", return_value=1060):
+        with mock.patch("monitor_locks.time.time", return_value=1060):
             notifier = Notifier(config, logging.getLogger("test_monitor_metrics"))
             notifier.maybe_notify(1, [], [], {}, tree_context=second_context)
 

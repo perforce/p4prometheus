@@ -41,7 +41,7 @@ Project components:
 
 * link:../releases/latest[p4prometheus]: a binary that parses P4 Server logs.
 * link:../cmd/p4metrics/README.md[p4metrics]: supplementary P4 Server and SDP-compatible metrics.
-* link:../scripts/monitor_metrics.py[monitor_metrics.py] and link:../scripts/monitor_wrapper.sh[monitor_wrapper.sh]: Linux lock monitoring using `lslocks` and `p4 monitor show`.
+* link:../scripts/monitor_locks.py[monitor_locks.py] and link:../scripts/p4monitor_locks.sh[p4monitor_locks.sh]: Linux lock monitoring using `lslocks` and `p4 monitor show`.
 * link:../cmd/p4logtail/README.md[p4logtail] and link:../cmd/p4plogtail/README.md[p4plogtail]: completed-command log tails with JSON output (for use with third party log analysis tools such as Splunk, DataDog, ELK Stack etc.)
 
 P4Prometheus uses https://github.com/rcowham/go-libp4dlog[go-libp4dlog] for p4d log parsing.
@@ -140,7 +140,7 @@ The primary log parser reports command throughput, active commands, resource use
 
 === Lock Metrics
 
-Linux lock monitoring requires `lslocks`. `monitor_wrapper.sh` invokes `monitor_metrics.py`, which relates operating-system locks to `p4 monitor show` results. It reports:
+Linux lock monitoring requires `lslocks`. `p4monitor_locks.sh` invokes `monitor_locks.py`, which relates operating-system locks to `p4 monitor show` results. It reports:
 
 * `p4_locks_db_read` and `p4_locks_db_write`
 * `p4_locks_cliententity_read` and `p4_locks_cliententity_write`

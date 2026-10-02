@@ -1982,7 +1982,7 @@ sudo systemctl status p4prometheus</pre>
 </div>
 <div class="literalblock">
 <div class="content">
-<pre>grep "blocked by pid" /p4/1/logs/monitor_metrics.log | less</pre>
+<pre>grep "blocked by pid" /p4/1/logs/p4monitor_locks.log | less</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -1990,7 +1990,7 @@ sudo systemctl status p4prometheus</pre>
 </div>
 <div class="literalblock">
 <div class="content">
-<pre>grep "blocked by pid" /p4/1/logs/monitor_metrics.log | grep -v /clients | less</pre>
+<pre>grep "blocked by pid" /p4/1/logs/p4monitor_locks.log | grep -v /clients | less</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -2006,7 +2006,7 @@ sudo systemctl status p4prometheus</pre>
 </div>
 <div class="literalblock">
 <div class="content">
-<pre>grep blocking /p4/1/logs/monitor_metrics.log
+<pre>grep blocking /p4/1/logs/p4monitor_locks.log
 
 2024-04-04 00:29:02: blocking cmd: elapsed 02:09:23, pid 284460, user perforce, cmd sync, blocking 2, indirectly 203
 2024-04-04 00:29:02: blocking cmd: elapsed 00:59:35, pid 374896, user fred, cmd dm-CommitSubmit, blocking 203, indirectly 0
@@ -2435,7 +2435,7 @@ Checking perforce_rules.yml
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-09-29 17:41:01 +0100
+Last updated 2026-10-02 15:09:54 +0100
 </div>
 </div>
 </body>

@@ -1,6 +1,6 @@
-# monitor_metrics.yaml - configuration for monitor_metrics.py
+# p4monitor_locks.yaml - configuration for monitor_locks.py
 #
-# Pass this file to the script with: monitor_metrics.py --config monitor_metrics.yaml
+# Pass this file to the script with: monitor_locks.py --config p4monitor_locks.yaml
 #
 # Requires pyyaml: pip install pyyaml
 
@@ -12,8 +12,8 @@ notifications:
   cooldown_seconds: 300
 
   # File used to track the timestamp of the last notification.
-  # Must be writable by the user running monitor_metrics.py.
-  state_file: "/tmp/monitor_metrics.notify.state"
+  # Must be writable by the user running monitor_locks.py.
+  state_file: "/tmp/p4monitor_locks.notify.state"
 
   # Optional text shown as the first line after the title in chat notifications.
   # Example: "Investigate lock contention immediately"

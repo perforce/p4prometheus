@@ -18,7 +18,7 @@ This guide helps AI coding agents work productively in the p4prometheus codebase
   - Binaries are output to `bin/` for multiple platforms.
 - **Testing:**
   - Run Go tests with `go test ./...`.
-  - Some scripts (e.g., `monitor_metrics.py`) have separate test files (e.g., `test_monitor_metrics.py`).
+  - Some scripts (e.g., `monitor_locks.py`) have separate test files (e.g., `test_monitor_locks.py`).
 - **Debugging:**
   - Most Go tools support `--debug` and `--dry.run` flags for verbose output and safe testing.
   - Example: `nohup ./p4metrics --config p4metrics.yaml --debug --dry.run > out.txt &`

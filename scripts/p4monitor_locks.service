@@ -1,0 +1,14 @@
+# p4monitor_locks.service
+# Service file to run p4prometheus p4monitor_locks.sh - ensuring single threading
+
+[Unit]
+Description=p4prometheus lock monitoring for p4d metrics gathering
+Wants=p4monitor_locks.timer
+
+[Service]
+User=perforce
+Type=oneshot
+ExecStart=/p4/common/site/bin/p4monitor_locks.sh 1
+
+[Install]
+WantedBy=multi-user.target

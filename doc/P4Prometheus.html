@@ -549,7 +549,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <p><a href="../cmd/p4metrics/README.md">p4metrics</a>: supplementary P4 Server and SDP-compatible metrics.</p>
 </li>
 <li>
-<p><a href="../scripts/monitor_metrics.py">monitor_metrics.py</a> and <a href="../scripts/monitor_wrapper.sh">monitor_wrapper.sh</a>: Linux lock monitoring using <code>lslocks</code> and <code>p4 monitor show</code>.</p>
+<p><a href="../scripts/monitor_locks.py">monitor_locks.py</a> and <a href="../scripts/p4monitor_locks.sh">p4monitor_locks.sh</a>: Linux lock monitoring using <code>lslocks</code> and <code>p4 monitor show</code>.</p>
 </li>
 <li>
 <p><a href="../cmd/p4logtail/README.md">p4logtail</a> and <a href="../cmd/p4plogtail/README.md">p4plogtail</a>: completed-command log tails with JSON output (for use with third party log analysis tools such as Splunk, DataDog, ELK Stack etc.)</p>
@@ -713,7 +713,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div class="sect2">
 <h3 id="_lock_metrics">5.3. Lock Metrics</h3>
 <div class="paragraph">
-<p>Linux lock monitoring requires <code>lslocks</code>. <code>monitor_wrapper.sh</code> invokes <code>monitor_metrics.py</code>, which relates operating-system locks to <code>p4 monitor show</code> results. It reports:</p>
+<p>Linux lock monitoring requires <code>lslocks</code>. <code>p4monitor_locks.sh</code> invokes <code>monitor_locks.py</code>, which relates operating-system locks to <code>p4 monitor show</code> results. It reports:</p>
 </div>
 <div class="ulist">
 <ul>
@@ -762,7 +762,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-09-15 12:38:46 +0100
+Last updated 2026-10-02 15:09:54 +0100
 </div>
 </div>
 </body>

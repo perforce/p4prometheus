@@ -246,7 +246,19 @@ fi
 
 p4prom_config_file="$p4prom_config_dir/p4prometheus.yaml"
 p4metrics_config_file="$p4prom_config_dir/p4metrics.yaml"
-monitor_metrics_config_file="$p4prom_config_dir/monitor_metrics.yaml"
+p4monitor_locks_config_file="$p4prom_config_dir/p4monitor_locks.yaml"
+legacy_monitor_metrics_config_file="$p4prom_config_dir/monitor_metrics.yaml"
+
+if [[ ! -f "$p4monitor_locks_config_file" ]]; then
+    for legacy_config_file in "$legacy_monitor_metrics_config_file" "/p4/common/config/monitor_metrics.yaml"; do
+        if [[ -f "$legacy_config_file" ]]; then
+            mv "$legacy_config_file" "$p4monitor_locks_config_file"
+            chown "$OSUSER:$OSGROUP" "$p4monitor_locks_config_file" 2>/dev/null || true
+            msg "Migrated monitor_metrics config to $p4monitor_locks_config_file"
+            break
+        fi
+    done
+fi
 
 [[ -f "$p4prom_config_file" ]] || bail "Config file '$p4prom_config_file' does not exist - please run install_p4prom.sh instead of this script!"
 
@@ -378,47 +390,96 @@ update_p4metrics () {
     comment_out_legacy_monitor_cron "$OSUSER"
 }
 
-update_monitor_locks_service() {
-    local service_name="monitor_locks"
+update_p4monitor_locks_service() {
+    local service_name="p4monitor_locks"
     local service_file="/etc/systemd/system/${service_name}.service"
-    local updates_dir="/p4/common/site/bin"
-    local venv_dir="${updates_dir}/.venv"
-    local updates_script="${updates_dir}/check_for_updates.sh"
-    if [[ ! -f "${service_file}" ]]; then
-        return
-    fi
+    local timer_file="/etc/systemd/system/${service_name}.timer"
+    local bin_dir
+    local abs_bin_dir
+    local service_args
 
-    if ! grep -qE '^[[:space:]]*ExecStart=.*monitor_wrapper\.sh' "${service_file}"; then
-        return
-    fi
-
-    if grep -qE '^[[:space:]]*ExecStart=.*monitor_wrapper\.sh.*[[:space:]]-c[[:space:]]' "${service_file}"; then
-        msg "monitor_locks service already has a monitor_metrics config argument"
+    if [[ $UseSDP -eq 1 ]]; then
+        service_args="$SDP_INSTANCE"
+        bin_dir="$p4prom_bin_dir"
     else
-        msg "Updating monitor_locks service to include monitor_metrics config argument"
-        sed -i "/^[[:space:]]*ExecStart=.*monitor_wrapper\\.sh/ s|$| -c ${monitor_metrics_config_file}|" "${service_file}"
-        systemctl daemon-reload
-        systemctl restart ${service_name}.timer 2>/dev/null || true
-        systemctl restart ${service_name}.service 2>/dev/null || true
-        systemctl status ${service_name}.timer --no-pager 2>/dev/null || true
+        service_args="-p $P4PORT -u $P4USER -nosdp -m $metrics_root"
+        bin_dir="$local_bin_dir"
     fi
+    abs_bin_dir=$(readlink -f "$bin_dir") || bail "Failed to resolve monitor binary directory: $bin_dir"
+
+    for legacy_service in monitor_metrics monitor_locks; do
+        systemctl disable --now "${legacy_service}.timer" 2>/dev/null || true
+        systemctl disable --now "${legacy_service}.service" 2>/dev/null || true
+        rm -f "/etc/systemd/system/${legacy_service}.service" "/etc/systemd/system/${legacy_service}.timer"
+    done
+
+    for scriptname in monitor_locks.py p4monitor_locks.sh; do
+        wget -q -O "${bin_dir}/${scriptname}" "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/${scriptname}" || \
+            bail "Failed to download ${scriptname}"
+        chmod 755 "${bin_dir}/${scriptname}"
+        chown "$OSUSER:$OSGROUP" "${bin_dir}/${scriptname}"
+    done
+
+    cat << EOF > "$service_file"
+# p4monitor_locks.service
+# Service file to run p4prometheus p4monitor_locks.sh - ensuring single threading
+
+[Unit]
+Description=p4prometheus lock monitoring for p4d metrics gathering
+Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
+Wants=p4monitor_locks.timer network-online.target
+After=network-online.target
+
+[Service]
+User=$OSUSER
+Type=oneshot
+ExecStart=${abs_bin_dir}/p4monitor_locks.sh ${service_args} -c ${p4monitor_locks_config_file}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    chmod 644 "$service_file"
+
+    cat << EOF > "$timer_file"
+# p4monitor_locks.timer
+# Timer for service to run p4prometheus p4monitor_locks.sh - ensuring single threading
+
+[Unit]
+Description=p4prometheus lock monitoring for p4d metrics gathering
+Documentation=https://github.com/perforce/p4prometheus/blob/master/README.md
+Requires=p4monitor_locks.service
+
+[Timer]
+Unit=p4monitor_locks.service
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
+EOF
+    chmod 644 "$timer_file"
+
+    systemctl daemon-reload
+    systemctl enable "${service_name}.timer"
+    systemctl restart "${service_name}.timer"
+    systemctl status "${service_name}.timer" --no-pager 2>/dev/null || true
 
     if [[ -z "${OSUSER:-}" ]]; then
-        msg "Warning: OSUSER is not set, skipping ${updates_script}"
+        msg "Warning: OSUSER is not set, skipping ${bin_dir}/check_for_updates.sh"
         return
     fi
 
-    if [[ ! -d "$venv_dir" ]]; then
-        bootstrap_monitor_python_env "$updates_dir"
+    if [[ ! -d "${bin_dir}/.venv" ]]; then
+        bootstrap_monitor_python_env "$bin_dir"
     fi
 
-    if [[ ! -x "$updates_script" ]]; then
-        msg "Warning: ${updates_script} not found or not executable, skipping update check"
+    if [[ ! -x "${bin_dir}/check_for_updates.sh" ]]; then
+        msg "Warning: ${bin_dir}/check_for_updates.sh not found or not executable, skipping update check"
         return
     fi
 
     msg "Running check_for_updates.sh as ${OSUSER}"
-    if ! sudo -u "$OSUSER" /bin/bash -lc 'cd /p4/common/site/bin && ./check_for_updates.sh'; then
+    if ! sudo -u "$OSUSER" /bin/bash -lc "cd '$bin_dir' && ./check_for_updates.sh"; then
         msg "Warning: check_for_updates.sh failed for user ${OSUSER}"
     fi
 }
@@ -426,8 +487,8 @@ update_monitor_locks_service() {
 update_node_exporter
 update_p4prometheus
 update_p4metrics
-ensure_monitor_metrics_config_file_exists
-update_monitor_locks_service
+ensure_p4monitor_locks_config_file_exists
+update_p4monitor_locks_service
 check_aws_cli_version
 update_vmagent_service_if_present
 if [[ $InstallVMAgent -eq 1 ]]; then
@@ -470,12 +531,12 @@ Please edit this file to set any required parameters and consider re-starting th
 "
 fi
 
-if [[ -f "$p4metrics_config_file" ]] || [[ -f "$monitor_metrics_config_file" ]]; then
+if [[ -f "$p4metrics_config_file" ]] || [[ -f "$p4monitor_locks_config_file" ]]; then
     echo "
 Manual review recommended:
 
-If p4metrics/monitor_metrics were installed or updated, please review these files:
+If p4metrics/p4monitor_locks were installed or updated, please review these files:
     - $p4metrics_config_file
-    - $monitor_metrics_config_file
+    - $p4monitor_locks_config_file
 "
 fi

@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_lslocks.sh
-# Installs the following: monitor_metrics.py and its wrapper monitor_wrapper.sh
+# Installs the following: monitor_locks.py and its wrapper p4monitor_locks.sh
 #
 # Can be done for SDP or non-SDP.
 #
@@ -154,7 +154,7 @@ download_and_untar () {
     tar zxvf "$fname"
 }
 
-install_monitor_metrics () {
+install_monitor_locks () {
 
     if [[ $UseSDP -eq 1 ]]; then
         cron_args="$SDP_INSTANCE"
@@ -166,7 +166,7 @@ install_monitor_metrics () {
 # Download latest versions
 mkdir -p $bin_dir
 cd $bin_dir
-for scriptname in monitor_metrics.py monitor_wrapper.sh; do
+for scriptname in monitor_locks.py p4monitor_locks.sh; do
     [[ -f "\$scriptname" ]] && rm "\$scriptname"
     echo "downloading \$scriptname"
     wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/\$scriptname"
@@ -176,7 +176,7 @@ done
 
 # Install in crontab if required
 mytab="/tmp/mycron"
-scriptname="monitor_wrapper.sh"
+scriptname="p4monitor_locks.sh"
 if ! grep -q "\$scriptname" "\$mytab" ;then
     entry1="*/1 * * * * $bin_dir/\$scriptname $cron_args > /dev/null 2>&1 ||:"
     echo "\$entry1" >> "\$mytab"
@@ -194,11 +194,11 @@ EOF
 
 }
 
-install_monitor_metrics
+install_monitor_locks
 
 echo "
 
-Should have installed monitor_metrics.py and wrapper script.
+Should have installed monitor_locks.py and p4monitor_locks.sh.
 Check crontab -l output above (as user $OSUSER)
 
 "

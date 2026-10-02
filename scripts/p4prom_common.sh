@@ -190,7 +190,7 @@ comment_out_legacy_monitor_cron() {
     crontab -u "$osuser" -l > "$temp_file" 2>/dev/null || echo "" > "$temp_file"
 
     local f
-    for f in monitor_metrics.sh monitor_wrapper.sh; do
+    for f in monitor_metrics.sh monitor_wrapper.sh p4monitor_locks.sh; do
         if grep -v "^#" "$temp_file" | grep -q "${f}"; then
             cp "$temp_file" "${temp_file}.bak"
             sed -i "/^[^#].*\/${f}/ s|^|# ${comment}\\n# |" "$temp_file"
@@ -625,13 +625,13 @@ EOF
     chmod 640 "$p4metrics_config_file"
 }
 
-write_default_monitor_metrics_config() {
+write_default_p4monitor_locks_config() {
     local config_file=$1
 
     cat << 'EOF' > "$config_file"
-# monitor_metrics.yaml - configuration for monitor_metrics.py
+# p4monitor_locks.yaml - configuration for monitor_locks.py
 #
-# Pass this file via monitor_wrapper.sh -c <config_file>
+# Pass this file via p4monitor_locks.sh -c <config_file>
 # Requires pyyaml: pip install pyyaml
 
 notifications:
@@ -642,8 +642,8 @@ notifications:
     cooldown_seconds: 1500
 
     # File used to track the timestamp of the last notification.
-    # Must be writable by the user running monitor_metrics.py.
-    state_file: "/tmp/monitor_metrics.notify.state"
+    # Must be writable by the user running monitor_locks.py.
+    state_file: "/tmp/p4monitor_locks.notify.state"
 
     # Optional text shown as the first line after the title in chat notifications.
     notification_text: ""
@@ -689,26 +689,26 @@ notifications:
 EOF
 }
 
-ensure_monitor_metrics_config_file_exists() {
-    local config_file=${1:-${monitor_metrics_config_file:-}}
+ensure_p4monitor_locks_config_file_exists() {
+    local config_file=${1:-${p4monitor_locks_config_file:-}}
 
     if [[ -z "$config_file" ]]; then
-        bail "monitor_metrics_config_file is not set and no config path was supplied"
+        bail "p4monitor_locks_config_file is not set and no config path was supplied"
     fi
 
     if [[ -f "$config_file" ]]; then
-        msg "monitor_metrics config already exists: $config_file"
+        msg "p4monitor_locks config already exists: $config_file"
         return 0
     fi
 
     mkdir -p "$(dirname "$config_file")"
-    write_default_monitor_metrics_config "$config_file"
+    write_default_p4monitor_locks_config "$config_file"
 
     if [[ -n "${OSUSER:-}" ]] && [[ -n "${OSGROUP:-}" ]]; then
         chown "$OSUSER:$OSGROUP" "$config_file"
     fi
     chmod 640 "$config_file"
-    msg "Created default monitor_metrics config: $config_file"
+    msg "Created default p4monitor_locks config: $config_file"
 }
 
 write_vmagent_service_file() {
