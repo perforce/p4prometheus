@@ -851,6 +851,87 @@ EOF
     msg "Created root-only p4monitor_locks secrets template: $secrets_file"
 }
 
+migrate_p4monitor_locks_notification_secret() {
+    local section_name=$1
+    local yaml_key=$2
+    local env_key=$3
+    local env_name=$4
+    local config_file=${p4monitor_locks_config_file:-}
+    local secrets_file=${p4monitor_locks_secrets_file:-}
+    local config_line
+    local value
+    local temp_file
+
+    [[ -f "$config_file" && -f "$secrets_file" ]] || return 0
+    config_line=$(awk -v section_name="$section_name" -v yaml_key="$yaml_key" '
+        function indentation(line) { match(line, /^[[:space:]]*/); return RLENGTH }
+        $0 ~ "^[[:space:]]*" section_name ":[[:space:]]*(#.*)?$" {
+            section_indent = indentation($0)
+            in_section = 1
+            next
+        }
+        in_section && $0 ~ /^[[:space:]]*[[:alnum:]_-]+:/ && indentation($0) <= section_indent {
+            exit
+        }
+        in_section && $0 ~ "^[[:space:]]*" yaml_key ":[[:space:]]*[^[:space:]#]" {
+            print
+            exit
+        }
+    ' "$config_file")
+    [[ -n "$config_line" ]] || return 0
+
+    value=${config_line#*:}
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+        value=${value:1:${#value}-2}
+    elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+        value=${value:1:${#value}-2}
+    fi
+
+    if [[ -z "$value" || "$value" =~ [[:space:]\\\"\'] ]]; then
+        msg "Warning: Cannot safely migrate notifications.${section_name}.${yaml_key}; update $secrets_file manually"
+        return 0
+    fi
+    if grep -qE "^${env_name}=" "$secrets_file"; then
+        msg "Warning: $env_name already exists in $secrets_file; leaving notifications.${section_name}.${yaml_key} unchanged"
+        return 0
+    fi
+
+    printf '%s=%s\n' "$env_name" "$value" >> "$secrets_file"
+    temp_file=$(mktemp "${config_file}.XXXXXX") || bail "Failed to create temporary p4monitor_locks config file"
+    awk -v section_name="$section_name" -v yaml_key="$yaml_key" -v env_key="$env_key" -v env_name="$env_name" '
+        function indentation(line) { match(line, /^[[:space:]]*/); return RLENGTH }
+        $0 ~ "^[[:space:]]*" section_name ":[[:space:]]*(#.*)?$" {
+            section_indent = indentation($0)
+            in_section = 1
+        }
+        in_section && $0 ~ /^[[:space:]]*[[:alnum:]_-]+:/ && indentation($0) <= section_indent {
+            in_section = 0
+        }
+        in_section && $0 ~ "^[[:space:]]*" yaml_key ":[[:space:]]*[^[:space:]#]" {
+            match($0, /^[[:space:]]*/)
+            print substr($0, 1, RLENGTH) env_key ": \"" env_name "\""
+            next
+        }
+        { print }
+    ' "$config_file" > "$temp_file"
+    if ! cp "$temp_file" "$config_file"; then
+        rm -f "$temp_file"
+        msg "Warning: Copied $env_name to $secrets_file but could not update $config_file"
+        return 0
+    fi
+    rm -f "$temp_file"
+    msg "Migrated notifications.${section_name}.${yaml_key} to $secrets_file"
+}
+
+migrate_p4monitor_locks_notification_secrets() {
+    migrate_p4monitor_locks_notification_secret "slack" "webhook_url" "webhook_url_env" "P4MONITOR_SLACK_WEBHOOK_URL"
+    migrate_p4monitor_locks_notification_secret "slack" "bot_token" "bot_token_env" "P4MONITOR_SLACK_BOT_TOKEN"
+    migrate_p4monitor_locks_notification_secret "teams" "webhook_url" "webhook_url_env" "P4MONITOR_TEAMS_WEBHOOK_URL"
+    migrate_p4monitor_locks_notification_secret "email" "password" "password_env" "P4MONITOR_SMTP_PASSWORD"
+}
+
 ensure_p4monitor_locks_config_file_exists() {
     local config_file=${1:-${p4monitor_locks_config_file:-}}
 

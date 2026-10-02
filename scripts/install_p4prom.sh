@@ -409,6 +409,7 @@ install_monitor_locks () {
     # Create default p4monitor_locks.yaml if it doesn't already exist
     ensure_p4monitor_locks_config_file_exists
     ensure_p4monitor_locks_secrets_file_exists
+    migrate_p4monitor_locks_notification_secrets
 
     for legacy_service in monitor_metrics monitor_locks; do
         systemctl disable --now "${legacy_service}.timer" 2>/dev/null || true
