@@ -203,6 +203,59 @@ comment_out_legacy_monitor_cron() {
     fi
 }
 
+migrate_sdp_monitor_log_rotation() {
+    local backup_functions="/p4/common/bin/backup_functions.sh"
+    local log_dir="${LOGS:-}"
+    local old_archive
+    local new_archive
+
+    [[ "${UseSDP:-0}" -eq 1 ]] || return 0
+
+    if [[ ! -f "$backup_functions" ]]; then
+        msg "SDP backup functions not found; skipping lock-monitor log rotation setup"
+        return 0
+    fi
+
+    if [[ ! -w "$backup_functions" ]]; then
+        msg "Warning: Cannot update lock-monitor log rotation in $backup_functions"
+        return 0
+    fi
+
+    if ! sed -i 's/monitor_metrics\.log/p4monitor_locks.log/g' "$backup_functions"; then
+        msg "Warning: Failed to update lock-monitor log rotation in $backup_functions"
+        return 0
+    fi
+
+    if ! grep -qF 'rotate_log_file "p4monitor_locks.log" ".gz"' "$backup_functions"; then
+        sed -i '/rotate_log_file "audit.log" ".gz"/a\
+   rotate_log_file "p4monitor_locks.log" ".gz"' "$backup_functions"
+    fi
+    if ! grep -qF 'remove_log_files "p4monitor_locks.log" "$KEEPLOGS"' "$backup_functions"; then
+        sed -i '/remove_log_files "audit.log" "$KEEPLOGS"/a\
+      remove_log_files "p4monitor_locks.log" "$KEEPLOGS"' "$backup_functions"
+    fi
+
+    if ! grep -qF 'rotate_log_file "p4monitor_locks.log" ".gz"' "$backup_functions" || \
+       ! grep -qF 'remove_log_files "p4monitor_locks.log" "$KEEPLOGS"' "$backup_functions"; then
+        msg "Warning: Lock-monitor log rotation entries are missing from $backup_functions"
+        return 0
+    fi
+
+    if [[ -z "$log_dir" || ! -d "$log_dir" ]]; then
+        return 0
+    fi
+
+    for old_archive in "$log_dir"/monitor_metrics.log.*.gz; do
+        [[ -f "$old_archive" ]] || continue
+        new_archive="${old_archive/monitor_metrics.log./p4monitor_locks.log.}"
+        if [[ -e "$new_archive" ]]; then
+            msg "Warning: Not renaming $old_archive because $new_archive already exists"
+            continue
+        fi
+        mv "$old_archive" "$new_archive" || msg "Warning: Failed to rename $old_archive"
+    done
+}
+
 write_node_exporter_service_file() {
     local service_file=$1
     local userid=${2:-node_exporter}

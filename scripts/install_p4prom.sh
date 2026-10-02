@@ -493,6 +493,7 @@ install_node_exporter
 install_p4prometheus
 install_p4metrics
 install_monitor_locks
+migrate_sdp_monitor_log_rotation
 check_aws_cli_version
 systemctl list-timers | grep -E "^NEXT|monitor"
 

@@ -489,6 +489,7 @@ update_p4prometheus
 update_p4metrics
 ensure_p4monitor_locks_config_file_exists
 update_p4monitor_locks_service
+migrate_sdp_monitor_log_rotation
 check_aws_cli_version
 update_vmagent_service_if_present
 if [[ $InstallVMAgent -eq 1 ]]; then
