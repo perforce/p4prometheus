@@ -807,6 +807,28 @@ serverlog.file.1 (type ext4 mounted on /hxlogs) : 2.3M free, 56K used, 1G total 
 	assert.Equal(t, 74, volume.PercentFull)
 }
 
+func TestDiskspaceParsingWindows(t *testing.T) {
+	cfg := config.Config{}
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+
+	lines := []string{
+		"P4ROOT (type NTFS) : 27.9T free, 865.5M used, 27.9T total (0% full)",
+		"P4JOURNAL (type NTFS) : 27.9T free, 865.5M used, 27.9T total (0% full)",
+		"P4LOG (type NTFS) : 27.9T free, 865.5M used, 27.9T total (0% full)",
+		"TEMP (type NTFS) : 411.8G free, 34.4G used, 446.2G total (7% full)",
+		"streams_depot (type NTFS) : 27.9T free, 865.5M used, 27.9T total (0% full)",
+	}
+
+	volumes, err := p4m.parseDiskspace(lines)
+	assert.NoError(t, err)
+	assert.Len(t, volumes, len(lines))
+	assert.Equal(t, "NTFS", volumes["P4ROOT"].Type)
+	assert.Empty(t, volumes["P4ROOT"].MountPoint)
+	assert.Equal(t, int64(30676374414950), volumes["P4ROOT"].Free)
+	assert.Equal(t, 7, volumes["TEMP"].PercentFull)
+}
+
 type SwarmTest struct {
 	statusCode      int
 	taskResponse    *SwarmTaskResponse
