@@ -183,7 +183,8 @@ if [[ $UseSDP -eq 1 ]]; then
     source /p4/common/bin/p4_vars "$SDP_INSTANCE" ||\
     { echo -e "\\nError: Failed to load SDP environment.\\n"; exit 1; }
 
-    OSGROUP=$(id -gn "$OSUSER")
+    # Preserve the group owning /p4, including names containing spaces.
+    OSGROUP=$(stat -c '%G' /p4)
     p4="$P4BIN -u $P4USER -p $P4PORT"
     $p4 info -s || bail "Can't connect to P4PORT: $P4PORT"
 
