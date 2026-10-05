@@ -17,7 +17,8 @@ curr_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(curr_dir))
 
 from monitor_locks import (P4Monitor, Notifier, build_slack_tree_sections, get_metrics_file_name,
-                           remove_legacy_metrics_file, resolve_notification_secret_env)
+                           remove_legacy_metrics_file, remove_stale_server_metrics_files,
+                           resolve_notification_secret_env)
 
 # os.environ["LOGS"] = "."
 # LOGGER_NAME = "testMonitorMetrics"
@@ -48,6 +49,21 @@ class TestMonitorMetrics(unittest.TestCase):
 
             self.assertFalse(os.path.exists(legacy_file))
             logger.info.assert_called_once_with("Removed legacy metrics file: %s", legacy_file)
+
+    def testStaleSdpMetricsFileCleanup(self):
+        with tempfile.TemporaryDirectory() as metrics_dir:
+            current_file = os.path.join(metrics_dir, "locks-1-p4d_edge_hq.prom")
+            stale_file = os.path.join(metrics_dir, "locks-1-p4d_edge_old.prom")
+            other_instance_file = os.path.join(metrics_dir, "locks-2-p4d_edge_other.prom")
+            for filename in (current_file, stale_file, other_instance_file):
+                with open(filename, "w") as file_handle:
+                    file_handle.write("metrics\n")
+
+            remove_stale_server_metrics_files(metrics_dir, "1", "p4d_edge_hq", mock.Mock())
+
+            self.assertTrue(os.path.exists(current_file))
+            self.assertFalse(os.path.exists(stale_file))
+            self.assertTrue(os.path.exists(other_instance_file))
 
     def testFindLocks(self):
         """Check parsing of lockdata"""

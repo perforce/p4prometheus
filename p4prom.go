@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -114,6 +115,33 @@ func removeLegacyMetricsFile(logger *logrus.Logger, legacyMetricsOutput string, 
 		logger.Infof("Removed legacy metrics file: %s", legacyMetricsOutput)
 	} else if !os.IsNotExist(err) {
 		logger.Warnf("Failed to remove legacy metrics file %s: %v", legacyMetricsOutput, err)
+	}
+}
+
+func removeStaleServerMetricsFiles(logger *logrus.Logger, metricsOutput string, sdpInstance string, serverID string) {
+	if sdpInstance == "" || serverID == "" {
+		return
+	}
+	directory := filepath.Dir(metricsOutput)
+	baseName := strings.TrimSuffix(filepath.Base(metricsOutput), ".prom")
+	currentFile := filepath.Base(metricsOutputFilename(metricsOutput, sdpInstance, serverID))
+	prefix := fmt.Sprintf("%s-%s-", baseName, sdpInstance)
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		logger.Warnf("Failed to read metrics directory %s: %v", directory, err)
+		return
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || name == currentFile || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".prom") {
+			continue
+		}
+		staleFile := filepath.Join(directory, name)
+		if err := os.Remove(staleFile); err != nil {
+			logger.Warnf("Failed to remove stale metrics file %s: %v", staleFile, err)
+		} else {
+			logger.Infof("Removed stale metrics file: %s", staleFile)
+		}
 	}
 }
 
@@ -353,6 +381,7 @@ func main() {
 	legacyMetricsOutput := cfg.MetricsOutput
 	cfg.MetricsOutput = metricsOutputFilename(cfg.MetricsOutput, cfg.SDPInstance, cfg.ServerID)
 	removeLegacyMetricsFile(logger, legacyMetricsOutput, cfg.MetricsOutput)
+	removeStaleServerMetricsFiles(logger, legacyMetricsOutput, cfg.SDPInstance, cfg.ServerID)
 	logger.Infof("Server id: '%s'", cfg.ServerID)
 
 	logcfg := &logConfig{

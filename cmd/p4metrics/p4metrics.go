@@ -43,6 +43,15 @@ const opensslTimeFormat = "Jan 2 15:04:05 2006 MST"
 const BufferSize = 1024 * 1024 // 1MB buffer
 const vmagentConfigDir = "/var/vmagent"
 
+var metricsFilePrefixes = []string{
+	"p4_uptime", "p4_license", "p4_journal_logs", "p4_filesys", "p4_version_info",
+	"p4_ssl_info", "p4_auth_ssl_info", "p4_status", "p4_change", "p4_monitor",
+	"p4_checkpoint", "p4_sync_replica", "p4_verify", "p4_replication", "p4_pull",
+	"p4_realtime", "p4_swarm", "p4_errors",
+}
+
+var pullProcessingFilePrefixes = []string{"pullq", "pull-ljv"}
+
 // CompressFileResult holds the result of the compression operation
 type CompressFileResult struct {
 	InputFile      string
@@ -909,6 +918,9 @@ func (p4m *P4MonitorMetrics) initVars() {
 	p4m.checkServerID()
 	if p4m.serverID == "" {
 		p4m.serverID = "UnsetServerID"
+	} else {
+		p4m.removeLegacyPullProcessingFiles()
+		p4m.removeStaleMetricsFiles()
 	}
 	p4m.logger.Debugf("serverID: %q", p4m.serverID)
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("configure show")
@@ -1094,12 +1106,73 @@ func (p4m *P4MonitorMetrics) getCumulativeMetrics() string {
 }
 
 func (p4m *P4MonitorMetrics) metricsFilename(filePrefix string) string {
+	return p4m.outputFilename(filePrefix, ".prom")
+}
+
+func (p4m *P4MonitorMetrics) outputFilename(filePrefix string, extension string) string {
 	instanceStr := ""
 	if p4m.config.SDPInstance != "" {
 		instanceStr = fmt.Sprintf("-%s", p4m.config.SDPInstance)
 	}
 	return path.Join(p4m.config.MetricsRoot,
-		fmt.Sprintf("%s%s-%s.prom", filePrefix, instanceStr, p4m.serverID))
+		fmt.Sprintf("%s%s-%s%s", filePrefix, instanceStr, p4m.serverID, extension))
+}
+
+func (p4m *P4MonitorMetrics) removeLegacyPullProcessingFiles() {
+	for _, filePrefix := range pullProcessingFilePrefixes {
+		legacyFile := path.Join(p4m.config.MetricsRoot, filePrefix+".out")
+		if err := os.Remove(legacyFile); err == nil {
+			p4m.logger.Infof("Removed legacy pull-processing file: %s", legacyFile)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			p4m.logger.Warningf("Failed to remove legacy pull-processing file %s: %v", legacyFile, err)
+		}
+	}
+}
+
+func (p4m *P4MonitorMetrics) removeStaleMetricsFiles() {
+	if p4m.config.SDPInstance == "" || p4m.serverID == "" {
+		return
+	}
+	entries, err := os.ReadDir(p4m.config.MetricsRoot)
+	if err != nil {
+		p4m.logger.Warningf("Failed to read metrics directory %s: %v", p4m.config.MetricsRoot, err)
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		for _, filePrefix := range metricsFilePrefixes {
+			prefix := fmt.Sprintf("%s-%s-", filePrefix, p4m.config.SDPInstance)
+			currentFile := path.Base(p4m.metricsFilename(filePrefix))
+			name := entry.Name()
+			if name == currentFile || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".prom") {
+				continue
+			}
+			staleFile := path.Join(p4m.config.MetricsRoot, name)
+			if err := os.Remove(staleFile); err != nil {
+				p4m.logger.Warningf("Failed to remove stale metrics file %s: %v", staleFile, err)
+			} else {
+				p4m.logger.Infof("Removed stale metrics file: %s", staleFile)
+			}
+			break
+		}
+		for _, filePrefix := range pullProcessingFilePrefixes {
+			prefix := fmt.Sprintf("%s-%s-", filePrefix, p4m.config.SDPInstance)
+			currentFile := path.Base(p4m.outputFilename(filePrefix, ".out"))
+			name := entry.Name()
+			if name == currentFile || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".out") {
+				continue
+			}
+			staleFile := path.Join(p4m.config.MetricsRoot, name)
+			if err := os.Remove(staleFile); err != nil {
+				p4m.logger.Warningf("Failed to remove stale pull-processing file %s: %v", staleFile, err)
+			} else {
+				p4m.logger.Infof("Removed stale pull-processing file: %s", staleFile)
+			}
+			break
+		}
+	}
 }
 
 func (p4m *P4MonitorMetrics) deleteMetricsFile() {
@@ -2945,7 +3018,7 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 	// Only process pull queue looking for errors if below some magic number - 10k seems reasonable!
 	// The reason is that large pull queues tend to thrash and this command produces a lot of output and takes a long time!
 	if transfersTotal != -1 && transfersTotal < 10000 {
-		tempPullQ := path.Join(p4m.config.MetricsRoot, "pullq.out")
+		tempPullQ := p4m.outputFilename("pullq", ".out")
 		p4cmd, errbuf, p = p4m.newP4CmdPipe("pull -l")
 		_, err = p.Exec(p4cmd).WriteFile(tempPullQ)
 		if err != nil {
@@ -3021,10 +3094,10 @@ func (p4m *P4MonitorMetrics) monitorPull() {
 	// ... currentJournalNumberLEOF 0
 	// ... currentJournalSequenceLEOF -1
 
-	//     tmp_pull_stats="$metrics_root/pull-ljv.out"
+	//     tmp_pull_stats="$metrics_root/pull-ljv-<instance>-<serverid>.out"
 	//     $p4 -Ztag pull -lj > "$tmp_pull_stats" 2> /dev/null
 
-	tempPullStats := path.Join(p4m.config.MetricsRoot, "pull-ljv.out")
+	tempPullStats := p4m.outputFilename("pull-ljv", ".out")
 	p4cmd, errbuf, p = p4m.newP4CmdPipe("-Ztag pull -ljv")
 	_, err = p.Exec(p4cmd).WriteFile(tempPullStats)
 	if err != nil {

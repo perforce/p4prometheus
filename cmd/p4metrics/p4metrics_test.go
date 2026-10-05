@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -451,6 +452,39 @@ p4_filesys_min{filesys="TEMP"} 524288000
 	buf := p4m.getCumulativeMetrics()
 	tlogger.Debugf("Metrics: %q", buf)
 	assert.Equal(t, expString, buf)
+}
+
+func TestRemoveStaleMetricsFiles(t *testing.T) {
+	metricsDir := t.TempDir()
+	cfg := config.Config{MetricsRoot: metricsDir, SDPInstance: "1"}
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+	p4m.serverID = "p4d_edge_hq"
+	currentFile := path.Join(metricsDir, "p4_uptime-1-p4d_edge_hq.prom")
+	staleFile := path.Join(metricsDir, "p4_uptime-1-p4d_edge_old.prom")
+	otherInstanceFile := path.Join(metricsDir, "p4_uptime-2-p4d_edge_other.prom")
+	unrelatedFile := path.Join(metricsDir, "p4_cmds-1-p4d_edge_old.prom")
+	currentPullFile := path.Join(metricsDir, "pullq-1-p4d_edge_hq.out")
+	stalePullFile := path.Join(metricsDir, "pullq-1-p4d_edge_old.out")
+	otherInstancePullFile := path.Join(metricsDir, "pullq-2-p4d_edge_other.out")
+	legacyPullFile := path.Join(metricsDir, "pullq.out")
+	for _, filename := range []string{currentFile, staleFile, otherInstanceFile, unrelatedFile,
+		currentPullFile, stalePullFile, otherInstancePullFile, legacyPullFile} {
+		assert.NoError(t, os.WriteFile(filename, []byte("metrics\n"), 0o644))
+	}
+
+	assert.Equal(t, currentPullFile, p4m.outputFilename("pullq", ".out"))
+	p4m.removeLegacyPullProcessingFiles()
+	p4m.removeStaleMetricsFiles()
+
+	assert.FileExists(t, currentFile)
+	assert.NoFileExists(t, staleFile)
+	assert.FileExists(t, otherInstanceFile)
+	assert.FileExists(t, unrelatedFile)
+	assert.FileExists(t, currentPullFile)
+	assert.NoFileExists(t, stalePullFile)
+	assert.FileExists(t, otherInstancePullFile)
+	assert.NoFileExists(t, legacyPullFile)
 }
 
 func TestP4MetricsSchemaParsing(t *testing.T) {

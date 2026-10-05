@@ -139,6 +139,22 @@ func TestSDPMetricsOutputFilenameAndLegacyCleanup(t *testing.T) {
 	assert.NoFileExists(t, legacyFile)
 }
 
+func TestRemoveStaleServerMetricsFiles(t *testing.T) {
+	metricsDir := t.TempDir()
+	currentFile := metricsDir + "/p4_cmds-1-p4d_edge_hq.prom"
+	staleFile := metricsDir + "/p4_cmds-1-p4d_edge_old.prom"
+	otherInstanceFile := metricsDir + "/p4_cmds-2-p4d_edge_other.prom"
+	for _, filename := range []string{currentFile, staleFile, otherInstanceFile} {
+		assert.NoError(t, os.WriteFile(filename, []byte("metrics\n"), 0o644))
+	}
+
+	removeStaleServerMetricsFiles(logrus.New(), metricsDir+"/p4_cmds.prom", "1", "p4d_edge_hq")
+
+	assert.FileExists(t, currentFile)
+	assert.NoFileExists(t, staleFile)
+	assert.FileExists(t, otherInstanceFile)
+}
+
 func basicTest(t *testing.T, cfg *config.Config, input string, historical bool) []string {
 	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
 	logger.SetReportCaller(true)

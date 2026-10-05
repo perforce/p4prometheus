@@ -83,6 +83,29 @@ def remove_legacy_metrics_file(metrics_root, logger):
         logger.warning("Could not remove legacy metrics file %s: %s", legacy_file, error)
 
 
+def remove_stale_server_metrics_files(metrics_root, sdp_instance, serverid, logger):
+    if not sdp_instance or not serverid:
+        return
+    current_file = get_metrics_file_name(sdp_instance, serverid)
+    prefix = "locks-%s-" % sdp_instance
+    try:
+        entries = os.listdir(metrics_root)
+    except OSError as error:
+        logger.warning("Could not read metrics directory %s: %s", metrics_root, error)
+        return
+    for name in entries:
+        if name == current_file or not name.startswith(prefix) or not name.endswith(".prom"):
+            continue
+        stale_file = os.path.join(metrics_root, name)
+        if not os.path.isfile(stale_file):
+            continue
+        try:
+            os.remove(stale_file)
+            logger.info("Removed stale metrics file: %s", stale_file)
+        except OSError as error:
+            logger.warning("Could not remove stale metrics file %s: %s", stale_file, error)
+
+
 class MonitorPid:
     """Monitor table pid"""
 
@@ -1035,6 +1058,8 @@ class P4Monitor(object):
                 self.serverid_label = 'serverid="%s"' % serverid
                 self.metrics_file = get_metrics_file_name(self.options.sdp_instance, serverid)
             remove_legacy_metrics_file(self.options.metrics_root, self.logger)
+            remove_stale_server_metrics_files(
+                self.options.metrics_root, self.options.sdp_instance, serverid, self.logger)
         self.notifier = self._load_notifier()
 
     def extract_server_info_lines(self, infodata):
