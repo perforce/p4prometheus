@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build p4prometheus and p4metrics release assets, then create or update a GitHub draft release.
+# Build p4prometheus component release assets, then create or update a GitHub draft release.
 
 set -euo pipefail
 
@@ -7,8 +7,9 @@ usage() {
     cat <<'EOF'
 Usage: draft_github_release.sh <tag> [--dry-run] [--skip-build]
 
-Builds the p4prometheus and p4metrics distribution binaries for the supplied
-release tag, then creates a GitHub draft release and uploads the assets.
+Builds the p4prometheus, p4metrics, p4logtail, and p4plogtail distribution
+binaries for the supplied release tag, then creates a GitHub draft release and
+uploads the assets.
 
 Arguments:
   <tag>          Release tag in vX.Y.Z form, for example v0.11.5.
@@ -80,6 +81,8 @@ fi
 if [[ "$skip_build" == false ]]; then
     make VERSION="$tag" dist
     make -C cmd/p4metrics VERSION="$tag" dist
+    make -C cmd/p4logtail VERSION="$tag" dist
+    make -C cmd/p4plogtail VERSION="$tag" dist
 fi
 
 assets=(
@@ -93,6 +96,16 @@ assets=(
     cmd/p4metrics/bin/p4metrics.windows-amd64.exe.gz
     cmd/p4metrics/bin/p4metrics.darwin-amd64.gz
     cmd/p4metrics/bin/p4metrics.darwin-arm64.gz
+    cmd/p4logtail/bin/p4logtail.linux-amd64.gz
+    cmd/p4logtail/bin/p4logtail.linux-arm64.gz
+    cmd/p4logtail/bin/p4logtail.windows-amd64.exe.gz
+    cmd/p4logtail/bin/p4logtail.darwin-amd64.gz
+    cmd/p4logtail/bin/p4logtail.darwin-arm64.gz
+    cmd/p4plogtail/bin/p4plogtail.linux-amd64.gz
+    cmd/p4plogtail/bin/p4plogtail.linux-arm64.gz
+    cmd/p4plogtail/bin/p4plogtail.windows-amd64.exe.gz
+    cmd/p4plogtail/bin/p4plogtail.darwin-amd64.gz
+    cmd/p4plogtail/bin/p4plogtail.darwin-arm64.gz
 )
 
 for asset in "${assets[@]}"; do
