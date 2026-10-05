@@ -4,7 +4,6 @@ ENV PATH="/root/.local/bin:/root/.venv/bin:/home/perforce/.local/bin:/home/perfo
 
 RUN yum install -y \
         bc \
-        cron \
         cronie \
         curl \
         gawk \
