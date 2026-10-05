@@ -16,7 +16,8 @@ from unittest import mock
 curr_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(curr_dir))
 
-from monitor_locks import P4Monitor, Notifier, build_slack_tree_sections, resolve_notification_secret_env
+from monitor_locks import (P4Monitor, Notifier, build_slack_tree_sections, get_metrics_file_name,
+                           remove_legacy_metrics_file, resolve_notification_secret_env)
 
 # os.environ["LOGS"] = "."
 # LOGGER_NAME = "testMonitorMetrics"
@@ -32,6 +33,21 @@ class TestMonitorMetrics(unittest.TestCase):
 
     def tearDown(self):
         pass
+
+    def testSdpMetricsFileNameAndLegacyCleanup(self):
+        self.assertEqual("locks-1-p4d_edge_hq.prom", get_metrics_file_name("1", "p4d_edge_hq"))
+        self.assertEqual("locks.prom", get_metrics_file_name(None, ""))
+
+        with tempfile.TemporaryDirectory() as metrics_dir:
+            legacy_file = os.path.join(metrics_dir, "locks.prom")
+            with open(legacy_file, "w") as file_handle:
+                file_handle.write("legacy metrics\n")
+
+            logger = mock.Mock()
+            remove_legacy_metrics_file(metrics_dir, logger)
+
+            self.assertFalse(os.path.exists(legacy_file))
+            logger.info.assert_called_once_with("Removed legacy metrics file: %s", legacy_file)
 
     def testFindLocks(self):
         """Check parsing of lockdata"""

@@ -99,6 +99,24 @@ func readServerID(logger *logrus.Logger, instance string, path string) string {
 	return ""
 }
 
+func metricsOutputFilename(metricsOutput string, sdpInstance string, serverID string) string {
+	if sdpInstance == "" || serverID == "" {
+		return metricsOutput
+	}
+	return fmt.Sprintf("%s-%s-%s.prom", strings.TrimSuffix(metricsOutput, ".prom"), sdpInstance, serverID)
+}
+
+func removeLegacyMetricsFile(logger *logrus.Logger, legacyMetricsOutput string, metricsOutput string) {
+	if legacyMetricsOutput == metricsOutput {
+		return
+	}
+	if err := os.Remove(legacyMetricsOutput); err == nil {
+		logger.Infof("Removed legacy metrics file: %s", legacyMetricsOutput)
+	} else if !os.IsNotExist(err) {
+		logger.Warnf("Failed to remove legacy metrics file %s: %v", legacyMetricsOutput, err)
+	}
+}
+
 // Writes metrics to appropriate file - writes to temp file first and renames it after
 func (p4p *P4Prometheus) writeMetricsFile(metrics []byte) {
 	var f *os.File
@@ -332,6 +350,9 @@ func main() {
 	if len(cfg.ServerID) == 0 && (cfg.SDPInstance != "" || cfg.ServerIDPath != "") {
 		cfg.ServerID = readServerID(logger, cfg.SDPInstance, cfg.ServerIDPath)
 	}
+	legacyMetricsOutput := cfg.MetricsOutput
+	cfg.MetricsOutput = metricsOutputFilename(cfg.MetricsOutput, cfg.SDPInstance, cfg.ServerID)
+	removeLegacyMetricsFile(logger, legacyMetricsOutput, cfg.MetricsOutput)
 	logger.Infof("Server id: '%s'", cfg.ServerID)
 
 	logcfg := &logConfig{

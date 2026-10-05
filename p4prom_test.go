@@ -125,6 +125,20 @@ func TestFilterHavePtTableLockMetrics(t *testing.T) {
 	assert.Contains(t, output, "p4_some_other_metric;table=have.pt%rcowham_part 17")
 }
 
+func TestSDPMetricsOutputFilenameAndLegacyCleanup(t *testing.T) {
+	assert.Equal(t, "/hxlogs/metrics/p4_cmds-1-p4d_edge_hq.prom",
+		metricsOutputFilename("/hxlogs/metrics/p4_cmds.prom", "1", "p4d_edge_hq"))
+	assert.Equal(t, "/hxlogs/metrics/p4_cmds.prom",
+		metricsOutputFilename("/hxlogs/metrics/p4_cmds.prom", "", "p4d_edge_hq"))
+
+	metricsDir := t.TempDir()
+	legacyFile := metricsDir + "/p4_cmds.prom"
+	assert.NoError(t, os.WriteFile(legacyFile, []byte("legacy metrics\n"), 0o644))
+
+	removeLegacyMetricsFile(logrus.New(), legacyFile, metricsDir+"/p4_cmds-1-p4d_edge_hq.prom")
+	assert.NoFileExists(t, legacyFile)
+}
+
 func basicTest(t *testing.T, cfg *config.Config, input string, historical bool) []string {
 	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "15:04:05.000", FullTimestamp: true})
 	logger.SetReportCaller(true)

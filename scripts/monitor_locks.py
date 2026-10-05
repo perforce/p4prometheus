@@ -66,6 +66,23 @@ if os.path.exists(LOGDIR):
 DEFAULT_VERBOSITY = 'DEBUG'
 
 
+def get_metrics_file_name(sdp_instance, serverid):
+    if sdp_instance and serverid:
+        return "locks-%s-%s.prom" % (sdp_instance, serverid)
+    return metrics_file
+
+
+def remove_legacy_metrics_file(metrics_root, logger):
+    legacy_file = os.path.join(metrics_root, metrics_file)
+    try:
+        os.remove(legacy_file)
+        logger.info("Removed legacy metrics file: %s", legacy_file)
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        logger.warning("Could not remove legacy metrics file %s: %s", legacy_file, error)
+
+
 class MonitorPid:
     """Monitor table pid"""
 
@@ -1009,11 +1026,15 @@ class P4Monitor(object):
         self.now = datetime.datetime.now()
         self.sdpinst_label = ""
         self.serverid_label = ""
+        self.metrics_file = metrics_file
         self.server_info_lines = []
         if self.options.sdp_instance:
             self.sdpinst_label = 'sdpinst="%s"' % self.options.sdp_instance
             with open("/p4/%s/root/server.id" % self.options.sdp_instance, "r") as f:
-                self.serverid_label = 'serverid="%s"' % f.read().rstrip()
+                serverid = f.read().rstrip()
+                self.serverid_label = 'serverid="%s"' % serverid
+                self.metrics_file = get_metrics_file_name(self.options.sdp_instance, serverid)
+            remove_legacy_metrics_file(self.options.metrics_root, self.logger)
         self.notifier = self._load_notifier()
 
     def extract_server_info_lines(self, infodata):
@@ -1337,7 +1358,7 @@ class P4Monitor(object):
         return lines
 
     def writeMetrics(self, lines):
-        fname = os.path.join(self.options.metrics_root, metrics_file)
+        fname = os.path.join(self.options.metrics_root, self.metrics_file)
         self.logger.debug("Writing to metrics file: %s", fname)
         self.logger.debug("Metrics: %s\n", "\n".join(lines))
         tmpfname = fname + ".tmp"

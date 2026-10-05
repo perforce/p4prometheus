@@ -36,8 +36,9 @@ log_path:       /p4/1/logs/log
 
 # ----------------------
 # metrics_output: Name of output file to write for processing by node_exporter - REQUIRED!
-# Ensure that node_exporter user has read access to this folder.
-metrics_output: /hxlogs/metrics/cmds.prom
+# For SDP it will add a suffix "-<SDP_INSTANCE>-<serverid>.prom"
+# Ensure that node_exporter service user has read access to this folder.
+metrics_output: /hxlogs/metrics/p4_cmds
 
 # ----------------------
 # sdp_instance: SDP instance - typically integer, but can be alphanumeric.
