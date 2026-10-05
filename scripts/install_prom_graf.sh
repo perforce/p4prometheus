@@ -117,6 +117,7 @@ install_default_perforce_rules() {
     local rules_dir="/etc/prometheus"
     local source_dir="${rules_dir}/rules-src"
     local output_file="${rules_dir}/perforce_rules.yml"
+    local local_file="${rules_dir}/perforce_rules_local.yml"
     local staged_template staged_values staged_output
 
     staged_template=$(mktemp --suffix=.yml)
@@ -142,6 +143,19 @@ install_default_perforce_rules() {
     chmod 644 "$staged_output"
     mv "$staged_output" "$output_file"
     rm -f "$staged_template" "$staged_values"
+
+    if [[ ! -f "$local_file" ]]; then
+        cat << 'EOF' > "$local_file"
+# perforce_rules_local.yml - local alert rule customizations
+#
+# This file is never overwritten by update_prom_graf.sh.
+# Add your custom alert rules here.
+
+groups: []
+EOF
+        chown "$userid:$userid" "$local_file"
+        chmod 644 "$local_file"
+    fi
 }
 
 function usage
@@ -747,6 +761,7 @@ alerting:
 # Alert rules - default Perforce rules are downloaded by this installer
 rule_files:
     - "/etc/prometheus/perforce_rules.yml"
+    - "/etc/prometheus/perforce_rules_local.yml"
 
 scrape_configs:
   - job_name: 'prometheus'

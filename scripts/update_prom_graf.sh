@@ -570,7 +570,8 @@ update_perforce_rules() {
     local upstream_file="${rules_dir}/perforce_rules.yml"
     local local_file="${rules_dir}/perforce_rules_local.yml"
     local source_dir="${rules_dir}/rules-src"
-    local staged_template staged_values staged_output
+    local prometheus_config="${rules_dir}/prometheus.yml"
+    local staged_template staged_values staged_output staged_config
     local prometheus_userid="prometheus"
     local previous_rendered_checksum current_checksum rendered_checksum backup
 
@@ -589,6 +590,65 @@ update_perforce_rules() {
         msg "  Warning: Rendered rules failed validation; keeping existing rules unchanged"
         rm -f "$staged_template" "$staged_values" "$staged_output"
         return 0
+    fi
+
+    # Create perforce_rules_local.yml if it doesn't exist (customer customization file)
+    if [[ ! -f "$local_file" ]]; then
+        cat << 'EOF' > "$local_file"
+# perforce_rules_local.yml - local alert rule customizations
+#
+# This file is NEVER overwritten by update_prom_graf.sh.
+# Add your custom alert rules here.
+# Reference: https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
+#
+# Example:
+# groups:
+# - name: local.rules
+#   rules:
+#   - alert: MyCustomAlert
+#     expr: some_metric > threshold
+#     labels:
+#       severity: warning
+#     annotations:
+#       summary: "Custom alert description"
+
+groups: []
+EOF
+        chown "$prometheus_userid:$prometheus_userid" "$local_file"
+        chmod 644 "$local_file"
+        msg "  Created $local_file (your customizations go here - never overwritten)"
+    fi
+    if ! "${bin_dir}/promtool" check rules "$local_file"; then
+        msg "  Warning: Local rules failed validation; keeping existing upstream rules unchanged"
+        rm -f "$staged_template" "$staged_values" "$staged_output"
+        return 0
+    fi
+
+    if ! grep -qF "$local_file" "$prometheus_config"; then
+        if ! grep -qF "$upstream_file" "$prometheus_config"; then
+            msg "  Warning: $prometheus_config does not reference $upstream_file; keeping existing rules unchanged"
+            rm -f "$staged_template" "$staged_values" "$staged_output"
+            return 0
+        fi
+        staged_config=$(mktemp "${rules_dir}/.prometheus.yml.XXXXXX")
+        awk -v upstream_file="$upstream_file" -v local_file="$local_file" '
+            index($0, upstream_file) {
+                match($0, /^[[:space:]]*/)
+                print
+                print substr($0, RSTART, RLENGTH) "- \"" local_file "\""
+                next
+            }
+            { print }
+        ' "$prometheus_config" > "$staged_config"
+        if ! "${bin_dir}/promtool" check config "$staged_config"; then
+            msg "  Warning: Adding $local_file made Prometheus config invalid; keeping existing rules unchanged"
+            rm -f "$staged_template" "$staged_values" "$staged_output" "$staged_config"
+            return 0
+        fi
+        chown "$prometheus_userid:$prometheus_userid" "$staged_config"
+        chmod 644 "$staged_config"
+        mv "$staged_config" "$prometheus_config"
+        msg "  Added $local_file to Prometheus rule_files"
     fi
 
     rendered_checksum=$(sha256sum "$staged_output" | awk '{print $1}')
@@ -615,43 +675,12 @@ update_perforce_rules() {
     rm -f "$staged_template" "$staged_values"
     PERFORCE_RULES_RENDERED_CHECKSUM="$rendered_checksum"
 
-    # Create perforce_rules_local.yml if it doesn't exist (customer customization file)
-    if [[ ! -f "$local_file" ]]; then
-        cat << 'EOF' > "$local_file"
-# perforce_rules_local.yml - local alert rule customizations
-#
-# This file is NEVER overwritten by update_prom_graf.sh.
-# Add your custom alert rules here.
-# Reference: https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
-#
-# To activate: uncomment the rule_files section in /etc/prometheus/prometheus.yml
-# and ensure both perforce_rules.yml and perforce_rules_local.yml are listed.
-#
-# Example:
-# groups:
-# - name: local.rules
-#   rules:
-#   - alert: MyCustomAlert
-#     expr: some_metric > threshold
-#     labels:
-#       severity: warning
-#     annotations:
-#       summary: "Custom alert description"
-EOF
-        chown "$prometheus_userid:$prometheus_userid" "$local_file"
-        chmod 644 "$local_file"
-        msg "  Created $local_file (your customizations go here - never overwritten)"
+    if ! "${bin_dir}/promtool" check config "$prometheus_config"; then
+        msg "  Warning: Prometheus config validation failed; rules were updated but Prometheus was not reloaded"
+        return 0
     fi
-
-    # Remind operator to enable rule_files in prometheus.yml if not already done
-    if ! grep -qE '^\s*-\s+"?perforce_rules\.yml"?' /etc/prometheus/prometheus.yml 2>/dev/null; then
-        msg ""
-        msg "  *** ACTION REQUIRED: Enable alert rules in /etc/prometheus/prometheus.yml ***"
-        msg "  Uncomment or add to the rule_files section:"
-        msg "    rule_files:"
-        msg "      - \"perforce_rules.yml\""
-        msg "      - \"perforce_rules_local.yml\""
-        msg "  Then run: cd /etc/prometheus && make restart"
+    if ! systemctl reload prometheus; then
+        msg "  Warning: Prometheus reload failed; check its service status and logs"
     fi
 }
 

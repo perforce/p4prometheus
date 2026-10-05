@@ -43,6 +43,7 @@ def test_expected_config_files_exist(host):
     for path in [
         "/etc/prometheus/prometheus.yml",
         "/etc/prometheus/perforce_rules.yml",
+        "/etc/prometheus/perforce_rules_local.yml",
         "/etc/prometheus/rules-src/perforce_rules.yml",
         "/etc/prometheus/rules-src/default-values.yml",
         "/etc/prometheus/pint_vm.hcl",
@@ -60,6 +61,7 @@ def test_prometheus_config_has_expected_sections(host):
     prom_cfg = host.file("/etc/prometheus/prometheus.yml")
     assert prom_cfg.contains(r"rule_files:")
     assert prom_cfg.contains(r"/etc/prometheus/perforce_rules.yml")
+    assert prom_cfg.contains(r"/etc/prometheus/perforce_rules_local.yml")
     assert prom_cfg.contains(r"localhost:9100")
     assert prom_cfg.contains(r"myp4:9100")
     assert prom_cfg.contains(r"myreplica:9100")
@@ -114,7 +116,8 @@ def test_installed_perforce_rules_are_rendered_and_valid(host):
         "-f /etc/prometheus/rules-src/default-values.yml "
         "> /tmp/perforce_rules.rendered.yml && "
         "cmp -s /tmp/perforce_rules.rendered.yml /etc/prometheus/perforce_rules.yml && "
-        "/usr/local/bin/promtool check rules /etc/prometheus/perforce_rules.yml; "
+        "/usr/local/bin/promtool check rules /etc/prometheus/perforce_rules.yml && "
+        "/usr/local/bin/promtool check rules /etc/prometheus/perforce_rules_local.yml; "
         "result=$?; rm -f /tmp/perforce_rules.rendered.yml; exit $result"
     )
     assert rendered.rc == 0
@@ -125,6 +128,7 @@ def test_expected_file_ownership_and_permissions(host):
     for path in [
         "/etc/prometheus/prometheus.yml",
         "/etc/prometheus/perforce_rules.yml",
+        "/etc/prometheus/perforce_rules_local.yml",
         "/etc/prometheus/pint_vm.hcl",
     ]:
         f = host.file(path)
