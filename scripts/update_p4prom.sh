@@ -392,6 +392,7 @@ update_p4metrics () {
 
     ensure_hms_wrapper_script p4metrics "Refreshing"
 
+    disable_legacy_monitor_metrics_units
     comment_out_legacy_monitor_cron "$OSUSER"
 }
 

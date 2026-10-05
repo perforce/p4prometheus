@@ -376,6 +376,7 @@ install_p4metrics () {
     write_p4metrics_service_file "${service_file}"
     systemd_enable_and_restart "${service_file}" "${service_name}"
 
+    disable_legacy_monitor_metrics_units
     comment_out_legacy_monitor_cron "$OSUSER"
 }
 

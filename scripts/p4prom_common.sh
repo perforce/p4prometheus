@@ -203,6 +203,12 @@ comment_out_legacy_monitor_cron() {
     fi
 }
 
+disable_legacy_monitor_metrics_units() {
+    for legacy_unit in monitor_metrics.timer monitor_metrics.service; do
+        systemctl disable --now "$legacy_unit" 2>/dev/null || true
+    done
+}
+
 migrate_sdp_monitor_log_rotation() {
     local backup_functions="/p4/common/bin/backup_functions.sh"
     local log_dir="${LOGS:-}"
