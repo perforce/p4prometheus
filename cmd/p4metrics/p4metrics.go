@@ -47,10 +47,14 @@ var metricsFilePrefixes = []string{
 	"p4_uptime", "p4_license", "p4_journal_logs", "p4_filesys", "p4_version_info",
 	"p4_ssl_info", "p4_auth_ssl_info", "p4_status", "p4_change", "p4_monitor",
 	"p4_checkpoint", "p4_sync_replica", "p4_verify", "p4_replication", "p4_pull",
-	"p4_realtime", "p4_swarm", "p4_errors",
+	"p4_realtime", "p4_swarm", "p4_errors", "p4_directory_contents",
 }
 
 var pullProcessingFilePrefixes = []string{"pullq", "pull-ljv"}
+
+var errDirectoryScanLimit = errors.New("directory scan file limit reached")
+
+const maxDirectoryScanFiles = 100000
 
 // CompressFileResult holds the result of the compression operation
 type CompressFileResult struct {
@@ -1690,6 +1694,112 @@ func (p4m *P4MonitorMetrics) monitorJournalAndLogs() {
 	}
 	p4m.metrics = append(p4m.metrics, m)
 
+	p4m.writeMetricsFile()
+}
+
+type directoryContents struct {
+	fileCount  int
+	sizeBytes  int64
+	oldestAge  time.Duration
+	ageBuckets [5]int
+}
+
+var directoryAgeBuckets = [...]time.Duration{
+	time.Hour,
+	24 * time.Hour,
+	7 * 24 * time.Hour,
+	30 * 24 * time.Hour,
+}
+
+var directoryAgeBucketLabels = [...]string{
+	"lt_1h",
+	"lt_1d",
+	"lt_7d",
+	"lt_30d",
+	"gte_30d",
+}
+
+func scanDirectoryContents(directory string, now time.Time) (directoryContents, error) {
+	contents := directoryContents{}
+	err := filepath.WalkDir(directory, func(entryPath string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !entry.Type().IsRegular() {
+			return nil
+		}
+		if contents.fileCount == maxDirectoryScanFiles {
+			return errDirectoryScanLimit
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		age := now.Sub(info.ModTime())
+		contents.fileCount++
+		contents.sizeBytes += info.Size()
+		if age > contents.oldestAge {
+			contents.oldestAge = age
+		}
+		for index, upperBound := range directoryAgeBuckets {
+			if age < upperBound {
+				contents.ageBuckets[index]++
+				return nil
+			}
+		}
+		contents.ageBuckets[len(contents.ageBuckets)-1]++
+		return nil
+	})
+	return contents, err
+}
+
+func (p4m *P4MonitorMetrics) monitorDirectoryContents() {
+	p4m.startMonitor("monitorDirectoryContents", "p4_directory_contents")
+	defer p4m.completeMonitor()
+
+	if p4m.config.SDPInstance == "" {
+		return
+	}
+
+	directories := []struct {
+		label string
+		path  string
+	}{
+		{label: "logs", path: getVar(*p4m.env, "LOGS")},
+		{label: "p4tmp", path: getVar(*p4m.env, "P4TMP")},
+		{label: "checkpoints", path: getVar(*p4m.env, "CHECKPOINTS")},
+	}
+	now := time.Now()
+	for _, directory := range directories {
+		labels := []labelStruct{{name: "directory", value: directory.label}}
+		contents, err := scanDirectoryContents(directory.path, now)
+		if err != nil {
+			p4m.logger.Warnf("Unable to scan SDP %s directory %q: %v", directory.label, directory.path, err)
+			p4m.metrics = append(p4m.metrics, metricStruct{
+				name: "p4_sdp_directory_scan_success", help: "Whether the SDP directory scan completed successfully", mtype: "gauge", value: "0", labels: labels,
+			})
+			continue
+		}
+		p4m.metrics = append(p4m.metrics, metricStruct{
+			name: "p4_sdp_directory_scan_success", help: "Whether the SDP directory scan completed successfully", mtype: "gauge", value: "1", labels: labels,
+		}, metricStruct{
+			name: "p4_sdp_directory_file_count", help: "Count of regular files in an SDP directory", mtype: "gauge", value: fmt.Sprintf("%d", contents.fileCount), labels: labels,
+		}, metricStruct{
+			name: "p4_sdp_directory_size_bytes", help: "Total size of regular files in an SDP directory in bytes", mtype: "gauge", value: fmt.Sprintf("%d", contents.sizeBytes), labels: labels,
+		})
+		if contents.fileCount > 0 {
+			p4m.metrics = append(p4m.metrics, metricStruct{
+				name: "p4_sdp_directory_oldest_file_age_seconds", help: "Age of the oldest regular file in an SDP directory in seconds", mtype: "gauge", value: fmt.Sprintf("%.3f", contents.oldestAge.Seconds()), labels: labels,
+			})
+		}
+		for index, count := range contents.ageBuckets {
+			bucketLabels := append([]labelStruct{}, labels...)
+			bucketLabels = append(bucketLabels, labelStruct{name: "age", value: directoryAgeBucketLabels[index]})
+			p4m.metrics = append(p4m.metrics, metricStruct{
+				name: "p4_sdp_directory_file_count_by_age", help: "Count of regular files in an SDP directory by age range", mtype: "gauge", value: fmt.Sprintf("%d", count), labels: bucketLabels,
+			})
+		}
+	}
 	p4m.writeMetricsFile()
 }
 
@@ -3557,6 +3667,7 @@ func (p4m *P4MonitorMetrics) runMonitorFunctions() {
 	p4m.monitorCheckpoint()
 	p4m.monitorSyncReplica()
 	p4m.monitorJournalAndLogs()
+	p4m.monitorDirectoryContents()
 	p4m.monitorFilesys()
 	p4m.monitorHelixAuthSvc()
 	p4m.monitorLicense()

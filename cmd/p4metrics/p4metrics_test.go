@@ -454,6 +454,36 @@ p4_filesys_min{filesys="TEMP"} 524288000
 	assert.Equal(t, expString, buf)
 }
 
+func TestScanDirectoryContents(t *testing.T) {
+	directory := t.TempDir()
+	now := time.Date(2026, time.October, 5, 12, 0, 0, 0, time.UTC)
+	files := []struct {
+		name string
+		age  time.Duration
+		size int
+	}{
+		{name: "recent", age: 30 * time.Minute, size: 10},
+		{name: "daily", age: 2 * time.Hour, size: 20},
+		{name: "weekly", age: 2 * 24 * time.Hour, size: 30},
+		{name: "monthly", age: 14 * 24 * time.Hour, size: 40},
+		{name: "old", age: 60 * 24 * time.Hour, size: 50},
+	}
+	for _, file := range files {
+		filename := path.Join(directory, file.name)
+		assert.NoError(t, os.WriteFile(filename, make([]byte, file.size), 0644))
+		assert.NoError(t, os.Chtimes(filename, now.Add(-file.age), now.Add(-file.age)))
+	}
+	assert.NoError(t, os.Mkdir(path.Join(directory, "nested"), 0755))
+	assert.NoError(t, os.WriteFile(path.Join(directory, "nested", "nested-file"), []byte("nested"), 0644))
+
+	contents, err := scanDirectoryContents(directory, now)
+	assert.NoError(t, err)
+	assert.Equal(t, 6, contents.fileCount)
+	assert.Equal(t, int64(156), contents.sizeBytes)
+	assert.Equal(t, 60*24*time.Hour, contents.oldestAge)
+	assert.Equal(t, [5]int{2, 1, 1, 1, 1}, contents.ageBuckets)
+}
+
 func TestRemoveStaleMetricsFiles(t *testing.T) {
 	metricsDir := t.TempDir()
 	cfg := config.Config{MetricsRoot: metricsDir, SDPInstance: "1"}

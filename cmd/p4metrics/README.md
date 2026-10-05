@@ -128,6 +128,18 @@ p4metrics emits the following key metrics:
 - `table` label values are parsed from journal table names such as `db.domain` and emitted without the `db.` prefix (for example `domain`).
 - Controlled by config option `parse_journal` (default: `true`).
 
+### SDP Directory Content Metrics
+
+When `sdp_instance` is configured, p4metrics scans `$LOGS`, `$P4TMP`, and `$CHECKPOINTS` and emits these gauges with a `directory` label (`logs`, `p4tmp`, or `checkpoints`):
+
+- **p4_sdp_directory_scan_success** - `1` when the scan completes; `0` for an unreadable, missing, or over-limit directory.
+- **p4_sdp_directory_file_count** - Count of regular files.
+- **p4_sdp_directory_size_bytes** - Total size of regular files in bytes.
+- **p4_sdp_directory_oldest_file_age_seconds** - Age of the oldest regular file; omitted for an empty directory.
+- **p4_sdp_directory_file_count_by_age{age}** - File count by age range: `lt_1h`, `lt_1d`, `lt_7d`, `lt_30d`, or `gte_30d`.
+
+Scans recurse without following symlinks and stop at 100,000 regular files. A failed or incomplete scan emits only `p4_sdp_directory_scan_success` with a value of `0`; it does not publish partial counts.
+
 ### Other Metrics
 
 See [p4prometheus main documentation](../../README.md#metrics) for complete metrics list including license, filesys, process counts, verify, and other monitoring metrics.
