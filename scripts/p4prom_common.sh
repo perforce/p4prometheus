@@ -259,6 +259,9 @@ migrate_sdp_monitor_log_rotation() {
         if ! gzip -c "$old_log" > "$migrated_log"; then
             rm -f "$migrated_log"
             msg "Warning: Failed to archive $old_log"
+        elif ! chown "$OSUSER:$OSGROUP" "$migrated_log"; then
+            rm -f "$migrated_log"
+            msg "Warning: Failed to set ownership on $migrated_log"
         elif ! rm -f "$old_log"; then
             msg "Warning: Archived $old_log but could not remove the original"
         fi
