@@ -46,7 +46,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 # closing brace) before running it, so the update loop below can safely
 # overwrite this very script file without corrupting the running process.
 main() {
-    FILE_LIST="install_p4prom.sh update_p4prom.sh p4prom_common.sh monitor_locks.py p4monitor_locks.sh get_volume_info.sh create_dashboard.py dashboard.yaml upload_grafana_dashboard.sh"
+    FILE_LIST="install_p4prom.sh update_p4prom.sh p4prom_common.sh monitor_locks.py p4monitor_locks.sh README.md get_volume_info.sh create_dashboard.py dashboard.yaml upload_grafana_dashboard.sh"
     WORKSHOP_SCRIPT_LIST="install_command-runner.sh"
     DEPRECATED_FILE_LIST="push_metrics.sh report_instance_data.sh monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh"
 
