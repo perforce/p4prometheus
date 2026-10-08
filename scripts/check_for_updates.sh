@@ -118,7 +118,7 @@ main() {
         else
             echo "github_file_sha_${self_name}=$self_remote_sha" >> "$ConfigFile"
         fi
-        exec /bin/bash "$SCRIPT_DIR/$self_name" "$@"
+        exec /bin/bash "$SCRIPT_DIR/$self_name" "$@" || bail "Failed to re-execute $self_name"
     fi
 
     mkdir -p save
