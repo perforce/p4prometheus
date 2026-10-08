@@ -916,17 +916,18 @@ migrate_p4monitor_locks_notification_secret() {
         return 0
     fi
     if grep -qE "^${env_name}=" "$secrets_file"; then
-        msg "Warning: $env_name already exists in $secrets_file; leaving notifications.${section_name}.${yaml_key} unchanged"
-        return 0
+        msg "Using existing $env_name from $secrets_file"
+    else
+        printf '%s=%s\n' "$env_name" "$value" >> "$secrets_file"
     fi
-
-    printf '%s=%s\n' "$env_name" "$value" >> "$secrets_file"
     temp_file=$(mktemp "${config_file}.XXXXXX") || bail "Failed to create temporary p4monitor_locks config file"
     awk -v section_name="$section_name" -v yaml_key="$yaml_key" -v env_key="$env_key" -v env_name="$env_name" '
         function indentation(line) { match(line, /^[[:space:]]*/); return RLENGTH }
         $0 ~ "^[[:space:]]*" section_name ":[[:space:]]*(#.*)?$" {
             section_indent = indentation($0)
             in_section = 1
+            print
+            next
         }
         in_section && $0 ~ /^[[:space:]]*[[:alnum:]_-]+:/ && indentation($0) <= section_indent {
             in_section = 0
