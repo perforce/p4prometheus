@@ -46,7 +46,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 # closing brace) before running it, so the update loop below can safely
 # overwrite this very script file without corrupting the running process.
 main() {
-    FILE_LIST="install_p4prom.sh update_p4prom.sh p4prom_common.sh monitor_locks.py p4monitor_locks.sh check_for_updates.sh get_volume_info.sh create_dashboard.py dashboard.yaml upload_grafana_dashboard.sh"
+    FILE_LIST="install_p4prom.sh update_p4prom.sh p4prom_common.sh monitor_locks.py p4monitor_locks.sh get_volume_info.sh create_dashboard.py dashboard.yaml upload_grafana_dashboard.sh"
     WORKSHOP_SCRIPT_LIST="install_command-runner.sh"
     DEPRECATED_FILE_LIST="push_metrics.sh report_instance_data.sh monitor_metrics.sh monitor_metrics.py monitor_wrapper.sh"
 
@@ -96,6 +96,30 @@ main() {
     github_tree_sha=$(curl -fsSL "https://api.github.com/repos/perforce/p4prometheus/git/commits/$github_sha" | jq -r '.tree.sha')
     [[ -n "$github_tree_sha" && "$github_tree_sha" != "null" ]] || bail "Failed to determine GitHub tree for $github_sha"
     github_tree=$(curl -fsSL "https://api.github.com/repos/perforce/p4prometheus/git/trees/$github_tree_sha?recursive=1")
+
+    # Update and restart first so the remainder runs from the current script version.
+    self_name="check_for_updates.sh"
+    self_remote_sha=$(jq -r --arg path "scripts/$self_name" '.tree[] | select(.path == $path) | .sha' <<< "$github_tree")
+    [[ -n "$self_remote_sha" && "$self_remote_sha" != "null" ]] || bail "Failed to find scripts/$self_name in GitHub tree"
+    self_local_sha=$(grep "^github_file_sha_${self_name}=" "$ConfigFile" 2>/dev/null | cut -d= -f2-)
+    if [[ "$self_remote_sha" != "$self_local_sha" ]]; then
+        self_temp=$(mktemp) || bail "Failed to create temporary file for $self_name"
+        msg "downloading $self_name"
+        if ! wget -q -O "$self_temp" "$github_download_url/$self_name" || ! bash -n "$self_temp"; then
+            rm -f "$self_temp"
+            bail "Failed to download a valid $self_name"
+        fi
+        [[ -f "$self_name" ]] && cp "$self_name" "$self_name.bak"
+        cat "$self_temp" > "$self_name"
+        rm -f "$self_temp"
+        chmod +x "$self_name"
+        if grep -q "^github_file_sha_${self_name}=" "$ConfigFile" 2>/dev/null; then
+            sed -i "s|^github_file_sha_${self_name}=.*|github_file_sha_${self_name}=$self_remote_sha|" "$ConfigFile"
+        else
+            echo "github_file_sha_${self_name}=$self_remote_sha" >> "$ConfigFile"
+        fi
+        exec /bin/bash "$SCRIPT_DIR/$self_name" "$@"
+    fi
 
     mkdir -p save
     for fname in $DEPRECATED_FILE_LIST; do
