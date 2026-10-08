@@ -167,6 +167,8 @@ def resolve_notification_secret_env(config, logger):
         credential = os.environ.get(env_name)
         if credential:
             section[credential_field] = credential
+            logger.debug("Notification %s resolved %s from environment variable %s",
+                         section_name, credential_field, env_name)
         else:
             logger.warning("Notification %s is configured to use unset environment variable %s",
                            section_name, env_name)
@@ -414,6 +416,14 @@ class Notifier:
             "server_info": server_info_lines or [],
         }
 
+        enabled_channels = [
+            channel for channel in ("slack", "email", "teams", "script")
+            if self.config.get(channel, {}).get("enabled")
+        ]
+        self.logger.debug(
+            "Notification dispatch: blocked=%d force=%s enabled_channels=%s",
+            blocked_count, force, ",".join(enabled_channels) or "none")
+
         sent = False
         slack_ts = ""
         for channel, method in (
@@ -424,6 +434,7 @@ class Notifier:
         ):
             cfg = self.config.get(channel, {})
             if cfg and cfg.get("enabled"):
+                self.logger.debug("Attempting %s notification", channel)
                 if channel == "script":
                     method(payload, cfg)
                 elif channel == "slack":
@@ -1111,7 +1122,7 @@ class P4Monitor(object):
         parser.add_argument('-i', '--sdp-instance', help="SDP instance")
         parser.add_argument('-t', '--test-file', help="Test file (section of log file from monitor_locks.py)")
         parser.add_argument('--notify-test', action='store_true', default=False,
-                            help="Force a notification when used with --test-file, bypassing threshold and cooldown. "
+                           help="Force a notification, bypassing threshold and cooldown. "
                                  "Useful for verifying Slack/email/Teams/script config.")
         parser.add_argument('-m', '--metrics-root', default=metrics_root, help="Metrics directory to use. Default: " + metrics_root)
         parser.add_argument('-v', '--verbosity',
@@ -1130,7 +1141,7 @@ class P4Monitor(object):
         logging.basicConfig(format=logformat, filename=self.options.log, level=self.options.verbosity)
         formatter = logging.Formatter('%(message)s')
         ch = logging.StreamHandler(sys.stderr)
-        ch.setLevel(logging.INFO)
+        ch.setLevel(self.options.verbosity)
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
 
@@ -1589,9 +1600,10 @@ class P4Monitor(object):
         self.writeLog([timestamp + x for x in blines])
         self.writeMetrics(self.formatMetrics(metrics))
         if self.notifier:
+            force = getattr(self.options, 'notify_test', False)
             self.notifier.maybe_notify(metrics.blockedCommands, blines, metrics.msgs,
                                        blocking_tree=verbose_tree, tree_context=tree_context,
-                                       server_info_lines=self.server_info_lines)
+                                       force=force, server_info_lines=self.server_info_lines)
 
 
 if __name__ == '__main__':

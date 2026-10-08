@@ -136,6 +136,39 @@ class TestMonitorMetrics(unittest.TestCase):
             "Notification %s is configured to use unset environment variable %s",
             "slack", "P4MONITOR_TEST_MISSING_TOKEN")
 
+    def testNotificationSecretResolutionDebugLogRedactsValue(self):
+        config = {"slack": {"webhook_url_env": "P4MONITOR_TEST_WEBHOOK"}}
+        logger = mock.Mock()
+        secret_value = "https://hooks.slack.example/secret"
+
+        with mock.patch.dict(os.environ, {"P4MONITOR_TEST_WEBHOOK": secret_value}, clear=False):
+            resolve_notification_secret_env(config, logger)
+
+        logger.debug.assert_called_once_with(
+            "Notification %s resolved %s from environment variable %s",
+            "slack", "webhook_url", "P4MONITOR_TEST_WEBHOOK")
+        self.assertNotIn(secret_value, str(logger.debug.call_args))
+
+    def testNotificationDispatchDebugLogListsAttemptedChannel(self):
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            state_file = tmp.name
+        self.addCleanup(lambda: os.path.exists(state_file) and os.remove(state_file))
+
+        logger = mock.Mock()
+        notifier = Notifier({
+            "state_file": state_file,
+            "script": {"enabled": True, "command": "dummy"},
+        }, logger)
+        notifier._send_script = mock.Mock()
+
+        notifier.maybe_notify(0, [], [], {}, force=True)
+
+        logger.debug.assert_any_call(
+            "Notification dispatch: blocked=%d force=%s enabled_channels=%s",
+            0, True, "script")
+        logger.debug.assert_any_call("Attempting %s notification", "script")
+        notifier._send_script.assert_called_once()
+
     def testNoLocks(self):
         """Check parsing of lockdata when no results returned"""
         lockdata = """{}"""
