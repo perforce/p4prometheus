@@ -113,3 +113,63 @@ Out of scope: #123 (air-gap packages, /etc relocation), #124 (uninstall script).
   what goes into GitHub). Release notes draft now mentions `ai_dev_support/`.
 - Git note: pushing more commits to the branch before or after opening the PR
   is fine and updates the PR; only force-pushes after review starts are a problem.
+
+## HANDOFF / RESUME NOTES (read this first when picking up)
+
+State as of 2026-10-16:
+- Repo: /root/g/p4prometheus (GitHub perforce/p4prometheus, origin over HTTPS).
+  Working tree should be clean. Git identity is global: Tom Tyler
+  <ttyler@perforce.com> (user.name / user.email). Do not use root defaults.
+- Branch `cttyler-2026-10-issue122` is pushed (tracks origin). It holds the #122
+  work, F-series bug fixes, docs (HTML/PDF regenerated), `ai_dev_support/`.
+  The PR for it is NOT yet opened by the user (done in the browser at
+  https://github.com/perforce/p4prometheus/pull/new/cttyler-2026-10-issue122).
+  Pushing more commits before or after opening the PR is fine; never force-push
+  or rebase this branch once the PR is under review or other branches depend on it.
+- Planned branches (stacked on the #122 tip, local only until told to push):
+  `cttyler-2026-10-issue123` (air-gap packages, /etc relocation) and
+  `cttyler-2026-10-issue124` (uninstall/reset script). Siblings, both cut from
+  the #122 branch. Open their PRs only after #122 merges, or as drafts against
+  the #122 branch. After #122 merges: `git merge master` into each (repo uses
+  merge commits). If #122 is squash-merged instead:
+  `git rebase --onto master <old-122-tip> <branch>`. Review changes to #122 go
+  on the #122 branch and are then merged into the dependents.
+- One PR per branch. Do not put #123/#124 work on the #122 branch.
+- PR description for #122 was drafted in chat only (not committed). It reports
+  the preflight work, the bug fixes (separate commits), the session logs, and the
+  lab tests; "Closes #122". The user chose to leave out any "not in scope:
+  #123/#124" line.
+
+Reminders / TODO for the user:
+- AFTER the #122 PR merges: delete the old remote branch
+  `origin/122-preflight-checks-docs` (superseded; its commits live on in our
+  branch with new hashes). Needs the user's go-ahead; delete with the PAT.
+- Decide whether `ai_dev_support/` stays in version control long-term (currently
+  committed, folder kept visible and not dot-prefixed, by decision).
+- Release notes live in the GitHub release body, not a file. A paste-ready
+  draft for #122 is `ai_dev_support/release_notes_draft_122.md`.
+
+Open candidates (not done): `install_node.sh` / `update_node.sh` do not
+preflight `-m` (they do not source p4prom_common.sh).
+
+Lab (BSW Gen 7, no production data; root access is expected):
+- p4hms (this host): monitoring hub. Prometheus, VictoriaMetrics, Alertmanager,
+  Grafana, node_exporter installed with `-d /data/p4mon -b /opt/p4mon-bin`
+  (state in /etc/p4prometheus-monitoring/install.env). Scrapes p4-01..p4-05:9100.
+  Docs toolchain gems installed (asciidoctor-pdf, asciidoctor-diagram);
+  `make -C doc all` regenerates HTML/PDF.
+- p4-01 (p4c-bos-01): p4prom stack under /opt/p4prom-bin. p4-02 (forwarding-
+  standby replica): defaults, /usr/local/bin. p4-03 (p4c-nyc-03): /opt/p4prom-bin.
+  p4-04: defaults. p4-05: full stack with `-m /p4metrics` (was node-only earlier).
+  Test copies of the scripts are in /root/t122 on each host; re-copy changed
+  scripts with scp before re-testing. SDP instance 1, P4PORT 1999.
+- Shorthands: s1..s5 aliases / p4-01..p4-05 hostnames; ssh as root works.
+- Pushing needs the PAT in /root/g/.pat (authorized by the user). Use a
+  temporary GIT_ASKPASS helper (username `cttyler`) and never print or store the
+  token. `gh` is not installed.
+- Permission note: destructive local git cleanup (reflog expire, gc --prune)
+  was blocked once by the auto-mode classifier and the user ran it themselves.
+
+Where results live: `ai_dev_support/test_plan_122.md` (tests T/N/P/U/C/H/O,
+findings F1-F10, fixes) and this log. Convention: new logs are
+`ai_dev_support/session-log-YYYY-MM-DD-<tag>.md`.
