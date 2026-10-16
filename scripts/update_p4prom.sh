@@ -217,12 +217,11 @@ if [[ $UseSDP -eq 1 ]]; then
     fi
 else
     SDP_INSTANCE=""
-    p4port=${Port:-$P4PORT}
-    p4user=${User:-$P4USER}
+    p4port=${Port:-${P4PORT:-}}
+    p4user=${User:-${P4USER:-}}
     OSUSER="$OsUser"
     OSGROUP=$(id -gn "$OSUSER")
     p4="p4 -u $p4user -p $p4port"
-    $p4 info -s || bail "Can't connect to P4PORT: $p4port"
     [[ $cli_config_dir_set -eq 0 ]] && p4prom_config_dir=${p4prom_config_dir:-"/etc/p4prometheus"}
     p4prom_bin_dir="$p4prom_config_dir"
 
@@ -259,10 +258,16 @@ fi
 # may have been overridden by saved state above. Custom (non-default) paths must
 # already exist; the script will not silently mkdir -p a top-level custom path,
 # to avoid writing data to the wrong disk if a dedicated volume failed to mount.
+# The config file check comes first: on a host that was never installed, the
+# useful message is "run install_p4prom.sh", not a complaint about directories.
+[[ -f "$p4prom_config_file" ]] || bail "Config file '$p4prom_config_file' does not exist - please run install_p4prom.sh instead of this script!"
 preflight_check_dirs -b "$local_bin_dir" "/usr/local/bin"
 [[ -d "$metrics_root" ]] || bail "Specified metrics directory '$metrics_root' does not exist - please create it!"
 
-[[ -f "$p4prom_config_file" ]] || bail "Config file '$p4prom_config_file' does not exist - please run install_p4prom.sh instead of this script!"
+if [[ $UseSDP -eq 0 ]]; then
+    [[ -n "$p4port" ]] || bail "P4PORT is not set - specify it in the environment when using -nosdp"
+    $p4 info -s || bail "Can't connect to P4PORT: $p4port"
+fi
 
 update_node_exporter () {
 
