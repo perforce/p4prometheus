@@ -1,60 +1,76 @@
-# Copilot Instructions for p4prometheus
+# AGENTS.md: instructions for AI coding agents
 
-This guide helps AI coding agents work productively in the p4prometheus codebase, which integrates Perforce Helix Core Server (p4d) with Prometheus and Grafana for real-time metrics and monitoring.
+This file is for AI coding agents (and humans) working in the p4prometheus
+repo. P4Prometheus integrates Perforce Helix Core Server (p4d) with Prometheus
+and Grafana for real-time metrics and monitoring.
 
-## Architecture Overview
-- **Main Components:**
-  - `p4prometheus`: Parses p4d log files, writes Prometheus-compatible metrics for collection via node_exporter.
-  - `p4metrics`: Generates supplementary metrics from p4d, intended to run as a systemd service. Replaces legacy shell scripts.
-  - `p4logtail` / `p4plogtail`: Tails p4d/p4p logs, outputs completed commands in JSON for integration with Elastic Search and similar tools.
-- **External Integrations:**
-  - Prometheus, VictoriaMetrics (optional), Grafana, node_exporter, windows_exporter, alertmanager.
-- **Data Flow:**
-  - Log files → Custom Go tools → Metrics files (text) → Prometheus node_exporter → Prometheus → Grafana dashboards/alerts.
+Working files from AI-assisted sessions (session logs, issue drafts, test
+plans) live in `ai_dev_support/`. **Read `ai_dev_support/README.md` first**, then
+the most recent session log for the issue you are working on.
 
-## Developer Workflows
-- **Build:**
-  - Use `make` for building Go binaries. See `Makefile` for targets.
-  - Binaries are output to `bin/` for multiple platforms.
-- **Testing:**
-  - Run Go tests with `go test ./...`.
-  - Some scripts (e.g., `monitor_locks.py`) have separate test files (e.g., `test_monitor_locks.py`).
-- **Debugging:**
-  - Most Go tools support `--debug` and `--dry.run` flags for verbose output and safe testing.
-  - Example: `nohup ./p4metrics --config p4metrics.yaml --debug --dry.run > out.txt &`
-- **Configuration:**
-  - Each tool uses its own YAML config file (e.g., `p4prometheus.yml`, `p4metrics.yaml`, `p4logtail.yaml`).
-  - Config files are typically in the root or `test/` directory.
+## Before you commit
+- **Set the git identity first.** Check `git config --get user.name` and
+  `git config --get user.email`; running as root, for example, has none by
+  default. Use the human's identity, not the agent's.
+- Add a `Co-Authored-By:` trailer for the agent, as your tool's attribution
+  guidance directs.
+- **One PR per branch.** Branch names look like `<user>-YYYY-MM-issue<N>`.
+- Do not force-push or rebase a branch once it is under review or other branches
+  depend on it. This repo uses merge commits.
+- Never put credentials (PATs, tokens) in any file, commit, or log. See the
+  secrets section of `ai_dev_support/README.md`.
+- Release notes live in the GitHub release body, not in a file in the repo.
+- Bug fixes found along the way may ride on the current branch, each in its own
+  commit. New features need an explicit scope discussion first.
 
-## Project-Specific Patterns
-- **Metrics Output:**
-  - Metrics are written in Prometheus textfile format for node_exporter collection.
-  - JSON output for logtail tools is line-oriented for easy ingestion.
-- **Service Management:**
-  - Tools are designed to run as long-lived services (systemd recommended on Linux).
-- **Cross-Platform:**
-  - Go tools are built for Linux, Windows, and macOS (see `bin/`).
-- **SDP Compatibility:**
-  - Some tools (e.g., `p4metrics`) are compatible with Perforce SDP conventions.
+## Architecture
+- **Go tools** (built from the repo root and `cmd/`):
+  - `p4prometheus` (`p4prom.go`): parses p4d log files and writes Prometheus
+    textfile metrics for node_exporter to collect.
+  - `cmd/p4metrics`: supplementary metrics from p4d, run as a systemd service.
+    Replaces the legacy shell scripts.
+  - `cmd/monitor_metrics`: Go port of `monitor_metrics.py`; monitors p4 locks and metrics.
+  - `cmd/p4logtail`, `cmd/p4plogtail`: tail p4d/p4p logs and emit completed
+    commands as JSON (for Elastic Search and similar).
+  - `cmd/p4erroranalyzer`: error-code lookup tables (generated Go files).
+- **Install/update scripts** (`scripts/`):
+  - On a p4d host: `install_p4prom.sh`, `update_p4prom.sh` (p4prometheus,
+    p4metrics, node_exporter, lock monitoring). `install_node.sh` /
+    `update_node.sh` are for a node_exporter-only host.
+  - On the monitoring hub: `install_prom_graf.sh`, `update_prom_graf.sh`
+    (Prometheus, VictoriaMetrics, Alertmanager, Grafana).
+  - `p4prom_common.sh` is sourced by the install/update scripts (for example
+    `preflight_check_dirs`, `systemd_enable_and_restart`) and is required
+    alongside them, including on air-gapped hosts.
+- **Data flow:** p4d logs -> Go tools -> metrics text files -> node_exporter ->
+  Prometheus -> Grafana dashboards and alerts.
+- **Docs:** `doc/*.adoc` (AsciiDoc) with generated `.html` and `.pdf` that are
+  committed.
 
-## Key Files & Directories
-- `p4prometheus.go`, `p4metrics/`, `cmd/p4logtail/`, `cmd/p4plogtail/`: Main Go sources.
-- `bin/`: Prebuilt binaries for supported platforms.
-- `config/`, `test/`: Example configs and test data.
-- `scripts/`: Legacy and utility scripts (some deprecated).
-- `README.md`, `INSTALL.md`: High-level documentation and setup.
-
-## Example Usage Patterns
-- Build: `make`
-- Run metrics collector: `./bin/p4prometheus.linux-amd64.gz --config p4prometheus.yml`
-- Debug metrics: `./p4metrics --config p4metrics.yaml --debug --dry.run`
-- Tail logs: `./p4logtail --config p4logtail.yaml`
+## Build and test
+- Build: `make` (current platform) or `make dist` (all platforms, writes gzipped
+  binaries to `bin/`; `*.gz` is git-ignored).
+- Go tests: `go test ./...`
+- Script helper tests: `python3 scripts/test_p4prom_common.py` and
+  `python3 scripts/test_monitor_locks.py`.
+- Container-based install tests (need podman): `scripts/tests/run_docker_tests.sh`,
+  `run_docker_prom_graf_tests.sh`, `run_docker_rules_tests.sh`;
+  `cmd/p4metrics/tests/run_docker_tests.sh` for p4metrics.
+- Docs: after editing a `.adoc`, regenerate with `make -C doc all` (needs the
+  `asciidoctor`, `asciidoctor-pdf` and `asciidoctor-diagram` gems) and commit
+  the regenerated HTML/PDF with it.
+- Most Go tools take `--debug` and `--dry.run` for verbose, safe testing.
 
 ## Conventions
 - Prefer Go for new tools; legacy scripts may be deprecated.
-- Use YAML for configuration.
-- Metrics and logs are rotated safely; tools handle log rotation.
-- Follow SDP directory conventions for Perforce server setups.
+- YAML for configuration; each tool has its own config file.
+- Follow SDP (Perforce Server Deployment Package) directory conventions for p4d
+  hosts; the tools also support non-SDP use (`-nosdp`).
+- Bash scripts use `set -e`/`pipefail` patterns: beware of `grep -q` in a pipe
+  under `pipefail`, and of unset variables under `set -u`.
 
----
-For more details, see the main `README.md` and component-specific READMEs in `cmd/`.
+## Agent-specific files
+This `AGENTS.md` is the single shared instruction file. Vendor-specific files
+(`CLAUDE.md`, `GEMINI.md`, `.cursorrules`, ...) are git-ignored, so a personal
+one is fine locally. For example, a `CLAUDE.md` containing the single line
+`@AGENTS.md` makes Claude Code load this file.
