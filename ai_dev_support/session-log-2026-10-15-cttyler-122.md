@@ -88,3 +88,10 @@ Out of scope: #123 (air-gap packages, /etc relocation), #124 (uninstall script).
   `-m` (they do not source p4prom_common.sh).
 - p4-05 now runs install_p4prom.sh with -m /p4metrics (it previously had
   install_node.sh only), so the lab fleet state changed.
+
+## Update: F10 resolved
+- Reproduced (12 back-to-back updates on p4-03) and root-caused: systemd
+  start-limit (5 starts/300 s) tripped by per-run restarts, plus a PATH-based
+  version check that forced a reinstall every run with a custom -b. Fixed both;
+  details in test_plan_122.md. Open candidate list is now just: node scripts do
+  not preflight -m.

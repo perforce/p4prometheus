@@ -26,3 +26,9 @@ in a file in the repo. This is a draft section to merge into that body.
 - `update_p4prom.sh` on a host without an install now says to run
   `install_p4prom.sh`, and with `-nosdp` no longer needs a reachable p4d just
   to report configuration problems.
+- Repeated `install_p4prom.sh` / `update_p4prom.sh` runs within five minutes
+  could leave `p4prometheus` or `p4metrics` stopped (systemd start-rate limit)
+  while the script reported success. The scripts now clear the limit before
+  restarting and fail loudly if a service does not come up.
+- `update_p4prom.sh` now detects installed component versions in a custom `-b`
+  directory instead of re-downloading and reinstalling them on every run.

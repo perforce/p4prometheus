@@ -110,11 +110,20 @@ host: p4-01 258, p4-02 329, p4-03 320, p4-04 347 (p4-05 is node-only).
   config/preflight checks and reports an unset P4PORT cleanly.
 - install_node.sh / update_node.sh now `restart` node_exporter.
 - Regression: update_p4prom.sh on p4-03, p4-04 rc=0.
-- F10 (UNRESOLVED, intermittent): on p4-03 one `update_p4prom.sh` run left
-  p4prometheus inactive: journal shows Started then "Deactivated successfully"
-  after 19 ms, exit 0, no output. 3 later identical runs were fine and a manual
-  `systemctl start` worked. Not reproduced; possibly a race in the update's
-  stop/replace-binary/start sequence. Needs more data before changing code.
+- F10 RESOLVED (2026-10-16). Reproduced by running `update_p4prom.sh 1` 12 times
+  in a row on p4-03: from run 6 `p4prometheus` stayed `failed (Result:
+  start-limit-hit)` while the script returned rc=0. Cause: the unit sets
+  StartLimitBurst=5 / StartLimitIntervalSec=300 (crash-loop guard) and every
+  update restarted the service, so a handful of runs in 5 minutes tripped it
+  ("Start request repeated too quickly"). The earlier "exited 0 after 19 ms"
+  was the same limit. Contributing bug: `update_p4prom.sh` ran `$progname
+  --version` from PATH, so with a custom -b (not in PATH) the version came back
+  empty and it re-downloaded and re-installed every run.
+  Fixes: (1) `systemd_enable_and_restart` runs `reset-failed` before restart
+  and bails if the service is not active afterwards, so failure is never
+  silent; (2) version checks use `${local_bin_dir}/${progname}`.
+  Verified: p4-03 recovered from `failed` and 12 consecutive runs all left
+  p4prometheus and p4metrics active, all reporting "up-to-date".
 
 ## State left on p4-01
 p4prometheus, p4metrics, node_exporter, p4monitor_locks timer installed under
