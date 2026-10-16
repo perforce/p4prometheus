@@ -40,7 +40,7 @@ systemd_enable_and_restart() {
     chmod 644 "$service_file"
     systemctl daemon-reload
     systemctl enable "$service_name"
-    systemctl start "$service_name"
+    systemctl restart "$service_name"  # restart, not start: start is a no-op on a running service with a changed unit
     systemctl status "$service_name" --no-pager
 }
 
