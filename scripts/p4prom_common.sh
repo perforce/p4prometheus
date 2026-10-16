@@ -44,8 +44,15 @@ systemd_enable_and_restart() {
     chmod 644 "$service_file"
     systemctl daemon-reload
     systemctl enable "$service_name"
+    # Clear any start-rate-limit state first: our units set StartLimitBurst=5 per
+    # 300s to stop crash loops, but repeated deliberate restarts (several
+    # install/update runs in a few minutes) would otherwise trip it and leave the
+    # service failed ("start-limit-hit") while the script still reported success.
+    systemctl reset-failed "$service_name" 2>/dev/null || true
     systemctl restart "$service_name"  # restart, not start: start is a no-op on a running service with a changed unit
+    sleep 2
     systemctl status "$service_name" --no-pager
+    systemctl is-active --quiet "$service_name" || bail "Service ${service_name} is not running after restart - check: journalctl -u ${service_name}"
 }
 
 download_and_untar () {

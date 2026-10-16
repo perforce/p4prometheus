@@ -278,7 +278,7 @@ update_node_exporter () {
         msg "Created user $userid"
     fi
 
-    curr_ver=$(${progname} --version 2>&1 | grep ' version ' | awk '{print $3}')
+    curr_ver=$("${local_bin_dir}/${progname}" --version 2>&1 | grep ' version ' | awk '{print $3}')
     if [[ "$curr_ver" == "$VER_NODE_EXPORTER" ]]; then
         msg "Current version $curr_ver of node_exporter is up-to-date"
         return
@@ -314,7 +314,7 @@ update_p4prometheus () {
     service_name="p4prometheus"
     progname="p4prometheus"
     service_file="/etc/systemd/system/${service_name}.service"
-    curr_ver=$($progname --version 2>&1 | grep "$progname, version " | awk '{print $3}')
+    curr_ver=$("${local_bin_dir}/${progname}" --version 2>&1 | grep "$progname, version " | awk '{print $3}')
     if [[ "$curr_ver" == "v$VER_P4PROMETHEUS" ]]; then
         if [[ -f "${service_file}" ]]; then
             msg "Updating existing service file for $service_name"
@@ -354,7 +354,7 @@ update_p4metrics () {
     progname="p4metrics"
     service_file="/etc/systemd/system/${service_name}.service"
     up_to_date="false"
-    curr_ver=$($progname --version 2>&1 | grep "$progname, version " | awk '{print $3}')
+    curr_ver=$("${local_bin_dir}/${progname}" --version 2>&1 | grep "$progname, version " | awk '{print $3}')
     if [[ "$curr_ver" == "v$VER_P4PROMETHEUS" ]]; then
         msg "Current version $curr_ver of $progname is up-to-date"
         up_to_date="true"
