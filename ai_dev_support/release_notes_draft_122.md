@@ -13,6 +13,12 @@ in a file in the repo. This is a draft section to merge into that body.
   scripts (including air-gapped installs), the systemd services expected per
   role, which files stay in `/etc/*` regardless of `-d`, and combined-role hosts.
 
+### Project
+
+- Added `ai_dev_support/`: session logs, issue drafts, and lab test plans from
+  AI-assisted development, kept for training and audit-trail value. It is not
+  part of the shipped product (see `ai_dev_support/README.md`).
+
 ### Bug Fixes
 
 - `update_prom_graf.sh` no longer reports "Grafana service not found" when

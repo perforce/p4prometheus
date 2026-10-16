@@ -95,3 +95,21 @@ Out of scope: #123 (air-gap packages, /etc relocation), #124 (uninstall script).
   version check that forced a reinstall every run with a custom -b. Fixed both;
   details in test_plan_122.md. Open candidate list is now just: node scripts do
   not preflight -m.
+
+## Update 2026-10-16: git identity, push, PR prep
+- Git identity: no user.name/email was configured, so commits were `root@p4hms`.
+  Set global identity to Tom Tyler <ttyler@perforce.com> (chosen over
+  cttyler@gmail.com: already verified/linked on the GitHub account, matches the
+  current Perforce identity; `cttyler@perforce.com` is an alias and is NOT linked
+  on GitHub, as seen from commit 45a5ae6). Rewrote the 16 local commits with
+  filter-branch (tree verified identical), deleted the `refs/original` backup,
+  expired the reflog and gc'd, and confirmed 0 `root@p4hms` commits remain.
+- Pushed `cttyler-2026-10-issue122` using the PAT via a temporary
+  GIT_ASKPASS helper (token not printed or stored).
+- Decision: keep the folder visible as `ai_dev_support/` (not dot-prefixed) to
+  match its purpose and the existing convention; session logs are committed and
+  will be mentioned in the PR description.
+- PR title/description are drafted in chat only, not committed (they duplicate
+  what goes into GitHub). Release notes draft now mentions `ai_dev_support/`.
+- Git note: pushing more commits to the branch before or after opening the PR
+  is fine and updates the PR; only force-pushes after review starts are a problem.
