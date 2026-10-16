@@ -2,7 +2,8 @@
 
 Issue: #126 - Enable multi-agent AI workflow (root AGENTS.md)
 Branch: `cttyler-2026-10-issue126`, cut from the tip of `cttyler-2026-10-issue122`
-(stacked; local only until the user says to push). Not yet started: no code changes.
+(stacked on the #122 tip). Implemented 2026-10-16 after Robert Cowham (owner of
+the old file) agreed; see Status.
 
 ## Read first
 See `ai_dev_support/session-log-2026-10-15-cttyler-122.md` (environment, git
@@ -24,10 +25,23 @@ identity, PAT handling, branch plan).
 - Open: whether to leave a one-line stub at `.github/copilot-instructions.md`
   for older Copilot versions.
 
-## Status and dependencies
-- Waiting on the user's conversation with Robert Cowham (owner of
-  `.github/copilot-instructions.md`). Do not start the move until the user says so.
-- Depends on #122 merging first, because `AGENTS.md` links to
-  `ai_dev_support/README.md`. After #122 merges, `git merge master` into this branch.
-- Tool behavior (which agents read `AGENTS.md`, Claude Code needing `CLAUDE.md` or
-  an `@AGENTS.md` import) should be verified before it goes into `AGENTS.md`.
+## Status (2026-10-16)
+Done, one commit each: (1) pure `git mv` to root `AGENTS.md`; (2) content refresh
+(layout, build/test/doc commands, git identity, one PR per branch, release notes
+location, link to `ai_dev_support/README.md`); (3) `.gitignore` no longer ignores
+`/AGENTS.md`, other vendor files still ignored; (4) `ai_dev_support/README.md`
+links back and gains a "What belongs in a session log" section.
+
+Decisions:
+- No stub left at `.github/copilot-instructions.md`: one source of truth. Current
+  Copilot reads `AGENTS.md`; I did not test this, so if an older Copilot ignores
+  it, add a one-line stub then.
+- Claude Code reads `CLAUDE.md`, not `AGENTS.md`. Since `CLAUDE.md` stays ignored,
+  `AGENTS.md` suggests a local `CLAUDE.md` containing `@AGENTS.md`. Not verified
+  against Claude Code docs in this session.
+- The refreshed content was checked against the tree (cmd/ layout, Makefile
+  targets, test script names) but the commands were not all executed.
+
+## Dependencies
+- The PR is stacked on #122 (it links to `ai_dev_support/README.md`, which #122
+  adds). After #122 merges, `git merge master` into this branch, then open the PR.
