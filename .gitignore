@@ -17,11 +17,11 @@ test/
 # (not yet created) will be part of the product itself (AI skills for
 # developing/testing and operating P4Prometheus, respectively).
 
-# AI agent instruction files in repo root (agent-specific names / symlinks)
-# .github/copilot-instructions.md is intentionally NOT ignored (proper location)
+# AI agent instruction files in repo root. The shared /AGENTS.md IS versioned
+# (see issue #126); vendor-specific names / symlinks are ignored so each
+# developer can keep a personal copy (e.g. CLAUDE.md containing '@AGENTS.md').
 /copilot-instructions.md
 /CLAUDE.md
-/AGENTS.md
 /GEMINI.md
 /COPILOT.md
 /CURSOR.md
