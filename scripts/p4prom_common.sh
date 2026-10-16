@@ -27,9 +27,13 @@ preflight_check_dirs () {
         if [[ ! -d "$path" ]]; then
             bail "Directory specified with ${flag} does not exist: ${path}\nCreate or mount this directory before running the installer (e.g. mount a dedicated volume here). The installer will not auto-create top-level custom paths, to avoid silently writing data to the wrong disk if a volume failed to mount."
         fi
-        if [[ ! -w "$path" ]]; then
+        # A real write test: [[ -w ]] is always true for root, so it cannot catch
+        # read-only mounts or exhausted/odd filesystems.
+        local probe="$path/.p4prom_preflight.$$"
+        if ! { : > "$probe"; } 2>/dev/null; then
             bail "Directory specified with ${flag} is not writable: ${path}"
         fi
+        rm -f "$probe"
     done
 }
 

@@ -149,7 +149,7 @@ if [[ $(id -u) -ne 0 ]]; then
    exit 1
 fi
 
-preflight_check_dirs -b "$local_bin_dir" "/usr/local/bin"
+preflight_check_dirs -b "$local_bin_dir" "/usr/local/bin" -m "$metrics_root" "/hxlogs/metrics"
 
 command -v wget 2> /dev/null || bail "Failed to find wget in path"
 
