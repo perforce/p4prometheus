@@ -7,8 +7,7 @@ documentation gaps. Branch `cttyler-2026-10-issue122`, cut from `master` @ b309f
 - **Set the git identity first**, especially when running as root, which has no
   default: `git config --global user.name "Tom Tyler"` and
   `git config --global user.email "ttyler@perforce.com"`. Check with
-  `git config --get user.email` before the first commit. That address is the one
-  linked to the GitHub account (`cttyler@perforce.com` is an alias and is not).
+  `git config --get user.email` before the first commit.
 - `gh` is not installed. Issues and PR pages are read with web fetch.
 - Pushing uses the PAT in `/root/g/.pat` (the user authorized this). Pass it with a
   temporary `GIT_ASKPASS` helper (username `cttyler`), never print or store it,
