@@ -72,9 +72,10 @@ expected. Sample training data only; be more careful with Git than with the lab.
   (https://github.com/perforce/p4prometheus/pull/new/cttyler-2026-10-issue122).
   More commits can be pushed before or after the PR is opened. Do not force-push or
   rebase it once it is under review or other branches depend on it.
-- `cttyler-2026-10-issue123` (air-gap packages, `/etc` relocation) and
-  `cttyler-2026-10-issue124` (uninstall/reset script) are local only, cut from the
-  #122 tip as siblings. One PR per branch; open them after #122 merges, or as
+- `cttyler-2026-10-issue123` (air-gap packages, `/etc` relocation),
+  `cttyler-2026-10-issue124` (uninstall/reset script), and
+  `cttyler-2026-10-issue126` (root `AGENTS.md`, multi-agent workflow; issue #126
+  was filed from this work) are local only, cut from the #122 tip as siblings. One PR per branch; open them after #122 merges, or as
   drafts against the #122 branch. After #122 merges, `git merge master` into each
   (the repo uses merge commits). If #122 is squash-merged instead, use
   `git rebase --onto master <old-122-tip> <branch>`. Changes from #122 review go on
@@ -83,5 +84,7 @@ expected. Sample training data only; be more careful with Git than with the lab.
 ## Open items
 - **After the #122 PR merges:** delete the old remote branch
   `origin/122-preflight-checks-docs`. Ask the user first.
+- #126 (root `AGENTS.md` replacing `.github/copilot-instructions.md`) waits on the
+  user's conversation with Robert Cowham, the file's owner.
 - `install_node.sh` and `update_node.sh` do not preflight `-m` (they do not source
   `p4prom_common.sh`).
