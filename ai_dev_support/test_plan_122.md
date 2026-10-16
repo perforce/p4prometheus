@@ -99,6 +99,23 @@ host: p4-01 258, p4-02 329, p4-03 320, p4-04 347 (p4-05 is node-only).
   (update_p4prom.sh needs live p4d before preflight), F5 (-m metrics root still
   auto-created), F9, and `install_node.sh` start-vs-restart.
 
+## Round 3: remaining items (2026-10-16)
+- F1 fixed: preflight uses a real write test; verified failing on a read-only
+  tmpfs mount and leaving no probe file on success.
+- F5 done: `install_p4prom.sh -m /nonexistent_metrics` fails with the preflight
+  error and creates nothing; `-m /p4metrics` (pre-created) installs, node_exporter
+  uses it, 308 p4_ series on p4-05. Defaults (/hxlogs/metrics) still auto-created.
+- F2/F9 fixed in update_p4prom.sh: config-file check first ("run
+  install_p4prom.sh"); for -nosdp the P4PORT/connect check now runs after the
+  config/preflight checks and reports an unset P4PORT cleanly.
+- install_node.sh / update_node.sh now `restart` node_exporter.
+- Regression: update_p4prom.sh on p4-03, p4-04 rc=0.
+- F10 (UNRESOLVED, intermittent): on p4-03 one `update_p4prom.sh` run left
+  p4prometheus inactive: journal shows Started then "Deactivated successfully"
+  after 19 ms, exit 0, no output. 3 later identical runs were fine and a manual
+  `systemctl start` worked. Not reproduced; possibly a race in the update's
+  stop/replace-binary/start sequence. Needs more data before changing code.
+
 ## State left on p4-01
 p4prometheus, p4metrics, node_exporter, p4monitor_locks timer installed under
 /opt/p4prom-bin; C1 leftovers removed. Scripts in /root/t122 on all five hosts

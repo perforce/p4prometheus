@@ -198,7 +198,7 @@ sudo ./install_prom_graf.sh -d /data
 sudo ./update_prom_graf.sh
 ----
 
-IMPORTANT: The `-d` (and `-b`) path must already exist (e.g. a volume you have deliberately created or mounted) before running the installer. The scripts will fail with an error rather than create missing top-level paths automatically — this avoids silently writing data to the root filesystem if an intended dedicated volume failed to mount.
+IMPORTANT: The `-d`, `-b`, and (for `install_p4prom.sh`) `-m` paths must already exist (e.g. a volume you have deliberately created or mounted) before running the installer. The scripts will fail with an error rather than create missing top-level paths automatically — this avoids silently writing data to the root filesystem if an intended dedicated volume failed to mount. Each path is also checked with a real test write, so a read-only mount is reported as an error. Paths left at their defaults (`/var/lib`, `/usr/local/bin`, `/hxlogs/metrics`) are not checked and are created if missing.
 
 The selected path is retained in `/etc/p4prometheus-monitoring/install.env`. To move an existing installation, use:
 

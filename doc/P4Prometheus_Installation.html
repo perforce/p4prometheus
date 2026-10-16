@@ -1043,7 +1043,7 @@ sudo ./update_prom_graf.sh</code></pre>
 <i class="fa icon-important" title="Important"></i>
 </td>
 <td class="content">
-The <code>-d</code> (and <code>-b</code>) path must already exist (e.g. a volume you have deliberately created or mounted) before running the installer. The scripts will fail with an error rather than create missing top-level paths automatically — this avoids silently writing data to the root filesystem if an intended dedicated volume failed to mount.
+The <code>-d</code>, <code>-b</code>, and (for <code>install_p4prom.sh</code>) <code>-m</code> paths must already exist (e.g. a volume you have deliberately created or mounted) before running the installer. The scripts will fail with an error rather than create missing top-level paths automatically — this avoids silently writing data to the root filesystem if an intended dedicated volume failed to mount. Each path is also checked with a real test write, so a read-only mount is reported as an error. Paths left at their defaults (<code>/var/lib</code>, <code>/usr/local/bin</code>, <code>/hxlogs/metrics</code>) are not checked and are created if missing.
 </td>
 </tr>
 </table>
@@ -2572,7 +2572,7 @@ Checking perforce_rules.yml
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-10-15 23:25:12 -0400
+Last updated 2026-10-16 08:28:02 -0400
 </div>
 </div>
 </body>

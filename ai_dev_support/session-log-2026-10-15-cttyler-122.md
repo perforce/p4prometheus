@@ -76,3 +76,15 @@ Out of scope: #123 (air-gap packages, /etc relocation), #124 (uninstall script).
   F1, F2, F5, F9, install_node.sh start-vs-restart.
 - Doc: combined-role recovery now says re-run `install_p4prom.sh`;
   `update_p4prom.sh` does not rewrite an existing unit file.
+
+## Update 2026-10-16: -m preflight and remaining repairs
+- Policy from user: bugs found during #122 may be fixed in this branch with
+  the commit log as the trail; non-trivial fixes belong in release notes; new
+  features need explicit scope discussion. Release notes live in the GitHub
+  release body, so a paste-ready draft is in `release_notes_draft_122.md`.
+- Added -m preflight; real write test; update_p4prom.sh ordering (F2/F9);
+  node scripts restart. F10 intermittent p4prometheus exit is unresolved.
+- Open candidates: F10; `install_node.sh`/`update_node.sh` do not preflight
+  `-m` (they do not source p4prom_common.sh).
+- p4-05 now runs install_p4prom.sh with -m /p4metrics (it previously had
+  install_node.sh only), so the lab fleet state changed.
