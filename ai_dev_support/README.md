@@ -4,6 +4,9 @@ This folder holds working files produced by AI coding assistants (GitHub
 Copilot CLI, Claude CLI, etc.) while developing P4Prometheus: session logs,
 issue drafts, scratch test plans, and similar artifacts.
 
+Agent instructions for the repo as a whole are in the root
+[`AGENTS.md`](../AGENTS.md), which points back here.
+
 ## Why this is versioned
 
 Unlike a future `ai/dev/` or `ai/ops/` tree (not yet created), the contents
@@ -36,6 +39,23 @@ session-log-YYYY-MM-DD-<short-tag>.md
 
 Other files (issue drafts, test plans, etc.) should be named descriptively,
 e.g. `github-issue-draft-<issue-number>.md`, `test_plan_<issue-number>.md`.
+
+## What belongs in a session log
+
+A log is read by a future agent or contributor who has to resume the work
+after a pause, so aim for *useful*, not merely *accurate*. Every line in a
+log is probably true; keep the ones a reader would act on:
+
+- Decisions and the reasons for them, especially rejected alternatives that
+  look attractive.
+- Current state: what is done, what is pushed, what is open, and the next step.
+- Environment details and workarounds needed to continue (hosts, install
+  state, how to push), without credentials.
+- Findings that affect released versions, such as bugs and their recovery steps.
+
+Leave out blow-by-blow history that no longer changes what anyone does. The
+commit log already records what changed. It is fine for a log to be a bit
+pedantic, but trim it before the PR.
 
 ## IMPORTANT: Keep secrets out of session logs
 
