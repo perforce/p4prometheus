@@ -647,7 +647,7 @@ Only <code>node_exporter</code> runs on "other monitored server" hosts; there is
 <div class="sect2">
 <h3 id="_combined_role_hosts">1.2. Combined-Role Hosts</h3>
 <div class="paragraph">
-<p>Some hosts serve more than one role, e.g. a Helix Core replica that also runs Swarm. Do <strong>not</strong> run <code>install_node.sh</code> on a host where <code>install_p4prom.sh</code> has already been (or will be) run: both scripts install and manage <code>node_exporter</code>. <code>install_node.sh</code> replaces <code>/etc/systemd/system/node_exporter.service</code> with its own definition (binary in <code>/usr/local/bin</code>, textfile directory <code>/var/metrics</code>). The <code>p4_*</code> metrics written by p4prometheus and p4metrics then silently stop being exported the next time <code>node_exporter</code> restarts, with no error. If this happens, re-run <code>install_p4prom.sh</code> (or <code>update_p4prom.sh</code>), then run <code>systemctl daemon-reload &amp;&amp; systemctl restart node_exporter</code>.</p>
+<p>Some hosts serve more than one role, e.g. a Helix Core replica that also runs Swarm. Do <strong>not</strong> run <code>install_node.sh</code> on a host where <code>install_p4prom.sh</code> has already been (or will be) run: both scripts install and manage <code>node_exporter</code>. <code>install_node.sh</code> replaces <code>/etc/systemd/system/node_exporter.service</code> with its own definition (binary in <code>/usr/local/bin</code>, textfile directory <code>/var/metrics</code>). The <code>p4_*</code> metrics written by p4prometheus and p4metrics then silently stop being exported the next time <code>node_exporter</code> restarts, with no error. If this happens, re-run <code>install_p4prom.sh</code> with the original options; it rewrites the unit and restarts <code>node_exporter</code>. (<code>update_p4prom.sh</code> does not rewrite an existing unit file.)</p>
 </div>
 <div class="paragraph">
 <p>For a combined Helix Core + Swarm (or other monitored application) host:</p>
@@ -2572,7 +2572,7 @@ Checking perforce_rules.yml
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-10-15 20:11:49 -0400
+Last updated 2026-10-15 23:25:12 -0400
 </div>
 </div>
 </body>

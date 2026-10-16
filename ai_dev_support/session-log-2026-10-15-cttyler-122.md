@@ -64,3 +64,15 @@ Out of scope: #123 (air-gap packages, /etc relocation), #124 (uninstall script).
   /etc table, intro line. Regenerated HTML and PDF (installed asciidoctor-pdf
   and asciidoctor-diagram gems to do so).
 - Out-of-scope bugs noted (F6-F8), not fixed. Candidates for new issues.
+
+## Update: other p4d hosts, bug fixes
+- Decision (user): small unrelated bugs found in testing are fixed in this
+  branch rather than filed separately; each in its own commit so they can be
+  split out of the PR if a reviewer prefers.
+- Tested p4-02 (forwarding-standby replica, defaults), p4-03 (custom -b plus
+  update), p4-04 (negative then default install), p4-05 (install_node.sh
+  only). All pass; hub Prometheus scrapes all five.
+- Fixed F4/F6/F7/F8 (see test_plan_122.md). Repair candidates left open:
+  F1, F2, F5, F9, install_node.sh start-vs-restart.
+- Doc: combined-role recovery now says re-run `install_p4prom.sh`;
+  `update_p4prom.sh` does not rewrite an existing unit file.

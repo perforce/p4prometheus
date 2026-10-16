@@ -54,7 +54,7 @@ NOTE: Only `node_exporter` runs on "other monitored server" hosts; there is no p
 
 === Combined-Role Hosts
 
-Some hosts serve more than one role, e.g. a Helix Core replica that also runs Swarm. Do **not** run `install_node.sh` on a host where `install_p4prom.sh` has already been (or will be) run: both scripts install and manage `node_exporter`. `install_node.sh` replaces `/etc/systemd/system/node_exporter.service` with its own definition (binary in `/usr/local/bin`, textfile directory `/var/metrics`). The `p4_*` metrics written by p4prometheus and p4metrics then silently stop being exported the next time `node_exporter` restarts, with no error. If this happens, re-run `install_p4prom.sh` (or `update_p4prom.sh`), then run `systemctl daemon-reload && systemctl restart node_exporter`.
+Some hosts serve more than one role, e.g. a Helix Core replica that also runs Swarm. Do **not** run `install_node.sh` on a host where `install_p4prom.sh` has already been (or will be) run: both scripts install and manage `node_exporter`. `install_node.sh` replaces `/etc/systemd/system/node_exporter.service` with its own definition (binary in `/usr/local/bin`, textfile directory `/var/metrics`). The `p4_*` metrics written by p4prometheus and p4metrics then silently stop being exported the next time `node_exporter` restarts, with no error. If this happens, re-run `install_p4prom.sh` with the original options; it rewrites the unit and restarts `node_exporter`. (`update_p4prom.sh` does not rewrite an existing unit file.)
 
 For a combined Helix Core + Swarm (or other monitored application) host:
 

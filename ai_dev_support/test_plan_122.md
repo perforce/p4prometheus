@@ -66,14 +66,44 @@ Pre-created `/data/p4mon` and `/opt/p4mon-bin`, then
   `p4monitor_locks.timer`; combined-role warning rewritten (F3); install.env
   added to the "stays in /etc" table.
 
+## Other p4d hosts (2026-10-15)
+Prometheus on p4hms now scrapes all five hosts (all `up`). `p4_*` series per
+host: p4-01 258, p4-02 329, p4-03 320, p4-04 347 (p4-05 is node-only).
+
+| ID | Host / role | Test | Result |
+|----|-------------|------|--------|
+| O1 | p4-02 (forwarding-standby replica) | `install_p4prom.sh 1`, all defaults | PASS: 4 units active, 329 p4_ series, binaries in /usr/local/bin |
+| O2 | p4-03 | `install_p4prom.sh 1 -b /opt/p4prom-bin`, then `update_p4prom.sh 1` | PASS: update kept /opt/p4prom-bin from state file |
+| O3 | p4-04 | `update_p4prom.sh 1` before any install | FAIL-SAFE: rc=1 but misleading message (F9) |
+| O4 | p4-04 | `install_p4prom.sh 1 -b /nonexistent_bin` | PASS: error, dir not created |
+| O5 | p4-04 | `install_p4prom.sh 1`, defaults | PASS |
+| O6 | p4-05 | `install_node.sh` only (other-role host), then `update_node.sh` | PASS: node_exporter active, textfile dir /var/metrics, no p4prometheus/p4metrics units |
+
+- F9: `update_p4prom.sh` on a host never installed says "Specified metrics
+  directory '/hxlogs/metrics' does not exist - please create it!" instead of
+  "run install_p4prom.sh first". Misleading; candidate for repair (not done).
+
+## Repairs made in this branch (re-verified in the lab)
+- F7 fixed: `check_service_exists` in install_prom_graf.sh and
+  update_prom_graf.sh no longer uses `list | grep -q` under pipefail.
+  Hub `update_prom_graf.sh` now runs the Grafana update step.
+- F8 fixed: first `update_prom_graf.sh` no longer exits 1 when
+  `PERFORCE_RULES_RENDERED_CHECKSUM` is absent from install.env. rc=0 twice.
+- F6 fixed: HTTP health checks retry for up to 30 s in install and update.
+- F4 root cause and fix: `systemd_enable_and_restart` used `systemctl start`,
+  a no-op on a running service whose unit file changed. Now `restart`.
+  Verified on p4-01: after `install_node.sh` broke the unit (0 p4_ series),
+  re-running `install_p4prom.sh` alone restored 258 series without a manual
+  restart. (`install_node.sh` has the same start-vs-restart flaw, left alone.)
+- Not fixed, candidates: F1 (writable check meaningless as root), F2
+  (update_p4prom.sh needs live p4d before preflight), F5 (-m metrics root still
+  auto-created), F9, and `install_node.sh` start-vs-restart.
+
 ## State left on p4-01
 p4prometheus, p4metrics, node_exporter, p4monitor_locks timer installed under
-/opt/p4prom-bin; `/var/metrics` (empty) and `/usr/local/bin/node_exporter` left
-over from C1. Scripts in /root/t122.
+/opt/p4prom-bin; C1 leftovers removed. Scripts in /root/t122 on all five hosts
+(p4-02/03/04 installed under /usr/local/bin or /opt/p4prom-bin as above).
 
 ## State left on p4hms
 Full monitoring stack installed (see above), docs toolchain gems (asciidoctor-pdf, asciidoctor-diagram) installed. /root/g/t122_hub_install.log has the install output.
 
-## Still to test
-- Other p4d hosts (p4-02..05), including a replica/edge.
-- Scraping p4-01:9100 from the hub's Prometheus.
