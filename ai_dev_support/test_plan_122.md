@@ -40,14 +40,40 @@ Environment: p4hms (monitoring hub, not yet installed), p4-01 = p4c-bos-01
   `install_p4prom.sh` (`ensure_metrics_root_and_link`). #122 covers only
   `-d`/`-b`; decide whether `-m` should be preflighted too.
 
+## Monitoring server results (p4hms, 2026-10-15)
+Pre-created `/data/p4mon` and `/opt/p4mon-bin`, then
+`install_prom_graf.sh -d /data/p4mon -b /opt/p4mon-bin -target p4-01:9100 -grafana-setup`.
+
+| ID | Test | Result |
+|----|------|--------|
+| H1 | Install with pre-created custom -d/-b | PASS (rc=0, 83 s). Data under /data/p4mon/{prometheus,victoria-metrics,alertmanager,grafana}; binaries in /opt/p4mon-bin |
+| H2 | Services running | node_exporter, prometheus, victoria-metrics, alertmanager (installed by default, not optional), grafana-server |
+| H3 | `/etc` files stay put | CONFIRMED: /etc/grafana, /etc/prometheus, /etc/alertmanager, /etc/p4prometheus-monitoring/install.env, unit files |
+| H4 | End to end | PASS: Prometheus scraping p4-01:9100 (up) and 350 `p4_*` series visible |
+| H5 | `update_prom_graf.sh` with no flags loads state from install.env | PASS for path loading, but see F7/F8 |
+
+- F6: install's final health check reported Grafana as not responding; it was
+  healthy seconds later (check runs before Grafana finishes starting).
+  Cosmetic, pre-existing.
+- F7: `update_prom_graf.sh` says "Grafana service not found - skipping" while
+  grafana-server is active. `check_service_exists` pipes
+  `systemctl list-unit-files` into `grep -q` under `set -o pipefail`; suspected
+  SIGPIPE false negative. Not part of #122.
+- F8: `update_prom_graf.sh` exits rc=1 after the rules check on first update
+  (suspect `grep '^PERFORCE_RULES_RENDERED_CHECKSUM='` finding nothing in
+  install.env under `set -e`). Not part of #122.
+- Doc corrections made from these tests: Alertmanager is not optional; timer is
+  `p4monitor_locks.timer`; combined-role warning rewritten (F3); install.env
+  added to the "stays in /etc" table.
+
 ## State left on p4-01
 p4prometheus, p4metrics, node_exporter, p4monitor_locks timer installed under
 /opt/p4prom-bin; `/var/metrics` (empty) and `/usr/local/bin/node_exporter` left
 over from C1. Scripts in /root/t122.
 
+## State left on p4hms
+Full monitoring stack installed (see above), docs toolchain gems (asciidoctor-pdf, asciidoctor-diagram) installed. /root/g/t122_hub_install.log has the install output.
+
 ## Still to test
-- Monitoring server: positive install on p4hms with a pre-created custom `-d`
-  and `-b`, then update; confirm which `/etc/*` files stay put (doc item 3)
-  and the services-per-role table (doc item 4).
 - Other p4d hosts (p4-02..05), including a replica/edge.
 - Scraping p4-01:9100 from the hub's Prometheus.

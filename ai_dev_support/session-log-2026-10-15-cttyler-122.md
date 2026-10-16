@@ -55,3 +55,12 @@ Out of scope: #123 (air-gap packages, /etc relocation), #124 (uninstall script).
 - Ran the lab tests; see `ai_dev_support/test_plan_122.md` for results.
   Headline: preflight works; `install_node.sh` on a p4prom host silently
   breaks P4 metrics (F3), and the doc should say so.
+
+## Update: hub install, doc fixes
+- Installed the monitoring stack on p4hms with custom -d/-b; end to end works
+  (Prometheus scrapes p4-01, 350 p4_ series). Details in test_plan_122.md.
+- Fixed `doc/P4Prometheus_Installation.adoc`: Alertmanager not optional,
+  `p4monitor_locks.timer` name, combined-role warning, install.env row in the
+  /etc table, intro line. Regenerated HTML and PDF (installed asciidoctor-pdf
+  and asciidoctor-diagram gems to do so).
+- Out-of-scope bugs noted (F6-F8), not fixed. Candidates for new issues.

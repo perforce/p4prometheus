@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="generator" content="Asciidoctor 2.0.23">
+<meta name="generator" content="Asciidoctor 2.0.20">
 <meta name="author" content="Perforce Professional Services">
 <title>Perforce P4Prometheus - Installation Guide</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,300italic,400,400italic,600,600italic%7CNoto+Serif:400,400italic,700,700italic%7CDroid+Sans+Mono:400,700">
@@ -141,7 +141,7 @@ p a>code:hover{color:rgba(0,0,0,.9)}
 #content::before{content:none}
 #header>h1:first-child{color:rgba(0,0,0,.85);margin-top:2.25rem;margin-bottom:0}
 #header>h1:first-child+#toc{margin-top:8px;border-top:1px solid #dddddf}
-#header>h1:only-child{border-bottom:1px solid #dddddf;padding-bottom:8px}
+#header>h1:only-child,body.toc2 #header>h1:nth-last-child(2){border-bottom:1px solid #dddddf;padding-bottom:8px}
 #header .details{border-bottom:1px solid #dddddf;line-height:1.45;padding-top:.25em;padding-bottom:.25em;padding-left:.25em;color:rgba(0,0,0,.6);display:flex;flex-flow:row wrap}
 #header .details span:first-child{margin-left:-.125em}
 #header .details span.email a{color:rgba(0,0,0,.85)}
@@ -163,7 +163,6 @@ p a>code:hover{color:rgba(0,0,0,.9)}
 #toctitle{color:#7a2518;font-size:1.2em}
 @media screen and (min-width:768px){#toctitle{font-size:1.375em}
 body.toc2{padding-left:15em;padding-right:0}
-body.toc2 #header>h1:nth-last-child(2){border-bottom:1px solid #dddddf;padding-bottom:8px}
 #toc.toc2{margin-top:0!important;background:#f8f8f7;position:fixed;width:15em;left:0;top:0;border-right:1px solid #e7e7e9;border-top-width:0!important;border-bottom-width:0!important;z-index:1000;padding:1.25em 1em;height:100%;overflow:auto}
 #toc.toc2 #toctitle{margin-top:0;margin-bottom:.8rem;font-size:1.2em}
 #toc.toc2>ul{font-size:.9em;margin-bottom:0}
@@ -329,7 +328,7 @@ a.image{text-decoration:none;display:inline-block}
 a.image object{pointer-events:none}
 sup.footnote,sup.footnoteref{font-size:.875em;position:static;vertical-align:super}
 sup.footnote a,sup.footnoteref a{text-decoration:none}
-sup.footnote a:active,sup.footnoteref a:active,#footnotes .footnote a:first-of-type:active{text-decoration:underline}
+sup.footnote a:active,sup.footnoteref a:active{text-decoration:underline}
 #footnotes{padding-top:.75em;padding-bottom:.75em;margin-bottom:.625em}
 #footnotes hr{width:20%;min-width:6.25em;margin:-.25em 0 .75em;border-width:1px 0 0}
 #footnotes .footnote{padding:0 .375em 0 .225em;line-height:1.3334;font-size:.875em;margin-left:1.2em;margin-bottom:.2em}
@@ -536,7 +535,11 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#_alertmanager_config">5.7.1. Alertmanager config</a></li>
 <li><a href="#_alerting_rules">5.7.2. Alerting rules</a>
 <ul class="sectlevel4">
-<li><a href="#_split_file_alerting_rules_recommended">5.7.2.1. Split-file alerting rules (recommended)</a></li>
+<li><a href="#_split_file_alerting_rules_recommended">5.7.2.1. Split-file alerting rules (recommended)</a>
+<ul class="sectlevel5">
+<li><a href="#_template_based_custom_rules">Template-based custom rules</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li><a href="#_prometheus_config_to_reference_alertmanager_rules">5.7.3. Prometheus config to reference alertmanager rules</a></li>
@@ -585,7 +588,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <tbody>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Monitoring server</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="../scripts/install_prom_graf.sh">install_prom_graf.sh</a>: Grafana, Prometheus, VictoriaMetrics, node_exporter, and optional Alertmanager, Pushgateway, and Pint.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="../scripts/install_prom_graf.sh">install_prom_graf.sh</a>: Grafana, Prometheus, VictoriaMetrics, node_exporter, Alertmanager, and optional Pushgateway and Pint.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Helix Core server</p></td>
@@ -616,11 +619,11 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <tbody>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Monitoring server</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>node_exporter</code>, <code>prometheus</code>, <code>victoria-metrics</code>, <code>grafana-server</code> (package-managed), and optionally <code>alertmanager</code>, <code>pushgateway</code>, <code>pint</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>node_exporter</code>, <code>prometheus</code>, <code>victoria-metrics</code>, <code>alertmanager</code>, <code>grafana-server</code> (package-managed), and optionally <code>pushgateway</code> (<code>-push</code>) and <code>pint</code> (<code>-pint</code>)</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Helix Core server</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>node_exporter</code>, <code>p4prometheus</code>, <code>p4metrics</code>, <code>monitor_locks.timer</code> (which runs <code>monitor_locks.service</code>), and optionally <code>vmagent</code> (with <code>-push</code>)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>node_exporter</code>, <code>p4prometheus</code>, <code>p4metrics</code>, <code>p4monitor_locks.timer</code> (which runs <code>p4monitor_locks.service</code>), and optionally <code>vmagent</code> (with <code>-push</code>)</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Other monitored server (Swarm, Hansoft, HTH, etc.)</p></td>
@@ -644,7 +647,7 @@ Only <code>node_exporter</code> runs on "other monitored server" hosts; there is
 <div class="sect2">
 <h3 id="_combined_role_hosts">1.2. Combined-Role Hosts</h3>
 <div class="paragraph">
-<p>Some hosts serve more than one role, e.g. a Helix Core replica that also runs Swarm. Do <strong>not</strong> run <code>install_node.sh</code> on a host where <code>install_p4prom.sh</code> has already been (or will be) run: both scripts install and manage <code>node_exporter</code>, and running both leads to duplicate/conflicting systemd unit definitions.</p>
+<p>Some hosts serve more than one role, e.g. a Helix Core replica that also runs Swarm. Do <strong>not</strong> run <code>install_node.sh</code> on a host where <code>install_p4prom.sh</code> has already been (or will be) run: both scripts install and manage <code>node_exporter</code>. <code>install_node.sh</code> replaces <code>/etc/systemd/system/node_exporter.service</code> with its own definition (binary in <code>/usr/local/bin</code>, textfile directory <code>/var/metrics</code>). The <code>p4_*</code> metrics written by p4prometheus and p4metrics then silently stop being exported the next time <code>node_exporter</code> restarts, with no error. If this happens, re-run <code>install_p4prom.sh</code> (or <code>update_p4prom.sh</code>), then run <code>systemctl daemon-reload &amp;&amp; systemctl restart node_exporter</code>.</p>
 </div>
 <div class="paragraph">
 <p>For a combined Helix Core + Swarm (or other monitored application) host:</p>
@@ -1087,6 +1090,10 @@ sudo ./migrate_prom_graf_data.sh -d /data --cleanup-old</code></pre>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>/usr/share/grafana/</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Grafana application files (package-managed)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/etc/p4prometheus-monitoring/install.env</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Installer state file read by <code>update_prom_graf.sh</code> (records the <code>-d</code>/<code>-b</code> choices)</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>/etc/systemd/system/*.service</code></p></td>
@@ -2112,7 +2119,7 @@ sudo systemctl status p4prometheus</pre>
 </div>
 <div class="literalblock">
 <div class="content">
-<pre>grep "blocked by pid" /p4/1/logs/monitor_metrics.log | less</pre>
+<pre>grep "blocked by pid" /p4/1/logs/p4monitor_locks.log | less</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -2120,7 +2127,7 @@ sudo systemctl status p4prometheus</pre>
 </div>
 <div class="literalblock">
 <div class="content">
-<pre>grep "blocked by pid" /p4/1/logs/monitor_metrics.log | grep -v /clients | less</pre>
+<pre>grep "blocked by pid" /p4/1/logs/p4monitor_locks.log | grep -v /clients | less</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -2136,7 +2143,7 @@ sudo systemctl status p4prometheus</pre>
 </div>
 <div class="literalblock">
 <div class="content">
-<pre>grep blocking /p4/1/logs/monitor_metrics.log
+<pre>grep blocking /p4/1/logs/p4monitor_locks.log
 
 2024-04-04 00:29:02: blocking cmd: elapsed 02:09:23, pid 284460, user perforce, cmd sync, blocking 2, indirectly 203
 2024-04-04 00:29:02: blocking cmd: elapsed 00:59:35, pid 374896, user fred, cmd dm-CommitSubmit, blocking 203, indirectly 0
@@ -2361,6 +2368,29 @@ Found:
   - "perforce_rules_local.yml"</code></pre>
 </div>
 </div>
+<div class="sect5">
+<h6 id="_template_based_custom_rules">Template-based custom rules</h6>
+<div class="paragraph">
+<p>The <a href="../../examples/prometheus/rules-src/custom_perforce_rules.yml">custom rule template</a> and
+<a href="../../examples/prometheus/rules-src/custom-values.yml">custom values</a> provide two examples of
+site-specific rules. The values file is rendered after
+<a href="../../examples/prometheus/rules-src/default-values.yml">the default values</a>, so it can override
+only the thresholds or selectors that differ at your site while inheriting the remaining defaults.</p>
+</div>
+<div class="paragraph">
+<p>Copy these files to a working directory and adjust <code>custom-values.yml</code> as required. Render the
+rules with <code>ytt</code>, then install the result as the local rules file:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-bash" data-lang="bash">cd /path/to/p4prometheus/examples/prometheus
+make custom_perforce_rules.yml
+sudo install -m 0644 custom_perforce_rules.yml /etc/prometheus/perforce_rules_local.yml</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Custom rules must use alert names that do not duplicate alerts in <code>perforce_rules.yml</code>.</p>
+</div>
 <div class="paragraph">
 <p>Then uncomment the relevant section in <code>prometheus.yml</code>:</p>
 </div>
@@ -2376,6 +2406,7 @@ alerting:
 # Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
 rule_files:
   - "perforce_rules.yml"</code></pre>
+</div>
 </div>
 </div>
 </div>
@@ -2541,7 +2572,7 @@ Checking perforce_rules.yml
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-09-25 11:05:34 -0400
+Last updated 2026-10-15 20:11:49 -0400
 </div>
 </div>
 </body>

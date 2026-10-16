@@ -23,7 +23,7 @@ Install the following components for each role:
 |Role |Installer and components
 
 |Monitoring server
-|link:../scripts/install_prom_graf.sh[install_prom_graf.sh]: Grafana, Prometheus, VictoriaMetrics, node_exporter, and optional Alertmanager, Pushgateway, and Pint.
+|link:../scripts/install_prom_graf.sh[install_prom_graf.sh]: Grafana, Prometheus, VictoriaMetrics, node_exporter, Alertmanager, and optional Pushgateway and Pint.
 
 |Helix Core server
 |link:../scripts/install_p4prom.sh[install_p4prom.sh]: node_exporter, p4prometheus, p4metrics, and lock-monitoring scripts.
@@ -41,10 +41,10 @@ Use this table to confirm which services should be running (`systemctl status <s
 |Role |systemd services (installed/enabled by the installer)
 
 |Monitoring server
-|`node_exporter`, `prometheus`, `victoria-metrics`, `grafana-server` (package-managed), and optionally `alertmanager`, `pushgateway`, `pint`
+|`node_exporter`, `prometheus`, `victoria-metrics`, `alertmanager`, `grafana-server` (package-managed), and optionally `pushgateway` (`-push`) and `pint` (`-pint`)
 
 |Helix Core server
-|`node_exporter`, `p4prometheus`, `p4metrics`, `monitor_locks.timer` (which runs `monitor_locks.service`), and optionally `vmagent` (with `-push`)
+|`node_exporter`, `p4prometheus`, `p4metrics`, `p4monitor_locks.timer` (which runs `p4monitor_locks.service`), and optionally `vmagent` (with `-push`)
 
 |Other monitored server (Swarm, Hansoft, HTH, etc.)
 |`node_exporter` only
@@ -54,7 +54,7 @@ NOTE: Only `node_exporter` runs on "other monitored server" hosts; there is no p
 
 === Combined-Role Hosts
 
-Some hosts serve more than one role, e.g. a Helix Core replica that also runs Swarm. Do **not** run `install_node.sh` on a host where `install_p4prom.sh` has already been (or will be) run: both scripts install and manage `node_exporter`, and running both leads to duplicate/conflicting systemd unit definitions.
+Some hosts serve more than one role, e.g. a Helix Core replica that also runs Swarm. Do **not** run `install_node.sh` on a host where `install_p4prom.sh` has already been (or will be) run: both scripts install and manage `node_exporter`. `install_node.sh` replaces `/etc/systemd/system/node_exporter.service` with its own definition (binary in `/usr/local/bin`, textfile directory `/var/metrics`). The `p4_*` metrics written by p4prometheus and p4metrics then silently stop being exported the next time `node_exporter` restarts, with no error. If this happens, re-run `install_p4prom.sh` (or `update_p4prom.sh`), then run `systemctl daemon-reload && systemctl restart node_exporter`.
 
 For a combined Helix Core + Swarm (or other monitored application) host:
 
@@ -228,6 +228,9 @@ sudo ./migrate_prom_graf_data.sh -d /data --cleanup-old
 
 |`/usr/share/grafana/`
 |Grafana application files (package-managed)
+
+|`/etc/p4prometheus-monitoring/install.env`
+|Installer state file read by `update_prom_graf.sh` (records the `-d`/`-b` choices)
 
 |`/etc/systemd/system/*.service`
 |systemd unit files (fixed location by systemd convention)
