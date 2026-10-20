@@ -6,13 +6,13 @@
 
 ## Background
 
-Follow-up findings from real-world install testing after #118 (Advanced Install Options), captured during air-gap trial installs on Cisco infrastructure.
+Follow-up findings from real-world install testing after #118 (Advanced Install Options), captured during air-gap trial installs.
 
 ## Problems to address
 
 **1. `p4prom_common.sh` dependency undocumented for monitoring-server scripts**
 
-`install_prom_graf.sh` and `update_prom_graf.sh` also `source p4prom_common.sh` (auto-downloading it from `master` if missing), same as the Helix Core server scripts. `doc/P4Prometheus_Installation.adoc` only tells users to co-download it for `install_p4prom.sh`/`update_p4prom.sh`. This silently breaks air-gapped monitoring-server installs (no network to auto-fetch) and is confusing even for online installs.
+`install_prom_graf.sh` and `update_prom_graf.sh` also `source p4prom_common.sh` (auto-downloading it from `master` if missing), same as the P4 server scripts. `doc/P4Prometheus_Installation.adoc` only tells users to co-download it for `install_p4prom.sh`/`update_p4prom.sh`. This silently breaks air-gapped monitoring-server installs (no network to auto-fetch) and is confusing even for online installs.
 
 - [ ] Document that `p4prom_common.sh` must sit alongside all four scripts (`install_prom_graf.sh`, `update_prom_graf.sh`, `install_p4prom.sh`, `update_p4prom.sh`)
 - [ ] Update the air-gap section to list it as a required pre-staged file for monitoring-server air-gap installs too
