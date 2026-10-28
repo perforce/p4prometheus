@@ -88,6 +88,70 @@ groups:
       description: "One or more processes were killed due to out-of-memory in the last 5 minutes."
       runbook_id: _oom_kill_detected
 
+  - alert: P4D excessive commands paused by resource pressure
+    expr: >-
+      (p4_cmds_paused > 100)
+      and on (instance, serverid)
+      (
+        (p4_pause_state_cpu >= 2)
+        or
+        (p4_pause_state_mem >= 2)
+      )
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "P4D resource pressure is pausing commands on {{ $labels.instance }}"
+      description: >-
+        {{ $labels.instance }} (server {{ $labels.serverid }}) has
+        {{ $value | printf "%.0f" }} commands paused for at least five minutes
+        while CPU or memory resource pressure is at pause state 2.
+        Check p4_pause_rate_cpu, p4_pause_rate_mem, host CPU, memory, disk I/O,
+        and the command workload.
+      runbook_id: _p4d_excessive_paused_commands
+
+  - alert: P4D severe command pause backlog
+    expr: >-
+      (p4_cmds_paused > 500)
+      and on (instance, serverid)
+      (
+        (p4_pause_state_cpu >= 2)
+        or
+        (p4_pause_state_mem >= 2)
+      )
+    for: 3m
+    labels:
+      severity: critical
+    annotations:
+      summary: "P4D has a severe resource-pressure command backlog on {{ $labels.instance }}"
+      description: >-
+        {{ $labels.instance }} (server {{ $labels.serverid }}) has
+        {{ $value | printf "%.0f" }} commands paused for at least five minutes
+        while resource pressure is at pause state 2.
+      runbook_id: _p4d_excessive_paused_commands
+
+  - alert: P4D paused command backlog growing rapidly
+    expr: >-
+      (
+        max_over_time(p4_cmds_paused[5m])
+        - min_over_time(p4_cmds_paused[5m])
+      ) > 100
+      and on (instance, serverid)
+      (
+        (p4_pause_state_cpu >= 2)
+        or
+        (p4_pause_state_mem >= 2)
+      )
+    for: 3m
+    labels:
+      severity: warning
+    annotations:
+      summary: "P4D paused-command backlog is growing rapidly on {{ $labels.instance }}"
+      description: >-
+        {{ $labels.instance }} accumulated more than 100 additional paused
+        commands within five minutes while resource pressure is at pause state 2.
+      runbook_id: _p4d_excessive_paused_commands
+
   - alert: P4D urgent license expiry
     #! Note serverids may be uppercase - we don't want to match edge servers or HA servers - this is urgent alert
     expr: (p4_license_time_remaining{serverid!~"(@= data.values.license.excluded_serverids @)"} / (24 * 60 * 60)) < (@= str(data.values.license.urgent_days) @)
