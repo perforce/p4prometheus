@@ -176,6 +176,12 @@ bootstrap_monitor_python_env () {
         return
     fi
 
+    if [[ -n "${local_tarballs_dir:-}" ]]; then
+        msg "Air-gap mode: skipping uv/.venv bootstrap in ${target_dir} (it downloads from the internet)."
+        msg "  monitor_locks.py will use the system python3; install PyYAML from your OS package mirror (e.g. python3-pyyaml)."
+        return
+    fi
+
     msg "No .venv found in ${target_dir}; installing uv and Python dependencies as ${OSUSER}"
     bootstrap_cmd=$(cat <<'EOF'
 set -e
