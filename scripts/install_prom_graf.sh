@@ -461,9 +461,16 @@ install_alertmanager () {
 
     local perforce_alert_tmpl_file="/etc/alertmanager/templates/perforce.tmpl"
     local perforce_alert_tmpl_url="https://raw.githubusercontent.com/perforce/p4prometheus/master/examples/alertmanager/templates/perforce.tmpl"
-    msg "Downloading default Alertmanager template to ${perforce_alert_tmpl_file}"
-    if ! wget -q -O "$perforce_alert_tmpl_file" "$perforce_alert_tmpl_url"; then
-        bail "Failed to download Alertmanager template from $perforce_alert_tmpl_url"
+    if [[ -n "$local_tarballs_dir" ]]; then
+        local local_tmpl="${local_tarballs_dir}/perforce.tmpl"
+        [[ -f "$local_tmpl" ]] || bail "Air-gap mode: expected Alertmanager template not found: $local_tmpl"
+        msg "Using local Alertmanager template: $local_tmpl"
+        cp "$local_tmpl" "$perforce_alert_tmpl_file"
+    else
+        msg "Downloading default Alertmanager template to ${perforce_alert_tmpl_file}"
+        if ! wget -q -O "$perforce_alert_tmpl_file" "$perforce_alert_tmpl_url"; then
+            bail "Failed to download Alertmanager template from $perforce_alert_tmpl_url"
+        fi
     fi
     chown "$userid:$userid" "$perforce_alert_tmpl_file"
     chmod 644 "$perforce_alert_tmpl_file"
