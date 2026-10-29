@@ -319,7 +319,21 @@ install_grafana () {
         msg "Grafana already installed"
     fi
 
-    if [[ $isubuntu -eq 1 ]]; then
+    if [[ -n "$local_tarballs_dir" ]]; then
+        # Air-gap mode: do not add Grafana's package repo or GPG key (both need the
+        # internet). Install from the repos already configured on this host, which
+        # the customer must point at a local mirror that carries the grafana package.
+        if check_service_exists grafana-server; then
+            msg "Air-gap mode: Grafana already installed, skipping package install"
+        else
+            msg "Air-gap mode: installing grafana from the OS repositories configured on this host"
+            if [[ $isubuntu -eq 1 ]]; then
+                apt-get install -y grafana || bail "Air-gap mode: could not install the grafana package from the configured apt repositories. Make it available from a local mirror (see the air-gap section of INSTALL.md) or install it yourself and re-run."
+            else
+                yum install -y grafana || bail "Air-gap mode: could not install the grafana package from the configured yum/dnf repositories. Make it available from a local mirror (see the air-gap section of INSTALL.md) or install it yourself and re-run."
+            fi
+        fi
+    elif [[ $isubuntu -eq 1 ]]; then
         # Modern approach for Ubuntu/Debian - no deprecated apt-key
         apt-get install -y apt-transport-https software-properties-common wget gnupg
 
