@@ -1340,6 +1340,11 @@ check_aws_cli_version() {
     local install_dir="/tmp/awscliv2-install"
     local pkgs=()
 
+    if [[ -n "${local_tarballs_dir:-}" ]]; then
+        msg "Air-gap mode: skipping AWS CLI v2 check (EBS Throughput data will only be available if AWS CLI v2 is already installed)"
+        return 0
+    fi
+
     if command -v curl >/dev/null 2>&1 && ! is_running_on_aws; then
         msg "Skipping AWS CLI v2 check: host does not appear to be running on AWS"
         return 0
@@ -1394,7 +1399,11 @@ check_aws_cli_version() {
     mkdir -p "$install_dir"
     cd "$install_dir" || bail "Failed to cd to install dir: $install_dir"
 
-    curl -fsSL "$zip_url" -o awscliv2.zip || bail "Failed to download AWS CLI v2 from $zip_url"
+    # EBS Throughput data is optional, so an unreachable download (e.g. no outbound access) is not fatal.
+    if ! curl -fsSL "$zip_url" -o awscliv2.zip; then
+        msg "Warning: Failed to download AWS CLI v2 from $zip_url; skipping (EBS Throughput data will not be collected)"
+        return 0
+    fi
     unzip -q -o awscliv2.zip || bail "Failed to unzip awscliv2.zip"
 
     if [[ -x /usr/local/bin/aws ]]; then
