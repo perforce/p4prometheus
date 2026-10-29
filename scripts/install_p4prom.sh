@@ -467,8 +467,11 @@ EOF
     systemctl restart "${service_name}.timer"
     systemctl status "${service_name}.timer" --no-pager
 
-    mon_installer="/tmp/_install_mon.sh"
-    cat << EOF > $mon_installer
+    if [[ -n "${local_tarballs_dir:-}" ]]; then
+        msg "Air-gap mode: skipping check_for_updates.sh (it needs GitHub access)"
+    else
+        mon_installer="/tmp/_install_mon.sh"
+        cat << EOF > $mon_installer
 # Download latest versions
 mkdir -p $p4prom_bin_dir
 cd $p4prom_bin_dir
@@ -481,9 +484,10 @@ for scriptname in check_for_updates.sh; do
 done
 EOF
 
-    chmod 755 "$mon_installer"
-    sudo -u "$OSUSER" bash "$mon_installer"
-    sudo -u "$OSUSER" bash -c "cd $p4prom_bin_dir && ./check_for_updates.sh"
+        chmod 755 "$mon_installer"
+        sudo -u "$OSUSER" bash "$mon_installer"
+        sudo -u "$OSUSER" bash -c "cd $p4prom_bin_dir && ./check_for_updates.sh"
+    fi
 
     if [[ $InstallVMAgent -eq 0 ]]; then
         return

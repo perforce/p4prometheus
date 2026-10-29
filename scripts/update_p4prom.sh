@@ -484,6 +484,11 @@ EOF
         bootstrap_monitor_python_env "$bin_dir"
     fi
 
+    if [[ -n "${local_tarballs_dir:-}" ]]; then
+        msg "Air-gap mode: skipping check_for_updates.sh (it needs GitHub access)"
+        return
+    fi
+
     if [[ ! -x "${bin_dir}/check_for_updates.sh" ]]; then
         msg "Warning: ${bin_dir}/check_for_updates.sh not found or not executable, skipping update check"
         return
