@@ -77,6 +77,26 @@ download_and_untar () {
     tar zxvf "$fname"
 }
 
+# fetch_repo_script: put a script from the p4prometheus repo into a directory.
+# Normally downloaded from GitHub. In air-gap mode (--local-tarballs-dir) these scripts
+# are not release assets, so they are copied from the directory this installer runs from.
+fetch_repo_script () {
+    local scriptname=$1
+    local dest_dir=$2
+    local dest="${dest_dir}/${scriptname}"
+
+    if [[ -n "${local_tarballs_dir:-}" ]]; then
+        local src="${SCRIPT_DIR}/${scriptname}"
+        [[ -f "$src" ]] || bail "Air-gap mode: expected script not found: $src"
+        msg "Using local script: $src"
+        [[ "$src" -ef "$dest" ]] || cp "$src" "$dest"
+    else
+        msg "downloading $scriptname"
+        wget -q -O "$dest" "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/${scriptname}" || \
+            bail "Failed to download ${scriptname}"
+    fi
+}
+
 apply_bin_selinux_context() {
     local bin_file=$1
     if [[ ${SELinuxEnabled:-0} -eq 1 ]]; then

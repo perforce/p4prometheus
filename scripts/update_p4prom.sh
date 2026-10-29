@@ -424,8 +424,7 @@ update_p4monitor_locks_service() {
     done
 
     for scriptname in monitor_locks.py p4monitor_locks.sh; do
-        wget -q -O "${bin_dir}/${scriptname}" "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/${scriptname}" || \
-            bail "Failed to download ${scriptname}"
+        fetch_repo_script "$scriptname" "$bin_dir"
         chmod 755 "${bin_dir}/${scriptname}"
         chown "$OSUSER:$OSGROUP" "${bin_dir}/${scriptname}"
     done

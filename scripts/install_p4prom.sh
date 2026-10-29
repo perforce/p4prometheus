@@ -391,8 +391,7 @@ install_monitor_locks () {
     cd "$bin_dir" || bail "Failed to cd to $bin_dir"
     for scriptname in monitor_locks.py p4monitor_locks.sh; do
         [[ -f "$scriptname" ]] && rm "$scriptname"
-        echo "downloading $scriptname"
-        wget "https://raw.githubusercontent.com/perforce/p4prometheus/master/scripts/$scriptname"
+        fetch_repo_script "$scriptname" "$bin_dir"
         chmod 755 "$scriptname"
         chown "$OSUSER:$OSGROUP" "$scriptname"
         if [[ $SELinuxEnabled -eq 1 ]]; then
