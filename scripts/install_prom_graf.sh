@@ -430,11 +430,23 @@ EOF
 
     local ids=(12278 15509 405 1860)
     local id=""
+    local imported=0
     for id in "${ids[@]}"; do
         local dash_url="https://grafana.com/api/dashboards/${id}/revisions/latest/download"
         local dash_file="${dash_json_dir}/${id}.json"
-        if curl -fsSL "$dash_url" -o "$dash_file"; then
+        if [[ -n "$local_tarballs_dir" ]]; then
+            # Air-gap mode: dashboards come from <local-tarballs-dir>/dashboards/<id>.json
+            local local_dash="${local_tarballs_dir}/dashboards/${id}.json"
+            if [[ -f "$local_dash" ]]; then
+                cp "$local_dash" "$dash_file"
+                msg "  Using local dashboard ${id}"
+                imported=$((imported + 1))
+            else
+                msg "  Warning: dashboard ${id} not found at ${local_dash}; skipping"
+            fi
+        elif curl -fsSL "$dash_url" -o "$dash_file"; then
             msg "  Downloaded dashboard ${id}"
+            imported=$((imported + 1))
         else
             msg "  Warning: failed to download dashboard ${id} from ${dash_url}"
             rm -f "$dash_file"
@@ -449,7 +461,7 @@ EOF
     systemctl restart grafana-server
     systemctl status grafana-server --no-pager
 
-    msg "Grafana provisioning complete: datasource 'Victoria Metrics' and dashboards imported."
+    msg "Grafana provisioning complete: datasource 'Victoria Metrics' and ${imported} of ${#ids[@]} dashboards imported."
 }
 
 install_alertmanager () {
