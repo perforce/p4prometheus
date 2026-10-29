@@ -163,6 +163,47 @@ Decision (user): host firewall with a self-reverting safety, not AWS security gr
   installed files, then repeat the helix-side check with `install_p4prom.sh 1
   --local-tarballs-dir ...` on one host (its scripts need the tarballs there too).
 
+## Step 3 results: air-gap install on bsw-lab-ui, Rocky 8 (2026-10-29)
+Setup as planned, with two deviations: the host had neither `nft` nor `iptables`, so
+`nftables` was installed first (dnf transaction 28; undo it with `dnf history undo 28`
+when testing is finished, and tell the user); and the stock repos were disabled with
+`sed` on `/etc/yum.repos.d/*.repo` (backup in `/root/airgap/repo-backup/`, now restored)
+plus `/etc/yum.repos.d/airgap-mirror.repo` pointing at `file:///root/airgap/repo`
+(still present, harmless). Rules are in `/root/airgap/airgap.nft`. Verified before
+installing: github.com, packages.grafana.com, grafana.com and raw.githubusercontent.com
+all refused immediately (curl exit 7); IMDS answered 200; ssh to the helix hosts worked;
+ICMP to 10.0.0.x does not work (almost certainly the lab security group, not the rules).
+Lesson: `systemd-run --on-active` timers must be re-armed during a long session
+(did it twice); `pkill -f <pattern>` can kill your own shell if the pattern is in the
+command line.
+
+Four runs, each exposing one gap (all fixed, one commit each, see below):
+1. Alertmanager template bailed (`raw.githubusercontent.com`).
+2. `grafana.repo` + GPG key from packages.grafana.com (metadata download failed).
+3. Passed, but `-grafana-setup` produced a datasource and ZERO dashboards (all four come
+   from grafana.com) while still printing "dashboards imported".
+4. Final run from a reset host, single pass: exit 0, no Warning/Error/Failed lines,
+   `4 of 4 dashboards imported`, 10/10 health checks, 6/6 Prometheus targets up, four
+   dashboards served by Grafana, grafana 13.3.0 installed `From repo: airgap`.
+Commits (not yet pushed): c02dfcb Alertmanager template, 734c36d Grafana repo/key,
+1f3de76 dashboards (`<dir>/dashboards/<id>.json`, ids 12278 15509 405 1860; the P4 Stats
+dashboards are 12278 and 15509). The staged `dashboards/` and `perforce.tmpl` files must
+be listed in the air-gap doc's "what to download" checklist.
+A normalized diff of the online vs air-gap install logs was useless (PID noise from
+`systemctl status`); the state checks above are the evidence.
+
 ## NEXT STEPS
-- Triage findings 1 and 2; then step 2 of the testing plan (minimal local mirror)
-  on a clean host: the jump box needs uninstalling or a fresh Gen6 host, so ask.
+- Ask the user before testing `install_p4prom.sh 1 --local-tarballs-dir ...` on a helix
+  host with outbound blocked. It needs nftables on that host, tarballs (node_exporter,
+  p4prometheus, p4metrics) copied there, and the mirror (jq) served over http from
+  bsw-lab-ui (more realistic than file://). Expect the uv/PyYAML question for
+  `monitor_locks.py` on Rocky 8's python 3.6 to be answered here.
+- Still ungated by `--local-tarballs-dir`: `pint` (`-pint`), and `install_node.sh` /
+  `update_node.sh` (no flag at all); `update_prom_graf.sh` was not checked.
+- Docs: rewrite the air-gap section as a checklist (what P4Prometheus does vs what the
+  customer arranges): mirror contents (grafana, jq, oniguruma on Rocky 8; `rpm -qpR`
+  first, not `--alldeps`), stock repos disabled, GPG key choice, tarball list, rules-src,
+  perforce.tmpl, dashboards; plus the "what grows" audit and /etc backup list from the
+  scope decisions.
+- Then repeat on Ubuntu 24 (Gen7, this lab). Clean up at the end: `dnf history undo 28`
+  (nftables) on bsw-lab-ui, and decide whether to leave the monitoring stack installed.
