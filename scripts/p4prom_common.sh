@@ -97,6 +97,24 @@ fetch_repo_script () {
     fi
 }
 
+# ensure_jq: check_for_updates.sh and get_volume_info.sh need jq, which is not installed
+# by default on e.g. RHEL/Rocky 8. Use the host's configured package repos (in an
+# air-gapped environment that means the customer's local mirror). Never fatal.
+ensure_jq () {
+    command -v jq >/dev/null 2>&1 && return 0
+    msg "jq not found; installing with the OS package manager"
+    if command -v dnf >/dev/null 2>&1; then
+        dnf install -y jq >/dev/null 2>&1 || true
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y jq >/dev/null 2>&1 || true
+    elif command -v apt-get >/dev/null 2>&1; then
+        apt-get install -y jq >/dev/null 2>&1 || true
+    fi
+    command -v jq >/dev/null 2>&1 || \
+        msg "Warning: could not install jq; check_for_updates.sh and EBS volume info will not work until it is installed"
+    return 0
+}
+
 apply_bin_selinux_context() {
     local bin_file=$1
     if [[ ${SELinuxEnabled:-0} -eq 1 ]]; then

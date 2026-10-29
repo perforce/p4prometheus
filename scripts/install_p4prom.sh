@@ -389,6 +389,7 @@ install_monitor_locks () {
     # We install in /p4/common/site/bin but need to reference the ultimate path without links for SELinux/systemd
     abs_bin_dir=$(readlink -f "$bin_dir")
     cd "$bin_dir" || bail "Failed to cd to $bin_dir"
+    ensure_jq
     for scriptname in monitor_locks.py p4monitor_locks.sh; do
         [[ -f "$scriptname" ]] && rm "$scriptname"
         fetch_repo_script "$scriptname" "$bin_dir"

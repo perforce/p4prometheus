@@ -423,6 +423,7 @@ update_p4monitor_locks_service() {
         rm -f "/etc/systemd/system/${legacy_service}.service" "/etc/systemd/system/${legacy_service}.timer"
     done
 
+    ensure_jq
     for scriptname in monitor_locks.py p4monitor_locks.sh; do
         fetch_repo_script "$scriptname" "$bin_dir"
         chmod 755 "${bin_dir}/${scriptname}"
