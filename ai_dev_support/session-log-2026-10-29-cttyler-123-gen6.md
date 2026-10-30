@@ -192,12 +192,28 @@ be listed in the air-gap doc's "what to download" checklist.
 A normalized diff of the online vs air-gap install logs was useless (PID noise from
 `systemctl status`); the state checks above are the evidence.
 
+## Step 4: helix-side air-gap install (bos-helix-02), PASSED
+User approved ("push them, and go ahead with the helix test"); the four step-3 commits
+were pushed first (origin at 9966dc0).
+- Host: bos-helix-02 (Rocky 8.10, python 3.6.8, system PyYAML 3.12, already on
+  p4prometheus v0.11.5 from step 1). Installed `nftables` online first (dnf txn 20), staged
+  only node_exporter, p4prometheus.gz, p4metrics.gz, a two-rpm jq/oniguruma repo
+  (`file://`, gpgcheck=0; http was not needed) and a fresh copy of `scripts/`.
+- Block: same `inet airgap` nft table (loopback, established, 10.0.0.0/24, 169.254/16,
+  reject), 15 min `systemd-run` revert timer, stock repos disabled. github, grafana
+  and raw.githubusercontent refused (curl exit 7); ssh to the other helix hosts worked.
+- `install_p4prom.sh 1 --local-tarballs-dir <dir>`: exit 0. Used the local tarball/file
+  for all three binaries, installed jq from the mirror, copied monitor_locks.py and
+  p4monitor_locks.sh from the script dir, skipped check_for_updates.sh and the AWS CLI
+  check with the air-gap messages. Four services active, 215 `p4_` metrics.
+  The only "warning" grep hits were p4metrics' own log lines (no Swarm / no checkpoint.log).
+- `monitor_locks.py` runs fine under Rocky 8's python 3.6.8 with system PyYAML 3.12
+  (service run: Succeeded, p4_locks_* metrics emitted). The uv/.venv skip is therefore OK.
+- Reverted: table deleted, timer stopped, repo files restored, nftables removed with
+  `dnf history undo 20`; github http=200 again. jq was left installed (harmless).
+  `/root/airgap_test/` remains on bos-helix-02 (scratch; safe to delete).
+
 ## NEXT STEPS
-- Ask the user before testing `install_p4prom.sh 1 --local-tarballs-dir ...` on a helix
-  host with outbound blocked. It needs nftables on that host, tarballs (node_exporter,
-  p4prometheus, p4metrics) copied there, and the mirror (jq) served over http from
-  bsw-lab-ui (more realistic than file://). Expect the uv/PyYAML question for
-  `monitor_locks.py` on Rocky 8's python 3.6 to be answered here.
 - Still ungated by `--local-tarballs-dir`: `pint` (`-pint`), and `install_node.sh` /
   `update_node.sh` (no flag at all); `update_prom_graf.sh` was not checked.
 - Docs: rewrite the air-gap section as a checklist (what P4Prometheus does vs what the
