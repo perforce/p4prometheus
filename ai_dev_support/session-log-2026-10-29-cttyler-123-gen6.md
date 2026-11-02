@@ -213,6 +213,26 @@ were pushed first (origin at 9966dc0).
   `dnf history undo 20`; github http=200 again. jq was left installed (harmless).
   `/root/airgap_test/` remains on bos-helix-02 (scratch; safe to delete).
 
+## Step 5: Ubuntu 24 (Gen7), helix-side air-gap install on p4-05, PASSED
+Doc rewrite (`a4a2c85`, `e793300`, HTML `424ea45`) was pushed first; user chose: regenerate
+the HTML but not the PDF; keep the Grafana GPG choice as an either/or; references stay on
+the `.adoc` (GitHub renders it, the committed HTML is rebuilt only before release).
+- Host choice: p4hms (this session's host) cannot be firewalled, because the AI session
+  needs its API. All Gen7 hosts are Ubuntu 24.04.5 and already have nft, jq, python3.
+- p4-05 (PyYAML 6.0.1): removed jq, built a tiny apt mirror on p4hms (jq, libjq1, libonig5,
+  `apt-ftparchive packages`, `[trusted=yes] file:` source), moved the stock apt sources aside,
+  and applied the same `inet airgap` nft table with a 20 min revert timer.
+  github, grafana and raw.githubusercontent refused (curl exit 7).
+- `install_p4prom.sh 1 --local-tarballs-dir <dir>`: exit 0; local node_exporter, p4prometheus,
+  p4metrics; jq reinstalled from the mirror; local monitor_locks scripts; check_for_updates
+  and AWS CLI skipped with air-gap messages; 4 services active; 211 `p4_` metrics after
+  ~20 s; `p4monitor_locks.service` ran fine on python 3.12.
+- Reverted: table deleted, timer stopped, apt sources restored, github http=200.
+- Side effect: I omitted `-m /p4metrics`, so p4-05's metrics dir moved from `/p4metrics` to
+  `/hxlogs/metrics` (`/p4/metrics` symlink repointed). Harmless in the lab; old files remain.
+  `/root/airgap_test/` is left on p4-05.
+- Open: no Ubuntu host for the monitoring-server path (see below).
+
 ## NEXT STEPS
 - Still ungated by `--local-tarballs-dir`: `pint` (`-pint`), and `install_node.sh` /
   `update_node.sh` (no flag at all); `update_prom_graf.sh` was not checked.
