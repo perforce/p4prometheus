@@ -475,11 +475,20 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <ul class="sectlevel2">
 <li><a href="#_dedicated_data_volume">3.1. Dedicated Data Volume</a>
 <ul class="sectlevel3">
-<li><a href="#_what_d_does_and_does_not_relocate">3.1.1. What <code>-d</code> does and does not relocate</a></li>
+<li><a href="#what-d-relocates">3.1.1. What <code>-d</code> does and does not relocate</a></li>
 </ul>
 </li>
 <li><a href="#_retention_binaries_and_targets">3.2. Retention, Binaries, and Targets</a></li>
-<li><a href="#air-gapped-installation">3.3. Air-Gapped Installation</a></li>
+<li><a href="#air-gapped-installation">3.3. Air-Gapped Installation</a>
+<ul class="sectlevel3">
+<li><a href="#_responsibilities">3.3.1. Responsibilities</a></li>
+<li><a href="#airgap-staging">3.3.2. Files to stage</a></li>
+<li><a href="#airgap-mirror">3.3.3. Package mirror</a></li>
+<li><a href="#_running_the_install">3.3.4. Running the install</a></li>
+<li><a href="#_what_grows_on_disk">3.3.5. What grows on disk</a></li>
+<li><a href="#_files_to_back_up">3.3.6. Files to back up</a></li>
+</ul>
+</li>
 <li><a href="#_install_state_and_fleet_configuration">3.4. Install State and Fleet Configuration</a></li>
 </ul>
 </li>
@@ -1059,7 +1068,7 @@ sudo ./migrate_prom_graf_data.sh -d /data --cleanup-old</code></pre>
 </div>
 </div>
 <div class="sect3">
-<h4 id="_what_d_does_and_does_not_relocate">3.1.1. What <code>-d</code> does and does not relocate</h4>
+<h4 id="what-d-relocates">3.1.1. What <code>-d</code> does and does not relocate</h4>
 <div class="paragraph">
 <p><code>-d</code> relocates the runtime <strong>data</strong> directories only (Prometheus TSDB, VictoriaMetrics storage, Alertmanager state, Grafana&#8217;s data directory, Pushgateway persistence file). It does <strong>not</strong> move package/config files, which always remain under <code>/etc/<strong></code> and <code>/usr/share/</strong></code> regardless of <code>-d</code>:</p>
 </div>
@@ -1118,16 +1127,174 @@ sudo ./install_prom_graf.sh -target myp4server:9100 -target replica1:9100</code>
 <div class="sect2">
 <h3 id="air-gapped-installation">3.3. Air-Gapped Installation</h3>
 <div class="paragraph">
-<p>Download the required GitHub release assets on a connected machine, transfer them to the target, then pass their directory with <code>--local-tarballs-dir</code>:</p>
+<p>An air-gapped host has no route to the internet. The installers support this with <code>--local-tarballs-dir &lt;dir&gt;</code>: every file that would normally be downloaded from GitHub (or another website) is read from <code>&lt;dir&gt;</code> instead, and a missing file is a clear error rather than a failed download. Operating-system packages are <strong>not</strong> fetched from <code>&lt;dir&gt;</code>; they come from the package repositories configured on the host, which you must point at an internal mirror.</p>
 </div>
+<div class="paragraph">
+<p>This section is a checklist of what P4Prometheus does for you and what you must arrange.</p>
+</div>
+<div class="sect3">
+<h4 id="_responsibilities">3.3.1. Responsibilities</h4>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">P4Prometheus scripts do</th>
+<th class="tableblock halign-left valign-top">You arrange</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Read release tarballs, binaries, alerting rule sources, the Alertmanager template and dashboards from <code>--local-tarballs-dir</code>.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Download those files on a connected machine, check them, and copy them to each host (see <a href="#airgap-staging">Section 3.3.2, &#8220;Files to stage&#8221;</a>).</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Copy <code>monitor_locks.py</code> and <code>p4monitor_locks.sh</code> from the directory the installer runs from.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Copy the whole <code>scripts/</code> directory (not just one script) to each host, including <code>p4prom_common.sh</code>.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Install <code>grafana</code> and <code>jq</code> with the host&#8217;s package manager (<code>apt-get</code>, <code>dnf</code> or <code>yum</code>).</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Provide a local package mirror carrying those packages, and disable repositories the host cannot reach (see <a href="#airgap-mirror">Section 3.3.3, &#8220;Package mirror&#8221;</a>).</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Skip steps that need the internet: the Grafana repository and GPG key, <code>check_for_updates.sh</code>, the <code>uv</code>/<code>.venv</code> setup, and the AWS CLI v2 download (EBS throughput metrics are available only if AWS CLI v2 is already installed).</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Install <code>python3</code> and PyYAML from your mirror on Helix Core servers if they are not already present (used by <code>monitor_locks.py</code>; Python 3.6 with PyYAML 3.12 is sufficient).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect3">
+<h4 id="airgap-staging">3.3.2. Files to stage</h4>
+<div class="paragraph">
+<p>Download these on a connected machine. File names include the versions pinned at the top of the scripts (<code>VER_*</code> in <code>install_prom_graf.sh</code>); read them from the exact release of the scripts you are using. Examples below are for <code>linux-amd64</code>, with versions current at the time of writing.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 40%;">
+<col style="width: 60%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Needed on</th>
+<th class="tableblock halign-left valign-top">File in <code>&lt;dir&gt;</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top" rowspan="7"><p class="tableblock">Monitoring server (<code>install_prom_graf.sh</code>, <code>update_prom_graf.sh</code>)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>prometheus-&lt;ver&gt;.linux-amd64.tar.gz</code>, <code>alertmanager-&lt;ver&gt;.linux-amd64.tar.gz</code>, <code>node_exporter-&lt;ver&gt;.linux-amd64.tar.gz</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>victoria-metrics-linux-amd64-v&lt;ver&gt;.tar.gz</code> and <code>vmutils-linux-amd64-v&lt;ver&gt;.tar.gz</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ytt-linux-amd64</code> (from the carvel-dev/ytt release matching <code>VER_YTT</code>)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>rules-src/perforce_rules.yml</code> and <code>rules-src/default-values.yml</code> (from <code>examples/prometheus/rules-src/</code> in this repository)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>perforce.tmpl</code> (Alertmanager template, from <code>examples/alertmanager/templates/</code> in this repository)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dashboards/&lt;id&gt;.json</code> for each dashboard ID imported by <code>-grafana-setup</code> (currently 12278, 15509, 405, 1860), downloaded from grafana.com</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>pushgateway-&lt;ver&gt;.linux-amd64.tar.gz</code> only if you use <code>-push</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top" rowspan="2"><p class="tableblock">Helix Core servers (<code>install_p4prom.sh</code>, <code>update_p4prom.sh</code>)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>node_exporter-&lt;ver&gt;.linux-amd64.tar.gz</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4prometheus.linux-amd64.gz</code> and <code>p4metrics.linux-amd64.gz</code> (from the P4Prometheus release)</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>Not supported air-gapped: <code>-pint</code> (downloads <code>pint</code> from GitHub), and <code>install_node.sh</code> / <code>update_node.sh</code>, which have no <code>--local-tarballs-dir</code> option. Use <code>install_p4prom.sh</code> for Helix Core servers.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="airgap-mirror">3.3.3. Package mirror</h4>
+<div class="paragraph">
+<p>Build a mirror that contains <code>grafana</code> and <code>jq</code> plus any dependencies not already installed on the host. Check what is actually needed first (for an RPM: <code>rpm -qpR grafana_*.rpm</code>) rather than mirroring the whole dependency tree; on Rocky 8 the Grafana 13 RPM needs only <code>/bin/sh</code> and <code>systemd</code>, while <code>jq</code> needs <code>oniguruma</code>.</p>
+</div>
+<div class="paragraph">
+<p>Then, on every host:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Disable the stock repositories the host cannot reach (otherwise <code>dnf</code> or <code>apt</code> stalls or fails on them).</p>
+</li>
+<li>
+<p>Add your mirror as a repository (for example a <code>file:</code> or internal <code>http:</code> repository created with <code>createrepo_c</code>, or <code>apt-ftparchive</code> on Debian and Ubuntu).</p>
+</li>
+<li>
+<p>Decide how packages are verified. With <code>gpgcheck=1</code> the mirror repository needs Grafana&#8217;s GPG key staged and imported (<code>rpm --import</code>); a mirror you build and control may instead set <code>gpgcheck=0</code>. Verify the downloaded packages against Grafana&#8217;s published checksums or signature on the connected machine either way.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>With <code>--local-tarballs-dir</code>, <code>install_prom_graf.sh</code> never adds Grafana&#8217;s repository or key. It installs <code>grafana</code> from the configured repositories, skips this if Grafana is already installed, and stops with an error if the package is unavailable. If you prefer, install Grafana yourself first and run the installer afterwards.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_running_the_install">3.3.4. Running the install</h4>
 <div class="listingblock">
 <div class="content">
-<pre class="highlight"><code class="language-bash" data-lang="bash">sudo ./install_prom_graf.sh -d /data --local-tarballs-dir /opt/installers
-sudo ./install_p4prom.sh --local-tarballs-dir /opt/installers</code></pre>
+<pre class="highlight"><code class="language-bash" data-lang="bash"># Monitoring server
+sudo ./install_prom_graf.sh -d /data --local-tarballs-dir /opt/installers -grafana-setup
+# Helix Core servers
+sudo ./install_p4prom.sh 1 --local-tarballs-dir /opt/installers</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p><code>p4prom_common.sh</code> must be pre-staged alongside whichever script you are running on an air-gapped host — this applies to all four scripts (<code>install_prom_graf.sh</code>, <code>update_prom_graf.sh</code>, <code>install_p4prom.sh</code>, <code>update_p4prom.sh</code>), not just the Helix Core server ones. Each script attempts to auto-download it from GitHub if missing, which will fail with no network access.</p>
+<p>The installer prints <code>Air-gap mode:</code> messages for each step it skips or sources locally. <code>-grafana-setup</code> reports <code>N of M dashboards imported</code>; if <code>N</code> is lower than <code>M</code>, a file is missing from <code>&lt;dir&gt;/dashboards/</code>.</p>
+</div>
+<div class="paragraph">
+<p><code>p4prom_common.sh</code> must be in the same directory as whichever script you run, for all four scripts (<code>install_prom_graf.sh</code>, <code>update_prom_graf.sh</code>, <code>install_p4prom.sh</code>, <code>update_p4prom.sh</code>). Each script otherwise tries to download it from GitHub, which fails with no network access.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_what_grows_on_disk">3.3.5. What grows on disk</h4>
+<div class="paragraph">
+<p>Plan capacity before installing. Beyond Prometheus and VictoriaMetrics data (which scale with retention and the number of targets), expect:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Grafana:</strong> a fresh Grafana 13 installation used about 620 MB in <code>/var/lib/grafana</code> (about 500 MB of it bundled plugins) and another 1.4 GB under <code>/usr/share/grafana</code>. With <code>-d</code>, <code>/var/lib/grafana</code> moves to the data volume, but <code>/usr/share/grafana</code> stays on the root filesystem.</p>
+</li>
+<li>
+<p><strong>Helix Core servers:</strong> metrics files in the metrics directory (<code>/hxlogs/metrics</code> by default) and the p4prometheus and p4metrics working files. Check free space on the volumes holding <code>/p4/&lt;instance&gt;/logs</code> and the metrics directory; production SDP log volumes are often nearly full.</p>
+</li>
+<li>
+<p><strong>journald:</strong> service logs go to the systemd journal; cap it in <code>journald.conf</code> if the root filesystem is small.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_files_to_back_up">3.3.6. Files to back up</h4>
+<div class="paragraph">
+<p>Configuration lives in small, static files that stay under <code>/etc</code> even when <code>-d</code> is used (see <a href="#what-d-relocates">Section 3.1.1, &#8220;What <code>-d</code> does and does not relocate&#8221;</a>). Back these up with your usual host configuration backup: <code>/etc/prometheus/</code>, <code>/etc/alertmanager/</code>, <code>/etc/grafana/grafana.ini</code>, <code>/etc/p4prometheus-monitoring/install.env</code>, and the systemd unit files for the monitoring services. On Helix Core servers, back up <code>/p4/common/site/config/</code> (or <code>/etc/p4prometheus/</code> without SDP). Data directories under <code>-d</code> are backed up separately.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+Layouts with a read-only root filesystem are not supported. The installers write under <code>/etc</code>, <code>/usr/local/bin</code> and <code>/usr/share</code>.
+</td>
+</tr>
+</table>
+</div>
 </div>
 </div>
 <div class="sect2">
@@ -2572,7 +2739,7 @@ Checking perforce_rules.yml
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-10-16 08:28:02 -0400
+Last updated 2026-11-02 09:02:57 -0500
 </div>
 </div>
 </body>
