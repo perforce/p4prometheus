@@ -209,6 +209,7 @@ sudo ./migrate_prom_graf_data.sh -d /data
 sudo ./migrate_prom_graf_data.sh -d /data --cleanup-old
 ----
 
+[[what-d-relocates]]
 ==== What `-d` does and does not relocate
 
 `-d` relocates the runtime *data* directories only (Prometheus TSDB, VictoriaMetrics storage, Alertmanager state, Grafana's data directory, Pushgateway persistence file). It does **not** move package/config files, which always remain under `/etc/*` and `/usr/share/*` regardless of `-d`:
@@ -250,15 +251,94 @@ sudo ./install_prom_graf.sh -target myp4server:9100 -target replica1:9100
 [[air-gapped-installation]]
 === Air-Gapped Installation
 
-Download the required GitHub release assets on a connected machine, transfer them to the target, then pass their directory with `--local-tarballs-dir`:
+An air-gapped host has no route to the internet. The installers support this with `--local-tarballs-dir <dir>`: every file that would normally be downloaded from GitHub (or another website) is read from `<dir>` instead, and a missing file is a clear error rather than a failed download. Operating-system packages are *not* fetched from `<dir>`; they come from the package repositories configured on the host, which you must point at an internal mirror.
+
+This section is a checklist of what P4Prometheus does for you and what you must arrange.
+
+==== Responsibilities
+
+[cols="1,1"]
+|===
+|P4Prometheus scripts do |You arrange
+
+|Read release tarballs, binaries, alerting rule sources, the Alertmanager template and dashboards from `--local-tarballs-dir`.
+|Download those files on a connected machine, check them, and copy them to each host (see <<airgap-staging>>).
+
+|Copy `monitor_locks.py` and `p4monitor_locks.sh` from the directory the installer runs from.
+|Copy the whole `scripts/` directory (not just one script) to each host, including `p4prom_common.sh`.
+
+|Install `grafana` and `jq` with the host's package manager (`apt-get`, `dnf` or `yum`).
+|Provide a local package mirror carrying those packages, and disable repositories the host cannot reach (see <<airgap-mirror>>).
+
+|Skip steps that need the internet: the Grafana repository and GPG key, `check_for_updates.sh`, the `uv`/`.venv` setup, and the AWS CLI v2 download (EBS throughput metrics are available only if AWS CLI v2 is already installed).
+|Install `python3` and PyYAML from your mirror on Helix Core servers if they are not already present (used by `monitor_locks.py`; Python 3.6 with PyYAML 3.12 is sufficient).
+|===
+
+[[airgap-staging]]
+==== Files to stage
+
+Download these on a connected machine. File names include the versions pinned at the top of the scripts (`VER_*` in `install_prom_graf.sh`); read them from the exact release of the scripts you are using. Examples below are for `linux-amd64`, with versions current at the time of writing.
+
+[cols="2,3"]
+|===
+|Needed on |File in `<dir>`
+
+.7+|Monitoring server (`install_prom_graf.sh`, `update_prom_graf.sh`)
+|`prometheus-<ver>.linux-amd64.tar.gz`, `alertmanager-<ver>.linux-amd64.tar.gz`, `node_exporter-<ver>.linux-amd64.tar.gz`
+|`victoria-metrics-linux-amd64-v<ver>.tar.gz` and `vmutils-linux-amd64-v<ver>.tar.gz`
+|`ytt-linux-amd64` (from the carvel-dev/ytt release matching `VER_YTT`)
+|`rules-src/perforce_rules.yml` and `rules-src/default-values.yml` (from `examples/prometheus/rules-src/` in this repository)
+|`perforce.tmpl` (Alertmanager template, from `examples/alertmanager/templates/` in this repository)
+|`dashboards/<id>.json` for each dashboard ID imported by `-grafana-setup` (currently 12278, 15509, 405, 1860), downloaded from grafana.com
+|`pushgateway-<ver>.linux-amd64.tar.gz` only if you use `-push`
+
+.2+|Helix Core servers (`install_p4prom.sh`, `update_p4prom.sh`)
+|`node_exporter-<ver>.linux-amd64.tar.gz`
+|`p4prometheus.linux-amd64.gz` and `p4metrics.linux-amd64.gz` (from the P4Prometheus release)
+|===
+
+Not supported air-gapped: `-pint` (downloads `pint` from GitHub), and `install_node.sh` / `update_node.sh`, which have no `--local-tarballs-dir` option. Use `install_p4prom.sh` for Helix Core servers.
+
+[[airgap-mirror]]
+==== Package mirror
+
+Build a mirror that contains `grafana` and `jq` plus any dependencies not already installed on the host. Check what is actually needed first (for an RPM: `rpm -qpR grafana_*.rpm`) rather than mirroring the whole dependency tree; on Rocky 8 the Grafana 13 RPM needs only `/bin/sh` and `systemd`, while `jq` needs `oniguruma`.
+
+Then, on every host:
+
+. Disable the stock repositories the host cannot reach (otherwise `dnf` or `apt` stalls or fails on them).
+. Add your mirror as a repository (for example a `file:` or internal `http:` repository created with `createrepo_c`, or `apt-ftparchive` on Debian and Ubuntu).
+. Decide how packages are verified. With `gpgcheck=1` the mirror repository needs Grafana's GPG key staged and imported (`rpm --import`); a mirror you build and control may instead set `gpgcheck=0`. Verify the downloaded packages against Grafana's published checksums or signature on the connected machine either way.
+
+With `--local-tarballs-dir`, `install_prom_graf.sh` never adds Grafana's repository or key. It installs `grafana` from the configured repositories, skips this if Grafana is already installed, and stops with an error if the package is unavailable. If you prefer, install Grafana yourself first and run the installer afterwards.
+
+==== Running the install
 
 [source,bash]
 ----
-sudo ./install_prom_graf.sh -d /data --local-tarballs-dir /opt/installers
-sudo ./install_p4prom.sh --local-tarballs-dir /opt/installers
+# Monitoring server
+sudo ./install_prom_graf.sh -d /data --local-tarballs-dir /opt/installers -grafana-setup
+# Helix Core servers
+sudo ./install_p4prom.sh 1 --local-tarballs-dir /opt/installers
 ----
 
-`p4prom_common.sh` must be pre-staged alongside whichever script you are running on an air-gapped host — this applies to all four scripts (`install_prom_graf.sh`, `update_prom_graf.sh`, `install_p4prom.sh`, `update_p4prom.sh`), not just the Helix Core server ones. Each script attempts to auto-download it from GitHub if missing, which will fail with no network access.
+The installer prints `Air-gap mode:` messages for each step it skips or sources locally. `-grafana-setup` reports `N of M dashboards imported`; if `N` is lower than `M`, a file is missing from `<dir>/dashboards/`.
+
+`p4prom_common.sh` must be in the same directory as whichever script you run, for all four scripts (`install_prom_graf.sh`, `update_prom_graf.sh`, `install_p4prom.sh`, `update_p4prom.sh`). Each script otherwise tries to download it from GitHub, which fails with no network access.
+
+==== What grows on disk
+
+Plan capacity before installing. Beyond Prometheus and VictoriaMetrics data (which scale with retention and the number of targets), expect:
+
+* *Grafana:* a fresh Grafana 13 installation used about 620 MB in `/var/lib/grafana` (about 500 MB of it bundled plugins) and another 1.4 GB under `/usr/share/grafana`. With `-d`, `/var/lib/grafana` moves to the data volume, but `/usr/share/grafana` stays on the root filesystem.
+* *Helix Core servers:* metrics files in the metrics directory (`/hxlogs/metrics` by default) and the p4prometheus and p4metrics working files. Check free space on the volumes holding `/p4/<instance>/logs` and the metrics directory; production SDP log volumes are often nearly full.
+* *journald:* service logs go to the systemd journal; cap it in `journald.conf` if the root filesystem is small.
+
+==== Files to back up
+
+Configuration lives in small, static files that stay under `/etc` even when `-d` is used (see <<what-d-relocates>>). Back these up with your usual host configuration backup: `/etc/prometheus/`, `/etc/alertmanager/`, `/etc/grafana/grafana.ini`, `/etc/p4prometheus-monitoring/install.env`, and the systemd unit files for the monitoring services. On Helix Core servers, back up `/p4/common/site/config/` (or `/etc/p4prometheus/` without SDP). Data directories under `-d` are backed up separately.
+
+NOTE: Layouts with a read-only root filesystem are not supported. The installers write under `/etc`, `/usr/local/bin` and `/usr/share`.
 
 === Install State and Fleet Configuration
 
