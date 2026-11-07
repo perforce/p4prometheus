@@ -424,6 +424,8 @@ update_p4monitor_locks_service() {
             bail "Failed to download ${scriptname}"
         chmod 755 "${bin_dir}/${scriptname}"
         chown "$OSUSER:$OSGROUP" "${bin_dir}/${scriptname}"
+        apply_bin_selinux_context "${abs_bin_dir}/${scriptname}" || \
+            bail "Failed to apply SELinux context to ${abs_bin_dir}/${scriptname}"
     done
 
     cat << EOF > "$service_file"
