@@ -85,6 +85,24 @@ apply_bin_selinux_context() {
     fi
 }
 
+apply_secrets_selinux_context() {
+    local secrets_file=$1
+    local resolved_file
+    local file_pattern
+    if [[ ${SELinuxEnabled:-0} -eq 1 ]]; then
+        resolved_file=$(readlink -f "$secrets_file") || \
+            bail "Failed to resolve secrets file: $secrets_file"
+        file_pattern=$(printf '%s\n' "$resolved_file" | sed 's/[][\\.^$*+?(){}|]/\\&/g') || \
+            bail "Failed to escape SELinux file pattern: $resolved_file"
+        if ! semanage fcontext -a -t etc_t "$file_pattern" 2>/dev/null; then
+            semanage fcontext -m -t etc_t "$file_pattern" || \
+                bail "Failed to register SELinux context for secrets file: $resolved_file"
+        fi
+        restorecon -vF "$resolved_file" || \
+            bail "Failed to restore SELinux context for secrets file: $resolved_file"
+    fi
+}
+
 # download_gz handles single .gz binaries (p4prometheus, p4metrics)
 download_gz () {
     local fname=$1
@@ -661,8 +679,7 @@ monitor_groups:
 EOF
     fi
 
-    # Now add section for memory_by_user and memlimits if not present - these are used to control how memory
-    # is monitored and whether to terminate commands which exceed limits. See comments in config file for details.
+    # Add memory reporting and limits independently to preserve existing custom limits.
     if ! grep -qE '^[[:space:]]*#?[[:space:]]*memory_by_user:' "$p4metrics_config_file"; then
         cat << EOF >> "$p4metrics_config_file"
 
@@ -674,6 +691,11 @@ EOF
 # Or set it to false if any personal information concerns
 memory_by_user:   true
 
+EOF
+    fi
+
+    if ! grep -qE '^[[:space:]]*memlimits:' "$p4metrics_config_file"; then
+        cat << EOF >> "$p4metrics_config_file"
 # ----------------------
 # memlimits: Optional (but recommended) way to define which users and commands to monitor for memory limits 
 #   (useful for inadvertently high memory usage). Some users run commands on inappropriate paths such as the entire repository,
@@ -702,17 +724,17 @@ memlimits:
   enabled:         true
   enforce_kills:   false
   groups:
-  - description: "No limits for super users (as they hopefully know what they are doing!)"
-    users: "super|perforce|p4admin"
+  - description: "No limits for service or super users (as they hopefully know what they are doing!)"
+    users: "super|perforce|p4admin|svc_.*"
     cmd_max_percentage:             
     cmd_max_value:                  
     user_cumulative_max_percentage: 
     user_cumulative_max_value:      
   - description: "Default limits for all other users"
     users: ".*"
-    cmd_max_percentage:             40%
+    cmd_max_percentage:             50%
     cmd_max_value:                  
-    user_cumulative_max_percentage: 60%
+    user_cumulative_max_percentage: 70%
     user_cumulative_max_value:      
 
 EOF
@@ -743,8 +765,9 @@ notifications:
   slack:
     enabled: false
     mode: "webhook"
-        # webhook_url_env: "P4METRICS_SLACK_WEBHOOK_URL"
-        # bot_token_env: "P4METRICS_SLACK_BOT_TOKEN"
+    # These are environment variables for security
+    # webhook_url_env: "P4METRICS_SLACK_WEBHOOK_URL"
+    # bot_token_env: "P4METRICS_SLACK_BOT_TOKEN"
     # channel_id: "C0123456789"
 
 EOF
@@ -761,6 +784,7 @@ ensure_p4metrics_secrets_file_exists() {
         bail "p4metrics_secrets_file is not set and no secrets path was supplied"
     fi
     if [[ -f "$secrets_file" ]]; then
+        apply_secrets_selinux_context "$secrets_file"
         return 0
     fi
 
@@ -774,6 +798,7 @@ ensure_p4metrics_secrets_file_exists() {
 EOF
     chown root:root "$secrets_file"
     chmod 600 "$secrets_file"
+    apply_secrets_selinux_context "$secrets_file"
     msg "Created root-only p4metrics secrets template: $secrets_file"
 }
 
@@ -907,6 +932,7 @@ ensure_p4monitor_locks_secrets_file_exists() {
         bail "p4monitor_locks_secrets_file is not set and no secrets path was supplied"
     fi
     if [[ -f "$secrets_file" ]]; then
+        apply_secrets_selinux_context "$secrets_file"
         return 0
     fi
 
@@ -922,6 +948,7 @@ ensure_p4monitor_locks_secrets_file_exists() {
 EOF
     chown root:root "$secrets_file"
     chmod 600 "$secrets_file"
+    apply_secrets_selinux_context "$secrets_file"
     msg "Created root-only p4monitor_locks secrets template: $secrets_file"
 }
 

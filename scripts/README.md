@@ -92,6 +92,38 @@ syntax, preserves the installed file inode, and re-executes the new version
 before processing the remaining script list. The updater must then run as root
 to install binaries, write units, and restart services.
 
+### Lock-monitor execution denied
+
+`p4monitor_locks.service` failing with `203/EXEC` and `Permission denied`
+means systemd could not execute the wrapper, before its configuration or
+notification secrets were read. Check the actual `ExecStart` path:
+
+```bash
+sudo systemctl cat p4monitor_locks.service
+namei -l /hxdepots/p4/common/site/bin/p4monitor_locks.sh
+findmnt -T /hxdepots/p4/common/site/bin/p4monitor_locks.sh
+getenforce
+ls -lZ /hxdepots/p4/common/site/bin/p4monitor_locks.sh
+sudo ausearch -m AVC,USER_AVC -ts recent
+```
+
+Substitute your resolved installation path. The service account needs directory
+search permission and read/execute permission on the wrapper; the filesystem
+must allow execution. On SELinux-enforcing hosts, the updater applies the
+`bin_t` context to both lock-monitor scripts, using their resolved paths.
+For an older update that omitted this step, if the audit log confirms an
+SELinux execution denial, repair the wrapper's persistent label:
+
+```bash
+sudo semanage fcontext -a -t bin_t '/hxdepots/p4/common/site/bin/p4monitor_locks.sh'
+sudo restorecon -vF /hxdepots/p4/common/site/bin/p4monitor_locks.sh
+sudo systemctl restart p4monitor_locks.service
+sudo systemctl status p4monitor_locks.service --no-pager
+```
+
+If a local file-context rule already exists, use `semanage fcontext -m` instead
+of `-a`. Do not disable SELinux to work around the failure.
+
 ## Generated Services
 
 The Helix Core installer/updater writes units to `/etc/systemd/system/` and
@@ -138,6 +170,11 @@ files are normally:
 
 On a non-SDP installation, substitute the configured directory, normally
 `/etc/p4prometheus`.
+
+On SELinux-enforcing hosts, installers and updaters persistently label both
+new and existing secrets files `etc_t`, using resolved paths so systemd can
+read them even when the configuration directory is reached through symlinks.
+Labeling failures stop the installation/update.
 
 New secret files are created as `root:root`, mode `0600`, with commented
 examples. Add values only as shell-style `NAME=value` lines; do not quote a
@@ -220,6 +257,7 @@ migration behavior:
 
 ```bash
 python3 scripts/test_p4prom_common.py
+bash scripts/tests/test_secrets_selinux.sh
 bash -n scripts/p4prom_common.sh
 ```
 

@@ -85,7 +85,7 @@ license_updates:
   once per normal metrics update, unless the previous license call is still running.
 - Sample and installer-generated configuration explicitly uses `scheduled` at
   `01:00` in the host timezone. Installation and updates add this section only
-  when absent; existing license settings are preserved.
+  when absent; existing license settings and memory-limit sections are preserved.
   Review the time before use, particularly on large servers. HMS hostname-specific
   configuration takes precedence and is not modified by the installer.
 - `mode: scheduled` requires at least one daily time. Startup and SIGHUP reload
