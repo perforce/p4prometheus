@@ -554,5 +554,13 @@ Manual review recommended:
 If p4metrics/p4monitor_locks were installed or updated, please review these files:
     - $p4metrics_config_file
     - $p4monitor_locks_config_file
+
+Review license_updates in $p4metrics_config_file:
+  If absent, the update allows expired statistics refresh at 01:00 in the host timezone.
+  Fresh statistics or an active calculateStats still permit daytime license polling.
+  Existing license_updates settings are preserved.
+  Choose an off-hours time allowing the server statistics scan to finish.
+  HMS hostname-specific configs take priority and are not modified.
+  After editing the active config, apply with: sudo systemctl restart p4metrics
 "
 fi

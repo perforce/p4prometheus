@@ -201,3 +201,16 @@ notifications:
     # webhook_url_env: "P4METRICS_SLACK_WEBHOOK_URL"
     # bot_token_env: "P4METRICS_SLACK_BOT_TOKEN"
     # channel_id: "C0123456789"
+
+# ----------------------
+# license_updates: calls to p4 license -u on p4d 2026.1 and later can trigger expensive server scans which
+# take a while and happen every 24 hours at a minimum..
+# mode: every_update, scheduled (default), or disabled.
+# Scheduled mode restricts expired/unknown depotStats refreshes to start_window; no catch-up.
+# Fresh lastCalculated stats (<24h) or an active calculateStats permit normal license polling.
+# timezone: IANA timezone; blank uses the host timezone.
+license_updates:
+  mode: scheduled
+  times: ["01:00"]
+  # timezone: Europe/London
+  start_window: 5m

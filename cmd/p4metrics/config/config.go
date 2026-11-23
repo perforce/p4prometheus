@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	_ "time/tzdata"
 
 	yaml "gopkg.in/yaml.v2"
 )
@@ -60,27 +61,37 @@ type NotificationConfig struct {
 	Slack SlackConfig `yaml:"slack"`
 }
 
+// LicenseUpdates controls when the potentially expensive license -u command runs.
+type LicenseUpdates struct {
+	Mode        string         `yaml:"mode"`
+	Times       []string       `yaml:"times"`
+	Timezone    string         `yaml:"timezone"`
+	StartWindow time.Duration  `yaml:"start_window"`
+	Location    *time.Location `yaml:"-"`
+}
+
 // Config for p4metrics - see SampleConfig for details
 type Config struct {
-	MetricsRoot          string        `yaml:"metrics_root"`
-	SDPInstance          string        `yaml:"sdp_instance"` // If this is set then it defines the other variables such as P4Port
-	P4Port               string        `yaml:"p4port"`       // P4PORT value (if not set in env or as parameter)
-	P4User               string        `yaml:"p4user"`       // ditto
-	P4Config             string        `yaml:"p4config"`     // P4CONFIG file - useful if non-SDP
-	P4Bin                string        `yaml:"p4bin"`        // Only useful if non SDP - path to "p4" binary if not in $PATH
-	P4DBin               string        `yaml:"p4dbin"`       // Only useful if non SDP - path to "p4d" binary if not in $PATH
-	UpdateInterval       time.Duration `yaml:"update_interval"`
-	LongUpdateInterval   time.Duration `yaml:"long_update_interval"`
-	MonitorSwarm         bool          `yaml:"monitor_swarm"`
-	ParseJournal         bool          `yaml:"parse_journal"`       // Whether to parse active P4JOURNAL in background and emit table/type counts
-	SwarmURL             string        `yaml:"swarm_url"`           // Swarm URL - if the value returned by p4 property -l does not work (VPN etc)
-	SwarmSecure          bool          `yaml:"swarm_secure"`        // Whether to validate the Swarm HTTPS certificate
-	CmdsByUser           bool          `yaml:"cmds_by_user"`        // Whether to output metric p4_monitor_by_user
-	MemoryByUser         bool          `yaml:"memory_by_user"`      // Whether to output metric p4_active_memory_by_user
-	MaxJournalSize       string        `yaml:"max_journal_size"`    // Maximum size of journal file to monitor, e.g. 100M, 0 means no limit
-	MaxJournalPercent    string        `yaml:"max_journal_percent"` // Maximum size of journal as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
-	MaxLogSize           string        `yaml:"max_log_size"`        // Maximum size of journal file to monitor, e.g. 100M, 0 means no limit
-	MaxLogPercent        string        `yaml:"max_log_percent"`     // Maximum size of log as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
+	MetricsRoot          string         `yaml:"metrics_root"`
+	SDPInstance          string         `yaml:"sdp_instance"` // If this is set then it defines the other variables such as P4Port
+	P4Port               string         `yaml:"p4port"`       // P4PORT value (if not set in env or as parameter)
+	P4User               string         `yaml:"p4user"`       // ditto
+	P4Config             string         `yaml:"p4config"`     // P4CONFIG file - useful if non-SDP
+	P4Bin                string         `yaml:"p4bin"`        // Only useful if non SDP - path to "p4" binary if not in $PATH
+	P4DBin               string         `yaml:"p4dbin"`       // Only useful if non SDP - path to "p4d" binary if not in $PATH
+	UpdateInterval       time.Duration  `yaml:"update_interval"`
+	LongUpdateInterval   time.Duration  `yaml:"long_update_interval"`
+	LicenseUpdates       LicenseUpdates `yaml:"license_updates"`
+	MonitorSwarm         bool           `yaml:"monitor_swarm"`
+	ParseJournal         bool           `yaml:"parse_journal"`       // Whether to parse active P4JOURNAL in background and emit table/type counts
+	SwarmURL             string         `yaml:"swarm_url"`           // Swarm URL - if the value returned by p4 property -l does not work (VPN etc)
+	SwarmSecure          bool           `yaml:"swarm_secure"`        // Whether to validate the Swarm HTTPS certificate
+	CmdsByUser           bool           `yaml:"cmds_by_user"`        // Whether to output metric p4_monitor_by_user
+	MemoryByUser         bool           `yaml:"memory_by_user"`      // Whether to output metric p4_active_memory_by_user
+	MaxJournalSize       string         `yaml:"max_journal_size"`    // Maximum size of journal file to monitor, e.g. 100M, 0 means no limit
+	MaxJournalPercent    string         `yaml:"max_journal_percent"` // Maximum size of journal as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
+	MaxLogSize           string         `yaml:"max_log_size"`        // Maximum size of journal file to monitor, e.g. 100M, 0 means no limit
+	MaxLogPercent        string         `yaml:"max_log_percent"`     // Maximum size of log as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
 	MaxJournalSizeInt    int64
 	MaxJournalPercentInt int
 	MaxLogSizeInt        int64
@@ -302,6 +313,19 @@ notifications:
     # bot_token_env: "P4METRICS_SLACK_BOT_TOKEN"
     # channel_id: "C0123456789"
 
+# ----------------------
+# license_updates: controls calls to p4 license -u, which can trigger expensive server scans.
+# mode: every_update, scheduled (default), or disabled.
+# Scheduled mode restricts expired/unknown depotStats refreshes to start_window; no catch-up.
+# Fresh lastCalculated stats (<24h) or an active calculateStats permit normal license polling.
+# timezone: IANA timezone, e.g. Europe/London; blank uses the host timezone.
+# Use a start time allowing enough time for the scan to finish before working hours.
+license_updates:
+  mode: scheduled
+  times: ["01:00"]
+  # timezone: Europe/London
+  start_window: 5m
+
 `
 
 // parsePercentage parses a percentage string (e.g. "30" or "30%") into an integer 0-99.
@@ -366,6 +390,7 @@ func Unmarshal(config []byte) (*Config, error) {
 	// Default values specified here
 	cfg := &Config{
 		UpdateInterval: 60 * time.Second,
+		LicenseUpdates: LicenseUpdates{Mode: "every_update", StartWindow: 5 * time.Minute},
 		MonitorSwarm:   false,
 		ParseJournal:   true,
 		SwarmSecure:    true}
@@ -438,6 +463,9 @@ var reLabelName = regexp.MustCompile(`[\t =/+:;!@{}&%<>*\\.,\(\)\[\]-]`)
 func (c *Config) validate() error {
 	if c.MetricsRoot == "" {
 		return fmt.Errorf("invalid metrics_root: please specify directory to which p4metrics *.prom files should be written, e.g. /hxlogs/metrics")
+	}
+	if err := c.LicenseUpdates.validate(); err != nil {
+		return err
 	}
 	var err error
 	if c.MaxJournalSize != "" && c.MaxJournalSize != "0" {
@@ -538,6 +566,40 @@ func (c *Config) validate() error {
 				}
 			}
 		}
+	}
+	return nil
+}
+
+func (c *LicenseUpdates) validate() error {
+	switch c.Mode {
+	case "every_update", "scheduled", "disabled":
+	default:
+		return fmt.Errorf("license_updates.mode must be 'every_update', 'scheduled', or 'disabled'")
+	}
+	c.Location = time.Local
+	if c.Timezone != "" {
+		loc, err := time.LoadLocation(c.Timezone)
+		if err != nil {
+			return fmt.Errorf("invalid license_updates.timezone %q: %w", c.Timezone, err)
+		}
+		c.Location = loc
+	}
+	if c.StartWindow <= 0 || c.StartWindow >= 24*time.Hour {
+		return fmt.Errorf("license_updates.start_window must be greater than 0 and less than 24h")
+	}
+	if c.Mode == "scheduled" && len(c.Times) == 0 {
+		return fmt.Errorf("license_updates.times must contain at least one HH:MM time in scheduled mode")
+	}
+	seen := make(map[string]bool)
+	for _, value := range c.Times {
+		t, err := time.Parse("15:04", value)
+		if err != nil || t.Format("15:04") != value {
+			return fmt.Errorf("invalid license_updates.times value %q: expected HH:MM in 24-hour format", value)
+		}
+		if seen[value] {
+			return fmt.Errorf("duplicate license_updates.times value %q", value)
+		}
+		seen[value] = true
 	}
 	return nil
 }

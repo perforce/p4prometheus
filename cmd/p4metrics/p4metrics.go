@@ -707,6 +707,7 @@ type P4MonitorMetrics struct {
 	sdpInstanceSuffix      string
 	p4info                 map[string]string
 	p4license              map[string]string
+	licenseUpdates         licenseUpdater
 	p4log                  string
 	p4journal              string
 	journalPrefix          string
@@ -1284,6 +1285,10 @@ func (p4m *P4MonitorMetrics) monitorUptime() {
 }
 
 func (p4m *P4MonitorMetrics) parseLicense() {
+	p4m.parseLicenseAt(time.Now())
+}
+
+func (p4m *P4MonitorMetrics) parseLicenseAt(now time.Time) {
 	p4m.metrics = make([]metricStruct, 0)
 	// Called by monitorLicense
 	// Assume that p4m.p4license is already setup with data from p4 license -u
@@ -1331,7 +1336,9 @@ func (p4m *P4MonitorMetrics) parseLicense() {
 	licenseInfo = reSupport.ReplaceAllString(licenseInfoFull, "")
 	licenseInfo = reExpires.ReplaceAllString(licenseInfo, "")
 	licenseInfo = strings.TrimSpace(licenseInfo)
-	if licenseTimeRemaining == "" && supportExpires != "" {
+	if !p4m.licenseUpdates.state.LastSuccess.IsZero() {
+		licenseTimeRemaining = p4m.cachedLicenseTimeRemaining(now)
+	} else if licenseTimeRemaining == "" && supportExpires != "" {
 		if v, ok := p4m.p4info["Server date"]; ok {
 			expSecs, _ := strconv.ParseInt(supportExpires, 10, 64)
 			expT := time.Unix(expSecs, 0)
@@ -1409,28 +1416,16 @@ func (p4m *P4MonitorMetrics) parseLicenseResponse(licenseArr []string) {
 }
 
 func (p4m *P4MonitorMetrics) monitorLicense() {
-	// Server license expiry - parsed from "p4 license -u"
-	p4m.startMonitor("monitorLicense", "p4_license")
-	defer p4m.completeMonitor()
-
-	// Key fields:
-	// ... userCount 893
-	// ... userLimit 1000
-	// ... licenseExpires 1677628800
-	// ... licenseTimeRemaining 34431485
-	// ... supportExpires 1677628800
-	// Note that sometimes you only get supportExpires - we calculate licenseTimeRemaining in that case
-
-	p4cmd, errbuf, p := p4m.newP4CmdPipe("license -u")
-	licenseArr, err := p.Exec(p4cmd).Slice()
-	if err != nil {
-		p4m.handleP4Error("Error running %s: %v, err:%q", p4cmd, err, errbuf)
+	if p4m.config.LicenseUpdates.Mode == "disabled" {
+		p4m.writeLicenseMetrics(time.Now())
 		return
 	}
-	p4m.parseLicenseResponse(licenseArr)
-	p4m.logger.Debugf("License: %q, %q", licenseArr, p4m.p4license)
-	p4m.parseLicense()
-	p4m.writeMetricsFile()
+	if !p4m.initialised || !p4m.loadLicenseState() {
+		return
+	}
+	now := time.Now()
+	p4m.pollLicenseUpdate(now)
+	p4m.writeLicenseMetrics(now)
 }
 
 func (p4m *P4MonitorMetrics) convertToBytes(size string) int64 {
@@ -3758,6 +3753,7 @@ func main() {
 		env = sourceEnvVars()
 	}
 	p4m := newP4MonitorMetrics(cfg, &env, logger)
+	defer p4m.stopLicenseUpdates()
 	p4m.version = version.Version
 	iterations := -1
 	if *dryrun {
@@ -3768,6 +3764,9 @@ func main() {
 	}
 
 	ticker := time.NewTicker(p4m.config.UpdateInterval)
+	defer func() { ticker.Stop() }()
+	licenseTicker := time.NewTicker(time.Second)
+	defer licenseTicker.Stop()
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
@@ -3775,11 +3774,26 @@ func main() {
 	count := 1
 	for {
 		if iterations > -1 && count >= iterations {
+			if p4m.licenseUpdates.cancel != nil {
+				p4m.logger.Debug("Waiting for final dry-run license update")
+				select {
+				case result := <-p4m.licenseUpdates.results:
+					p4m.finishLicenseUpdate(result)
+				case sig := <-sigs:
+					p4m.logger.Infof("Stopping final dry-run license update due to signal %v", sig)
+				}
+			}
 			p4m.logger.Infof("Exiting after %d iterations due to max.iterations=%d", iterations, *maxIterations)
 			p4m.stopTailers()
 			break
 		}
 		select {
+		case result := <-p4m.licenseUpdates.results:
+			p4m.finishLicenseUpdate(result)
+		case <-licenseTicker.C:
+			if p4m.config.LicenseUpdates.Mode == "scheduled" {
+				p4m.startLicenseUpdate(time.Now())
+			}
 		case sig := <-sigs:
 			if sig == syscall.SIGHUP {
 				p4m.logger.Debug("Received signal SIGHUP, reloading config and calling runMonitorFunctions")
@@ -3796,8 +3810,10 @@ func main() {
 				p4m.config = cfg
 				p4m.env = &env
 				p4m.initialised = false // Force re-init
+				ticker.Stop()
 				ticker = time.NewTicker(p4m.config.UpdateInterval)
 				p4m.runMonitorFunctions()
+				count++
 			} else {
 				p4m.logger.Infof("Terminating due to signal %v", sig)
 				p4m.stopTailers()
@@ -3805,7 +3821,7 @@ func main() {
 			}
 		case <-ticker.C:
 			p4m.runMonitorFunctions()
+			count++
 		}
-		count += 1
 	}
 }

@@ -565,6 +565,24 @@ swarm_secure: true
 EOF
     fi
 
+    if ! grep -qE '^[[:space:]]*license_updates:' "$p4metrics_config_file"; then
+        cat << EOF >> "$p4metrics_config_file"
+# ----------------------
+# license_updates: controls calls to p4 license -u, which can trigger expensive server scans.
+# mode: every_update (default), scheduled, or disabled.
+# Scheduled mode restricts expired/unknown depotStats refreshes to start_window; no catch-up.
+# Fresh lastCalculated stats (<24h) or an active calculateStats permit normal license polling.
+# timezone: IANA timezone, e.g. Europe/London; blank uses the host timezone.
+# Use a start time allowing enough time for the scan to finish before working hours.
+license_updates:
+  mode: scheduled
+  times: ["01:00"]
+  # timezone: Europe/London
+  start_window: 5m
+
+EOF
+    fi
+
     # Now check if max_journal_size or max_journal_percent are present - if not then add them with defaults
     # This allows us to add new parameters to existing config files
     if ! grep -qE '^[[:space:]]*#?[[:space:]]*max_journal_size:' "$p4metrics_config_file"; then

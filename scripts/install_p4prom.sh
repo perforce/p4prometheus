@@ -517,6 +517,13 @@ Config files:
 Metrics directory: ${metrics_root}
 $(if [[ $UseSDP -eq 1 ]]; then echo "Metrics symlink:   ${metrics_link}"; fi)
 
+Review license_updates in ${p4metrics_config_file}:
+  Newly added settings allow expired statistics refresh at 01:00 in the host timezone.
+  Fresh statistics or an active calculateStats still permit daytime license polling.
+  Existing license_updates settings are preserved.
+  Choose an off-hours time allowing the server statistics scan to finish.
+  After editing, apply with: sudo systemctl restart p4metrics
+
 $(if [[ $UseSDP -eq 1 ]]; then
 echo "HMS note: hostname-specific config files are supported.
   To use a per-host config, create:

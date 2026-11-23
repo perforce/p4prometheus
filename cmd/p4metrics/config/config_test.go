@@ -52,6 +52,56 @@ func TestValidConfig(t *testing.T) {
 	}
 }
 
+func TestLicenseUpdatesConfig(t *testing.T) {
+	cfg := loadOrFail(t, defaultConfig)
+	checkValue(t, "LicenseUpdates.Mode", cfg.LicenseUpdates.Mode, "every_update")
+	checkValueDuration(t, "LicenseUpdates.StartWindow", cfg.LicenseUpdates.StartWindow, 5*time.Minute)
+	if cfg.LicenseUpdates.Location != time.Local {
+		t.Fatal("expected host timezone by default")
+	}
+
+	cfg = loadOrFail(t, defaultConfig+`
+license_updates:
+  mode: scheduled
+  times: ["01:00", "23:30"]
+  timezone: Europe/London
+  start_window: 2m
+`)
+	checkValue(t, "LicenseUpdates.Mode", cfg.LicenseUpdates.Mode, "scheduled")
+	checkValue(t, "LicenseUpdates.Location", cfg.LicenseUpdates.Location.String(), "Europe/London")
+	checkValueDuration(t, "LicenseUpdates.StartWindow", cfg.LicenseUpdates.StartWindow, 2*time.Minute)
+	if len(cfg.LicenseUpdates.Times) != 2 {
+		t.Fatalf("expected two times, got %v", cfg.LicenseUpdates.Times)
+	}
+	cfg = loadOrFail(t, defaultConfig+"\nlicense_updates:\n  mode: disabled\n")
+	checkValue(t, "LicenseUpdates.Mode", cfg.LicenseUpdates.Mode, "disabled")
+	loadOrFail(t, SampleConfig)
+}
+
+func TestInvalidLicenseUpdatesConfig(t *testing.T) {
+	for _, test := range []struct {
+		name, settings, message string
+	}{
+		{"mode", "mode: daily", "license_updates.mode"},
+		{"missing times", "mode: scheduled", "license_updates.times"},
+		{"empty times", "mode: scheduled\n  times: []", "license_updates.times"},
+		{"invalid hour", `times: ["24:00"]`, "license_updates.times"},
+		{"invalid minute", `times: ["01:60"]`, "license_updates.times"},
+		{"short hour", `times: ["1:00"]`, "license_updates.times"},
+		{"seconds", `times: ["01:00:00"]`, "license_updates.times"},
+		{"duplicate", `times: ["01:00", "01:00"]`, "duplicate license_updates.times"},
+		{"timezone", "timezone: Invalid/Timezone", "license_updates.timezone"},
+		{"zero window", "start_window: 0s", "license_updates.start_window"},
+		{"negative window", "start_window: -1m", "license_updates.start_window"},
+		{"large window", "start_window: 24h", "license_updates.start_window"},
+		{"invalid duration", "start_window: tomorrow", "invalid configuration"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ensureFail(t, defaultConfig+"\nlicense_updates:\n  "+test.settings+"\n", test.message)
+		})
+	}
+}
+
 func TestValidConfig2(t *testing.T) {
 	cfg := loadOrFail(t, config2)
 	checkValue(t, "MaxJournalSize", cfg.MaxJournalSize, "100M")

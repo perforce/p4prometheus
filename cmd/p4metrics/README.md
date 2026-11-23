@@ -67,6 +67,86 @@ Run `p4metrics --sample.config > p4metrics.yaml` to create an example.
 
 Note that [the installer](../../scripts/install_p4prom.sh) will create a default version of this file - suitable for SDP and non-SDP
 
+## License Update Scheduling
+
+`p4 license -u` can trigger a costly server statistics scan when p4d's cached
+figures expire on P4 Server 2026.1 and later. Use `license_updates` to restrict
+potentially expensive refreshes to off-hours while still collecting cached figures:
+
+```yaml
+license_updates:
+  mode: scheduled
+  times: ["01:00"]           # One or more daily start times, quoted HH:MM
+  timezone: Europe/London    # IANA timezone; omit to use the host timezone
+  start_window: 5m           # Maximum delay after a scheduled start
+```
+
+- `mode: every_update` is the default when this section is omitted. It collects
+  once per normal metrics update, unless the previous license call is still running.
+- Sample and installer-generated configuration explicitly uses `scheduled` at
+  `01:00` in the host timezone. Installation and updates add this section only
+  when absent; existing license settings are preserved.
+  Review the time before use, particularly on large servers. HMS hostname-specific
+  configuration takes precedence and is not modified by the installer.
+- `mode: scheduled` requires at least one daily time. Startup and SIGHUP reload
+  do not force a statistics refresh. On each normal metrics update, p4metrics
+  reads `p4 counter depotStats` and extracts the epoch `lastCalculated` value.
+  If the statistics are less than 24 hours old, `p4 license -u` can run normally.
+  Otherwise it checks `p4 monitor show -l`: an active `calculateStats` command
+  (state `R` or `B`) also permits the license call outside a start window.
+  With neither condition satisfied, the license call requires an unused
+  scheduled start window. Exactly 24 hours old is treated as expired.
+  Windows are inclusive and must be greater than zero and less than 24 hours;
+  the default is `5m`.
+- `mode: disabled` never starts a license call and removes the license metrics
+  file. A call already running is allowed to finish; its figures are cached but
+  not published while disabled.
+- Scheduling is checked approximately every second, independently of
+  `update_interval`, when the main monitoring loop is available. If another
+  collector delays the loop past the start window, that occurrence is skipped.
+- Each occurrence permits at most one potential refresh attempt. Failed
+  attempts are not retried in that window, and occurrences falling while a
+  call is running are skipped. Overlapping start windows result in one attempt,
+  not a backlog. Safe cached reads can still run on normal metrics updates.
+- A nonexistent daylight-saving time is skipped; a repeated time runs only
+  once per local date. Avoid transition hours if a daily call is essential.
+
+License commands run asynchronously so a lengthy scan does not block the other
+collectors. The counter and monitor preflight commands also run asynchronously.
+Missing or zero timestamps are treated as unknown; malformed or future timestamps
+are logged and treated as unknown. Unknown statistics require either an active
+`calculateStats` or an unused start window. Failed counter/monitor commands are
+logged and skip the license call, retaining the previous metrics. On older
+servers without `depotStats`, scheduled mode consequently remains window-only.
+`every_update` explicitly retains the legacy behaviour without these checks.
+The normal server-info calls use `p4 info -s` to avoid triggering statistics scans.
+
+Between calls, the last successful figures are retained, including
+after failures. `p4_license_time_remaining` is recalculated from cached expiry
+timestamps on each normal metrics update. The gauge
+`p4_license_last_success_timestamp_seconds` reports the last successful
+collection time (Unix seconds), or `0` before any successful collection.
+For example, alert on stale figures with
+`time() - p4_license_last_success_timestamp_seconds > 3 * 86400`.
+
+Cached figures and attempted slots are saved atomically in a `p4_license*.json`
+state file beside the corresponding `.prom` file. This prevents a restart or
+reload from repeating an attempted slot and restores cached figures after a
+restart. Keep the state file writable by p4metrics. State read/parse errors
+are logged and prevent collection; failure to save a scheduled attempt also
+prevents that call. `--dry.run` does not write state or metrics files and still
+runs eligible read commands.
+
+Choose a start time allowing the scan to finish before working hours. This
+controls only calls made by p4metrics: other clients may trigger scans, and a
+start window is not a completion deadline. Counter and monitor checks are
+snapshots, not an atomic server-side guarantee; p4metrics and p4d clocks should
+be synchronized. The start window is rechecked after preflight before starting
+an expired-statistics refresh. With a server cache expiring 24 hours
+after a four-hour scan finishes, a daily 01:00 call may trigger an expensive
+scan only every other night. Changing or disabling the schedule does not
+terminate a server-side scan already in progress.
+
 ## Memory Limits Configuration
 
 Memory limit enforcement is configured via the `memlimits` section in p4metrics.yaml:
