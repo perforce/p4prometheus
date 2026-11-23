@@ -66,7 +66,8 @@ source "$COMMON_LIB" || { echo "Error: Failed to source common library $COMMON_L
 
 function check_service_exists() {
     local service=$1
-    systemctl list-unit-files | grep -q "^${service}.service" && return 0 || return 1
+    # Not "list | grep -q": grep exiting early can SIGPIPE systemctl and fail under pipefail.
+    [[ -n $(systemctl list-unit-files "${service}.service" --no-legend 2>/dev/null) ]]
 }
 
 function usage
@@ -155,6 +156,8 @@ else
     msg "No state file found at $state_file - using defaults or CLI flags"
     msg "  (Run install_prom_graf.sh first, or specify -d / -b / -r flags)"
 fi
+
+preflight_check_dirs -d "$data_root" "/var/lib" -b "$bin_dir" "/usr/local/bin"
 
 # ============================================================
 # OS detection (needed for Grafana package manager choice)
@@ -652,7 +655,7 @@ EOF
     fi
 
     rendered_checksum=$(sha256sum "$staged_output" | awk '{print $1}')
-    previous_rendered_checksum=$(grep '^PERFORCE_RULES_RENDERED_CHECKSUM=' "$state_file" 2>/dev/null | cut -d= -f2)
+    previous_rendered_checksum=$(grep '^PERFORCE_RULES_RENDERED_CHECKSUM=' "$state_file" 2>/dev/null | cut -d= -f2 || true)
     if [[ -f "$upstream_file" ]]; then
         current_checksum=$(sha256sum "$upstream_file" | awk '{print $1}')
         if [[ -z "$previous_rendered_checksum" && "$current_checksum" != "$rendered_checksum" ]] || \
@@ -743,7 +746,12 @@ check_health() {
     for entry in "${endpoints[@]}"; do
         local name="${entry%%:*}"
         local url="http://${entry#*:}"
-        if curl -sf --max-time 5 "$url" > /dev/null 2>&1; then
+        local attempt healthy=0
+        for attempt in 1 2 3 4 5 6; do    # Grafana can take 10+ seconds to come up
+            if curl -sf --max-time 5 "$url" > /dev/null 2>&1; then healthy=1; break; fi
+            sleep 5
+        done
+        if [[ $healthy -eq 1 ]]; then
             msg "  ✓ $name responding at $url"
         else
             msg "  ✗ $name not responding at $url"

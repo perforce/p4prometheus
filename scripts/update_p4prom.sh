@@ -153,20 +153,12 @@ if [[ $(id -u) -ne 0 ]]; then
    exit 1
 fi
 
-# Check if the local_bin_dir exists
-if [[ ! -d "$local_bin_dir" ]]; then
-    echo "Error: Directory $local_bin_dir does not exist. Please create it before running this script!"
-    exit 1
-fi
-
 command -v wget 2> /dev/null || bail "Failed to find wget in path - please install it"
 
 if command -v getenforce > /dev/null; then
     selinux=$(getenforce)
     [[ "$selinux" == "Enforcing" ]] && SELinuxEnabled=1
 fi
-
-[[ -d "$metrics_root" ]] || bail "Specified metrics directory '$metrics_root' does not exist - please create it!"
 
 if [[ $UseSDP -eq 1 ]]; then
     SDP_INSTANCE=${SDP_INSTANCE:-Unset}
@@ -225,12 +217,11 @@ if [[ $UseSDP -eq 1 ]]; then
     fi
 else
     SDP_INSTANCE=""
-    p4port=${Port:-$P4PORT}
-    p4user=${User:-$P4USER}
+    p4port=${Port:-${P4PORT:-}}
+    p4user=${User:-${P4USER:-}}
     OSUSER="$OsUser"
     OSGROUP=$(id -gn "$OSUSER")
     p4="p4 -u $p4user -p $p4port"
-    $p4 info -s || bail "Can't connect to P4PORT: $p4port"
     [[ $cli_config_dir_set -eq 0 ]] && p4prom_config_dir=${p4prom_config_dir:-"/etc/p4prometheus"}
     p4prom_bin_dir="$p4prom_config_dir"
 
@@ -263,7 +254,20 @@ if [[ ! -f "$p4monitor_locks_config_file" ]]; then
     done
 fi
 
+# Preflight checks - run after state file loading, since local_bin_dir/metrics_root
+# may have been overridden by saved state above. Custom (non-default) paths must
+# already exist; the script will not silently mkdir -p a top-level custom path,
+# to avoid writing data to the wrong disk if a dedicated volume failed to mount.
+# The config file check comes first: on a host that was never installed, the
+# useful message is "run install_p4prom.sh", not a complaint about directories.
 [[ -f "$p4prom_config_file" ]] || bail "Config file '$p4prom_config_file' does not exist - please run install_p4prom.sh instead of this script!"
+preflight_check_dirs -b "$local_bin_dir" "/usr/local/bin"
+[[ -d "$metrics_root" ]] || bail "Specified metrics directory '$metrics_root' does not exist - please create it!"
+
+if [[ $UseSDP -eq 0 ]]; then
+    [[ -n "$p4port" ]] || bail "P4PORT is not set - specify it in the environment when using -nosdp"
+    $p4 info -s || bail "Can't connect to P4PORT: $p4port"
+fi
 
 update_node_exporter () {
 
@@ -274,7 +278,7 @@ update_node_exporter () {
         msg "Created user $userid"
     fi
 
-    curr_ver=$(${progname} --version 2>&1 | grep ' version ' | awk '{print $3}')
+    curr_ver=$("${local_bin_dir}/${progname}" --version 2>&1 | grep ' version ' | awk '{print $3}')
     if [[ "$curr_ver" == "$VER_NODE_EXPORTER" ]]; then
         msg "Current version $curr_ver of node_exporter is up-to-date"
         return
@@ -310,7 +314,7 @@ update_p4prometheus () {
     service_name="p4prometheus"
     progname="p4prometheus"
     service_file="/etc/systemd/system/${service_name}.service"
-    curr_ver=$($progname --version 2>&1 | grep "$progname, version " | awk '{print $3}')
+    curr_ver=$("${local_bin_dir}/${progname}" --version 2>&1 | grep "$progname, version " | awk '{print $3}')
     if [[ "$curr_ver" == "v$VER_P4PROMETHEUS" ]]; then
         if [[ -f "${service_file}" ]]; then
             msg "Updating existing service file for $service_name"
@@ -350,7 +354,7 @@ update_p4metrics () {
     progname="p4metrics"
     service_file="/etc/systemd/system/${service_name}.service"
     up_to_date="false"
-    curr_ver=$($progname --version 2>&1 | grep "$progname, version " | awk '{print $3}')
+    curr_ver=$("${local_bin_dir}/${progname}" --version 2>&1 | grep "$progname, version " | awk '{print $3}')
     if [[ "$curr_ver" == "v$VER_P4PROMETHEUS" ]]; then
         msg "Current version $curr_ver of $progname is up-to-date"
         up_to_date="true"

@@ -10,6 +10,33 @@ P4PROM_COMMON_SH_LOADED=1
 function msg () { echo -e "$*"; }
 function bail () { msg "\nError: ${1:-Unknown Error}\n"; exit "${2:-1}"; }
 
+# preflight_check_dirs: verify that any custom -d/-b directories already exist
+# before proceeding. This is deliberate: silently `mkdir -p`-ing a top-level
+# path (e.g. a dedicated volume that failed to mount) would otherwise write
+# data to the wrong disk (typically the root filesystem) without warning.
+# Callers pass pairs of: <flag name> <path> <default path>
+# The check is skipped for any path that still equals its documented default,
+# since defaults (e.g. /var/lib, /usr/local/bin) are expected to always exist.
+preflight_check_dirs () {
+    local flag path default
+    while [[ $# -gt 0 ]]; do
+        flag=$1; path=$2; default=$3; shift 3
+        if [[ "$path" == "$default" ]]; then
+            continue
+        fi
+        if [[ ! -d "$path" ]]; then
+            bail "Directory specified with ${flag} does not exist: ${path}\nCreate or mount this directory before running the installer (e.g. mount a dedicated volume here). The installer will not auto-create top-level custom paths, to avoid silently writing data to the wrong disk if a volume failed to mount."
+        fi
+        # A real write test: [[ -w ]] is always true for root, so it cannot catch
+        # read-only mounts or exhausted/odd filesystems.
+        local probe="$path/.p4prom_preflight.$$"
+        if ! { : > "$probe"; } 2>/dev/null; then
+            bail "Directory specified with ${flag} is not writable: ${path}"
+        fi
+        rm -f "$probe"
+    done
+}
+
 systemd_enable_and_restart() {
     local service_file=$1
     local service_name=$2
@@ -17,8 +44,15 @@ systemd_enable_and_restart() {
     chmod 644 "$service_file"
     systemctl daemon-reload
     systemctl enable "$service_name"
-    systemctl start "$service_name"
+    # Clear any start-rate-limit state first: our units set StartLimitBurst=5 per
+    # 300s to stop crash loops, but repeated deliberate restarts (several
+    # install/update runs in a few minutes) would otherwise trip it and leave the
+    # service failed ("start-limit-hit") while the script still reported success.
+    systemctl reset-failed "$service_name" 2>/dev/null || true
+    systemctl restart "$service_name"  # restart, not start: start is a no-op on a running service with a changed unit
+    sleep 2
     systemctl status "$service_name" --no-pager
+    systemctl is-active --quiet "$service_name" || bail "Service ${service_name} is not running after restart - check: journalctl -u ${service_name}"
 }
 
 download_and_untar () {

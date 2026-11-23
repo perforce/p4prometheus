@@ -95,7 +95,8 @@ function bail () { msg "\nError: ${1:-Unknown Error}\n"; cleanup; exit "${2:-1}"
 
 function check_service_exists() {
     local service=$1
-    systemctl list-unit-files | grep -q "^${service}.service" && return 0 || return 1
+    # Not "list | grep -q": grep exiting early can SIGPIPE systemctl and fail under pipefail.
+    [[ -n $(systemctl list-unit-files "${service}.service" --no-legend 2>/dev/null) ]]
 }
 
 download_prometheus_rule_source() {
@@ -245,6 +246,8 @@ if [[ $(id -u) -ne 0 ]]; then
    echo "$0 can only be run as root or via sudo"
    exit 1
 fi
+
+preflight_check_dirs -d "$data_root" "/var/lib" -b "$bin_dir" "/usr/local/bin"
 
 declare -i SELinuxEnabled=0
 
@@ -957,7 +960,12 @@ check_health () {
     for entry in "${endpoints[@]}"; do
         local name="${entry%%:*}"
         local url="http://${entry#*:}"
-        if curl -sf --max-time 5 "$url" > /dev/null 2>&1; then
+        local attempt healthy=0
+        for attempt in 1 2 3 4 5 6; do    # Grafana can take 10+ seconds to come up
+            if curl -sf --max-time 5 "$url" > /dev/null 2>&1; then healthy=1; break; fi
+            sleep 5
+        done
+        if [[ $healthy -eq 1 ]]; then
             msg "  ✓ $name responding at $url"
         else
             msg "  ✗ $name not responding at $url"
