@@ -52,6 +52,22 @@ func TestValidConfig(t *testing.T) {
 	}
 }
 
+func TestCmdsByProgConfig(t *testing.T) {
+	for _, test := range []struct {
+		settings string
+		want     bool
+	}{
+		{"", true},
+		{"\ncmds_by_prog: true\n", true},
+		{"\ncmds_by_prog: false\n", false},
+	} {
+		cfg := loadOrFail(t, defaultConfig+test.settings)
+		if cfg.CmdsByProg != test.want {
+			t.Errorf("cmds_by_prog %q: got %v, want %v", test.settings, cfg.CmdsByProg, test.want)
+		}
+	}
+}
+
 func TestLicenseUpdatesConfig(t *testing.T) {
 	cfg := loadOrFail(t, defaultConfig)
 	checkValue(t, "LicenseUpdates.Mode", cfg.LicenseUpdates.Mode, "every_update")

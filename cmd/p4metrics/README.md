@@ -264,6 +264,13 @@ Scans recurse without following symlinks and stop at 100,000 regular files. A fa
 
 ### Other Metrics
 
+- **p4_monitor_by_prog{prog}** (gauge): monitor-table entries by client program.
+  The ` (brokered)` suffix is removed and surrounding whitespace is trimmed.
+  `cmds_by_prog` defaults to `true`; set it to `false` to disable this metric
+  if program labels create too much cardinality. Monitor collection uses
+  `p4 -F "%id%|%prog%|%runstate%|%user%|%elapsed%|%function%" monitor show -ale`;
+  command arguments are not collected.
+
 See [p4prometheus main documentation](../../README.md#metrics) for complete metrics list including license, filesys, process counts, verify, and other monitoring metrics.
 
 ## Design

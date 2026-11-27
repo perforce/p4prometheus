@@ -88,6 +88,7 @@ type Config struct {
 	SwarmURL             string         `yaml:"swarm_url"`           // Swarm URL - if the value returned by p4 property -l does not work (VPN etc)
 	SwarmSecure          bool           `yaml:"swarm_secure"`        // Whether to validate the Swarm HTTPS certificate
 	CmdsByUser           bool           `yaml:"cmds_by_user"`        // Whether to output metric p4_monitor_by_user
+	CmdsByProg           bool           `yaml:"cmds_by_prog"`        // Whether to output metric p4_monitor_by_prog
 	MemoryByUser         bool           `yaml:"memory_by_user"`      // Whether to output metric p4_active_memory_by_user
 	MaxJournalSize       string         `yaml:"max_journal_size"`    // Maximum size of journal file to monitor, e.g. 100M, 0 means no limit
 	MaxJournalPercent    string         `yaml:"max_journal_percent"` // Maximum size of journal as percentage of total P4LOGS disk space, e.g. 40, 0 means no limit
@@ -165,6 +166,10 @@ update_interval:    1m
 # of metrics labels is too great (one per distinct user), so set this to false.
 # Or set it to false if any personal information concerns. See also memory_by_user below for similar considerations.
 cmds_by_user:   true
+
+# ----------------------
+# cmds_by_prog: output p4_monitor_by_prog (default true); disable to reduce label cardinality.
+cmds_by_prog:   true
 
 # ----------------------
 # monitor_swarm: true/false - Whether to monitor status and version of swarm
@@ -392,6 +397,7 @@ func Unmarshal(config []byte) (*Config, error) {
 	// Default values specified here
 	cfg := &Config{
 		UpdateInterval: 60 * time.Second,
+		CmdsByProg:     true,
 		LicenseUpdates: LicenseUpdates{Mode: "every_update", StartWindow: 5 * time.Minute},
 		Notifications:  NotificationConfig{CooldownSeconds: 300},
 		MonitorSwarm:   false,

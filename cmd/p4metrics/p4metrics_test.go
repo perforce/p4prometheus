@@ -849,18 +849,17 @@ func TestP4MonitorParsing(t *testing.T) {
 	env := map[string]string{}
 	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
 
-	monitorLines := `662053 I swarm      00:03:41 IDLE none
-21104 R fred 01:03:41 sync
-16578 I svc_p4d_edge_CL1 00:04:26 IDLE none
-16647 I svc_p4d_fs_brk 00:04:26 IDLE none
-21104 I svc_p4d_fs_brk 00:04:40 IDLE none
- 5505 I svc_p4d_edge_CL1 00:04:49 IDLE none
-170076 I svc_p4d_ha_chi 01:15:07 IDLE none
- 2303 B svc_master-1666 270:49:23 ldapsync -g -i 1800
- 2304 B svc_master-1666 270:49:23 admin resource-monitor
-`
+	monitorLines := `662053|swarm|I|swarm|00:03:41|IDLE
+21104|p4|R|fred|01:03:41|sync
+16578|p4d|I|svc_p4d_edge_CL1|00:04:26|IDLE
+16647|p4d|I|svc_p4d_fs_brk|00:04:26|IDLE
+21104|p4d|I|svc_p4d_fs_brk|00:04:40|IDLE
+5505|p4d|I|svc_p4d_edge_CL1|00:04:49|IDLE
+170076|p4d|I|svc_p4d_ha_chi|01:15:07|IDLE
+2303|p4d|B|svc_master-1666|270:49:23|ldapsync
+2304|p4d|B|svc_master-1666|270:49:23|admin`
 	lines := strings.Split(monitorLines, "\n")
-	assert.Equal(t, 3821, p4m.getMaxNonSvcCmdTime(lines))
+	assert.Equal(t, 3821, p4m.parseMonitorShow(lines).maxNonSvcTime)
 }
 
 func TestJournalLineParsing(t *testing.T) {
@@ -1267,9 +1266,9 @@ func TestParseMonitorShow(t *testing.T) {
 		{
 			name: "basic parsing",
 			monitorOutput: []string{
-				"12345 R alice 00:00:05 sync",
-				"12346 R bob 00:00:10 edit",
-				"12347 I charlie 00:00:15 IDLE none",
+				"12345|test-program|R|alice|00:00:05|sync",
+				"12346|test-program|R|bob|00:00:10|edit",
+				"12347|test-program|I|charlie|00:00:15|IDLE",
 			},
 			expectedCmds: map[string]int{
 				"sync": 1,
@@ -1293,10 +1292,10 @@ func TestParseMonitorShow(t *testing.T) {
 		{
 			name: "with monitor groups",
 			monitorOutput: []string{
-				"12345 R alice 00:00:05 sync",
-				"12346 R bob 00:00:10 transmit",
-				"12347 I charlie 00:00:15 IDLE none",
-				"12348 R dave 00:00:20 unshelve",
+				"12345|test-program|R|alice|00:00:05|sync",
+				"12346|test-program|R|bob|00:00:10|transmit",
+				"12347|test-program|I|charlie|00:00:15|IDLE",
+				"12348|test-program|R|dave|00:00:20|unshelve",
 			},
 			monitorGroups: []config.MonitorGroup{
 				{Commands: "sync|transmit", Label: "sync_transmit"},
@@ -1335,9 +1334,9 @@ func TestParseMonitorShow(t *testing.T) {
 		{
 			name: "with monitor ignore",
 			monitorOutput: []string{
-				"12345 R alice 00:00:05 sync",
-				"12346 R svc 00:10:00 ldapsync",
-				"12347 I charlie 00:00:15 IDLE none",
+				"12345|test-program|R|alice|00:00:05|sync",
+				"12346|test-program|R|svc|00:10:00|ldapsync",
+				"12347|test-program|I|charlie|00:00:15|IDLE",
 			},
 			monitorIgnore: "ldapsync",
 			monitorGroups: []config.MonitorGroup{
@@ -1382,10 +1381,10 @@ func TestParseMonitorShow(t *testing.T) {
 		{
 			name: "malformed lines ignored",
 			monitorOutput: []string{
-				"12345 R alice 00:00:05 sync",
+				"12345|test-program|R|alice|00:00:05|sync",
 				"incomplete line",
 				"12346 R bob",
-				"12347 R charlie 00:00:10 edit",
+				"12347|test-program|R|charlie|00:00:10|edit",
 			},
 			expectedCmds: map[string]int{
 				"sync": 1,
@@ -1406,11 +1405,11 @@ func TestParseMonitorShow(t *testing.T) {
 		{
 			name: "state filtering - only R processes grouped",
 			monitorOutput: []string{
-				"12345 R alice 00:00:05 sync",
-				"12346 B bob 00:00:10 sync",          // Background - not counted
-				"12347 I charlie 00:00:15 IDLE none", // Idle - not counted
-				"12348 R dave 00:00:20 edit",
-				"12349 B eve 00:00:25 edit", // Background - not counted
+				"12345|test-program|R|alice|00:00:05|sync",
+				"12346|test-program|B|bob|00:00:10|sync",     // Background - not counted
+				"12347|test-program|I|charlie|00:00:15|IDLE", // Idle - not counted
+				"12348|test-program|R|dave|00:00:20|edit",
+				"12349|test-program|B|eve|00:00:25|edit", // Background - not counted
 			},
 			monitorGroups: []config.MonitorGroup{
 				{Commands: "sync", Label: "sync_group"},
@@ -1450,15 +1449,15 @@ func TestParseMonitorShow(t *testing.T) {
 		{
 			name: "larger output with various states and groups",
 			monitorOutput: []string{
-				"208188 R p4sdp      00:00:00 monitor show -al",
-				"208182 R ecagent    00:00:01 client -d cmdr-sources-186564700-99226",
-				"1152895 R svc_p4d_ha_chi 00:00:01 rmt-Journal",
-				"208137 R qtdev      00:00:03 transmit -t208015 -b8 -s524288",
-				"208015 R qtdev      00:00:04 sync -f -q //...",
-				"208026 R qtdev      00:00:04 transmit -t208015 -b8 -s524288",
-				"208029 R qtdev      00:00:04 transmit -t208015 -b8 -s524288",
-				"208030 R qtdev      00:00:04 transmit -t208015 -b8 -s524288",
-				"4055366 R fred      100:47:20 dm-SubmitChange",
+				"208188|test-program|R|p4sdp|00:00:00|monitor",
+				"208182|test-program|R|ecagent|00:00:01|client",
+				"1152895|test-program|R|svc_p4d_ha_chi|00:00:01|rmt-Journal",
+				"208137|test-program|R|qtdev|00:00:03|transmit",
+				"208015|test-program|R|qtdev|00:00:04|sync",
+				"208026|test-program|R|qtdev|00:00:04|transmit",
+				"208029|test-program|R|qtdev|00:00:04|transmit",
+				"208030|test-program|R|qtdev|00:00:04|transmit",
+				"4055366|test-program|R|fred|100:47:20|dm-SubmitChange",
 			},
 			monitorGroups: []config.MonitorGroup{
 				{Commands: "^rmt.*", Label: "rmt_group"},
@@ -1548,6 +1547,77 @@ func TestParseMonitorShow(t *testing.T) {
 
 			// Verify max time
 			assert.Equal(t, tc.expectedMaxTime, result.maxNonSvcTime, "maxNonSvcTime mismatch")
+		})
+	}
+}
+
+func TestFormattedMonitorParsing(t *testing.T) {
+	cfg := config.Config{}
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+	result := p4m.parseMonitorShow([]string{
+		" 853466 | jenkins.p4-plugin/1.15.1/Linux (brokered) | R | jteam  | 00:00:25 | sync ",
+		"853543|jenkins.p4-plugin/1.15.1/Linux|R|jteam|00:00:24|transmit",
+		"853714|P4 Code Review/2026.4 (brokered)|I|swarm |00:00:15|IDLE",
+		"1813162|p4d/2026.2|R|svc_p4d_ha_chi|270:49:23|rmt-Journal",
+		"1913405|P4-MCP-Server [PY3.12.0/P4PY2026.1/API2026.1/2972966]/0.0.0 (brokered)|I|pvincent |64:38:36|IDLE",
+		"3705204||T|user|02:02:27|IDLE",
+		"bad|prog|R|alice|00:00:01|sync",
+		"1|prog|R|alice|00:00:01|sync|extra",
+	})
+	assert.Equal(t, map[string]int{
+		"jenkins.p4-plugin/1.15.1/Linux": 2,
+		"P4 Code Review/2026.4":          1,
+		"p4d/2026.2":                     1,
+		"P4-MCP-Server [PY3.12.0/P4PY2026.1/API2026.1/2972966]/0.0.0": 1,
+		"": 1,
+	}, result.progCounts)
+	assert.Equal(t, MonitorProcess{Pid: 853466, Prog: "jenkins.p4-plugin/1.15.1/Linux", State: "R", User: "jteam", TimeSeconds: 25, Cmd: "sync"}, result.processes[0])
+	assert.Equal(t, 64*3600+38*60+36, result.maxNonSvcTime)
+	assert.Equal(t, map[string]int{"R": 3, "I": 2, "T": 1}, result.stateCounts)
+}
+
+func TestMonitorCommandHelper(t *testing.T) {
+	index := -1
+	for i, arg := range os.Args {
+		if arg == "--" {
+			index = i
+			break
+		}
+	}
+	if index == -1 {
+		return
+	}
+	want := []string{"-F", "%id%|%prog%|%runstate%|%user%|%elapsed%|%function%", "monitor", "show", "-ale"}
+	if !reflect.DeepEqual(os.Args[index+1:], want) {
+		fmt.Fprintf(os.Stderr, "unexpected monitor arguments: %q\n", os.Args[index+1:])
+		os.Exit(2)
+	}
+	fmt.Println(`1|client "test"\path (brokered)|R|alice |00:00:05|sync`)
+	fmt.Println(`2|client "test"\path|I|alice |00:00:10|IDLE`)
+	fmt.Println(`3||T|bob|00:00:12|edit`)
+	os.Exit(0)
+}
+
+func TestMonitorProcessProgramMetric(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("enabled=%t", enabled), func(t *testing.T) {
+			cfg := config.Config{CmdsByProg: enabled, CmdsByUser: true, MetricsRoot: t.TempDir()}
+			env := map[string]string{}
+			p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+			p4m.p4Cmd = fmt.Sprintf("%q -test.run=^TestMonitorCommandHelper$ --", os.Args[0])
+			p4m.dryrun = true
+			p4m.monitorProcesses()
+			output := p4m.getCumulativeMetrics()
+			assert.Contains(t, output, `p4_monitor_by_cmd{cmd="sync"} 1`)
+			assert.Contains(t, output, `p4_monitor_by_user{user="alice"} 2`)
+			assert.Contains(t, output, `p4_monitor_max_cmd_time{} 12`)
+			if enabled {
+				assert.Contains(t, output, `p4_monitor_by_prog{prog="client \"test\"\\path"} 2`)
+				assert.Contains(t, output, `p4_monitor_by_prog{prog=""} 1`)
+			} else {
+				assert.NotContains(t, output, "p4_monitor_by_prog")
+			}
 		})
 	}
 }
@@ -1927,9 +1997,9 @@ func TestMonitorProcessesMemLimitsIntegration(t *testing.T) {
 
 	// Simulate monitor show output with parsed processes
 	monitorOutput := []string{
-		"1000 R alice 00:00:05 sync",
-		"1001 R bob 00:00:10 edit",
-		"1002 B carol 00:00:20 fstat",
+		"1000|test-program|R|alice|00:00:05|sync",
+		"1001|test-program|R|bob|00:00:10|edit",
+		"1002|test-program|B|carol|00:00:20|fstat",
 	}
 
 	// Parse monitor output
@@ -2009,8 +2079,8 @@ func TestMonitorProcessesMemLimitsWithKillCandidates(t *testing.T) {
 
 	// Simulate monitor show output
 	monitorOutput := []string{
-		"1000 R alice 00:00:05 sync",
-		"1001 R bob 00:00:10 edit",
+		"1000|test-program|R|alice|00:00:05|sync",
+		"1001|test-program|R|bob|00:00:10|edit",
 	}
 
 	// Parse and evaluate
@@ -2196,8 +2266,8 @@ func TestMemLimitsIntegrationWithEnforcement(t *testing.T) {
 
 	// Simulate monitor output with high memory usage
 	monitorOutput := []string{
-		"1000 R alice 00:00:05 sync",
-		"1001 R bob 00:00:10 edit",
+		"1000|test-program|R|alice|00:00:05|sync",
+		"1001|test-program|R|bob|00:00:10|edit",
 	}
 
 	// Parse monitor output

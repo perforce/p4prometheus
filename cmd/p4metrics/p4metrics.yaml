@@ -56,6 +56,9 @@ update_interval:  1m
 # Or set it to false if any personal information concerns. See also memory_by_user below for similar considerations.
 cmds_by_user:     true
 
+# Output p4_monitor_by_prog; set false to reduce program-label cardinality.
+cmds_by_prog:     true
+
 # ----------------------
 # monitor_swarm: true/false - Whether to monitor status and version of swarm
 # Normally this should be set to true - won't run if there is no Swarm property defined

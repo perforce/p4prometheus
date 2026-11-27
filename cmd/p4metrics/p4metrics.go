@@ -1089,13 +1089,14 @@ func (p4m *P4MonitorMetrics) parseUptime(value string) int64 {
 func (p4m *P4MonitorMetrics) formatLabels(mname string, labels []labelStruct) string {
 	nonBlankLabels := make([]labelStruct, 0)
 	for _, l := range labels {
-		if l.value != "" {
+		if l.value != "" || (mname == "p4_monitor_by_prog" && l.name == "prog") {
 			nonBlankLabels = append(nonBlankLabels, l)
 		}
 	}
 	vals := make([]string, 0)
+	escape := strings.NewReplacer(`\`, `\\`, "\n", `\n`, `"`, `\"`)
 	for _, l := range nonBlankLabels {
-		vals = append(vals, fmt.Sprintf("%s=\"%s\"", l.name, l.value))
+		vals = append(vals, fmt.Sprintf("%s=\"%s\"", l.name, escape.Replace(l.value)))
 	}
 	labelStr := strings.Join(vals, ",")
 	return fmt.Sprintf("%s{%s}", mname, labelStr)
@@ -1111,8 +1112,6 @@ func (p4m *P4MonitorMetrics) formatMetric(mname string, labels []labelStruct, me
 
 func (p4m *P4MonitorMetrics) printMetric(metrics *bytes.Buffer, mname string, labels []labelStruct, metricVal string) {
 	buf := p4m.formatMetric(mname, labels, metricVal)
-	// node_exporter requires doubling of backslashes
-	buf = strings.Replace(buf, `\`, "\\\\", -1)
 	fmt.Fprint(metrics, buf)
 }
 
@@ -2194,28 +2193,6 @@ func (p4m *P4MonitorMetrics) getTime(t string) int {
 	return 0
 }
 
-func (p4m *P4MonitorMetrics) getMaxNonSvcCmdTime(lines []string) int {
-	// Extract the max time for any command which isn't a service user
-	maxTime := 0
-	uFieldNum := 3
-	tFieldNum := 4
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) < tFieldNum { // Skip lines that don't have sufficient fields
-			continue
-		}
-		u := fields[uFieldNum-1]
-		if strings.HasPrefix(u, "svc_") { // Ignore service users as very long running
-			continue
-		}
-		t := p4m.getTime(fields[tFieldNum-1])
-		if t > maxTime {
-			maxTime = t
-		}
-	}
-	return maxTime
-}
-
 // getMonitorGroupLabel returns the label for a command based on monitor_groups config
 // Returns empty string if command should be ignored
 func (p4m *P4MonitorMetrics) getMonitorGroupLabel(cmd string) string {
@@ -2232,19 +2209,21 @@ func (p4m *P4MonitorMetrics) getMonitorGroupLabel(cmd string) string {
 	return ""
 }
 
-// MonitorProcess represents a single process from p4 monitor show -l
+// MonitorProcess represents a single process from p4 monitor show.
 type MonitorProcess struct {
 	Pid         int
+	Prog        string
 	State       string
 	User        string
 	TimeSeconds int
 	Cmd         string
 }
 
-// monitorShowResult holds the parsed results from monitor show -l output
+// monitorShowResult holds the parsed results from monitor show output.
 type monitorShowResult struct {
 	processes       []MonitorProcess // List of individual processes
 	cmdCounts       map[string]int
+	progCounts      map[string]int
 	userCounts      map[string]int
 	stateCounts     map[string]int
 	groupCounts     map[string]int
@@ -2253,11 +2232,12 @@ type monitorShowResult struct {
 	maxNonSvcTime   int
 }
 
-// parseMonitorShow parses the output of p4 monitor show -l and returns structured data
+// parseMonitorShow parses the formatted output of p4 monitor show -ale.
 func (p4m *P4MonitorMetrics) parseMonitorShow(monitorOutput []string) *monitorShowResult {
 	result := &monitorShowResult{
 		processes:       make([]MonitorProcess, 0),
 		cmdCounts:       make(map[string]int),
+		progCounts:      make(map[string]int),
 		userCounts:      make(map[string]int),
 		stateCounts:     make(map[string]int),
 		groupCounts:     make(map[string]int),
@@ -2267,24 +2247,30 @@ func (p4m *P4MonitorMetrics) parseMonitorShow(monitorOutput []string) *monitorSh
 
 	// Parse all lines and collect data
 	for _, line := range monitorOutput {
-		fields := strings.Fields(line)
-		if len(fields) < 5 { // Skip lines that don't have sufficient fields
+		fields := strings.Split(line, "|")
+		if len(fields) != 6 {
+			p4m.logger.Warnf("Skipping malformed p4 monitor record: expected 6 fields, got %d", len(fields))
 			continue
+		}
+		for i := range fields {
+			fields[i] = strings.TrimSpace(fields[i])
 		}
 		pid, err := strconv.Atoi(fields[0])
 		if err != nil {
-			// Skip lines with invalid pid
+			p4m.logger.Warnf("Skipping p4 monitor record with invalid PID %q", fields[0])
 			continue
 		}
-		state := fields[1]
-		user := fields[2]
-		timeStr := fields[3]
-		cmd := fields[4]
+		prog := strings.TrimSpace(strings.TrimSuffix(fields[1], " (brokered)"))
+		state := fields[2]
+		user := fields[3]
+		timeStr := fields[4]
+		cmd := fields[5]
 		timeSeconds := p4m.getTime(timeStr)
 
 		// Store process record
 		proc := MonitorProcess{
 			Pid:         pid,
+			Prog:        prog,
 			State:       state,
 			User:        user,
 			TimeSeconds: timeSeconds,
@@ -2294,12 +2280,16 @@ func (p4m *P4MonitorMetrics) parseMonitorShow(monitorOutput []string) *monitorSh
 
 		// Count by command
 		result.cmdCounts[cmd]++
+		result.progCounts[prog]++
 
 		// Count by user
 		result.userCounts[user]++
 
 		// Count by state
 		result.stateCounts[state]++
+		if !strings.HasPrefix(user, "svc_") && timeSeconds > result.maxNonSvcTime {
+			result.maxNonSvcTime = timeSeconds
+		}
 
 		// Group counts and runtime (if monitor_groups configured)
 		// Only count running processes (state 'R'), not blocked ('B') or idle ('I')
@@ -2315,9 +2305,6 @@ func (p4m *P4MonitorMetrics) parseMonitorShow(monitorOutput []string) *monitorSh
 			}
 		}
 	}
-
-	// Calculate max non-svc command time
-	result.maxNonSvcTime = p4m.getMaxNonSvcCmdTime(monitorOutput)
 
 	return result
 }
@@ -2584,10 +2571,7 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 	// Monitor metrics summarised by cmd or user
 	p4m.startMonitor("monitorProcesses", "p4_monitor")
 	defer p4m.completeMonitor()
-	// Exepected columns in monitor show -l output:
-	// Pid, state, user, time, cmd
-	// 	8764 R user 00:00:00 edit
-	p4cmd, errbuf, p := p4m.newP4CmdPipe("monitor show -l")
+	p4cmd, errbuf, p := p4m.newP4CmdPipe(`-F "%id%|%prog%|%runstate%|%user%|%elapsed%|%function%" monitor show -ale`)
 	monitorOutput, err := p.Exec(p4cmd).Slice()
 	if err != nil {
 		p4m.handleP4Error("Error running %s: %v, err:%q", p4cmd, err, errbuf)
@@ -2605,6 +2589,15 @@ func (p4m *P4MonitorMetrics) monitorProcesses() {
 			mtype:  "counter",
 			value:  fmt.Sprintf("%d", count),
 			labels: []labelStruct{{name: "cmd", value: cmd}}})
+	}
+	if p4m.config.CmdsByProg {
+		for prog, count := range result.progCounts {
+			p4m.metrics = append(p4m.metrics, metricStruct{name: "p4_monitor_by_prog",
+				help:   "P4 processes by program in monitor table",
+				mtype:  "gauge",
+				value:  fmt.Sprintf("%d", count),
+				labels: []labelStruct{{name: "prog", value: prog}}})
+		}
 	}
 
 	// Output grouped command metrics if configured
