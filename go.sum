@@ -19,8 +19,6 @@ github.com/kr/pretty v0.3.1/go.mod h1:hoEshYVHaxMs3cyo3Yncou5ZscifuDolrwPKZanG3x
 github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
 github.com/kr/text v0.2.0/go.mod h1:eLer722TekiGuMkidMxC/pM04lWEeraHUUmBw8l2grE=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/rcowham/go-libp4dlog v0.15.3 h1:B4nY+bPL8n4QOOR6UiFWfTE5s9rL7Z0vAwKtEpRz8RQ=
-github.com/rcowham/go-libp4dlog v0.15.3/go.mod h1:kepIvsh9w2SU05Ph5Ufe1lXz0aZ4FGQL3mUunDgQUtY=
 github.com/rcowham/go-libp4dlog v0.15.5 h1:yB2JUo21OqnRuxYJ7XDEHT5Gcy+p/yFenJAl4QPXIIg=
 github.com/rcowham/go-libp4dlog v0.15.5/go.mod h1:AE0fUZmPW6jIW2zjeC031HYpcABefH/yXm0gtsJ8tWc=
 github.com/rcowham/go-libtail v0.2.0 h1:LY44uzSKpZ3d9/WwhO9cuQJm03zak3w74bi21ZIAblQ=
