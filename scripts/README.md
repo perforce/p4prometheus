@@ -94,6 +94,13 @@ syntax, preserves the installed file inode, and re-executes the new version
 before processing the remaining script list. The updater must then run as root
 to install binaries, write units, and restart services.
 
+The GitHub download list is maintained in [`update_files.txt`](update_files.txt),
+with one filename from the repository's `scripts` directory per line. Changes
+take effect automatically on the next
+checker run; removing an entry stops updating it but does not delete an installed
+file. If an older repository revision lacks the list, the checker uses its
+built-in defaults. Invalid lists and failed GitHub downloads stop the update.
+
 ### Lock-monitor execution denied
 
 `p4monitor_locks.service` failing with `203/EXEC` and `Permission denied`

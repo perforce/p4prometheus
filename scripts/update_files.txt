@@ -1,0 +1,13 @@
+# Files downloaded by check_for_updates.sh, one filename per line.
+install_p4prom.sh
+update_p4prom.sh
+install_p4proxyprom.sh
+update_p4proxyprom.sh
+p4prom_common.sh
+monitor_locks.py
+p4monitor_locks.sh
+README.md
+get_volume_info.sh
+create_dashboard.py
+dashboard.yaml
+upload_grafana_dashboard.sh
