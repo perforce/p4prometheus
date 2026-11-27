@@ -16,6 +16,7 @@ mountpoints:
   depots: "/hxdepots"
 rules:
   enable_hansoft_disk_alert: true
+  monitor_user_process_threshold: 500
 custom:
   sdp_instance: "1"
   server_id: master

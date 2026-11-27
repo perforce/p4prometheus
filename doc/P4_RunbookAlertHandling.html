@@ -482,13 +482,14 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 <li><a href="#_severity_3_alerts">4. Severity 3 Alerts</a>
 <ul class="sectlevel2">
-<li><a href="#_checkpoint_not_taken">4.1. Checkpoint Not Taken</a></li>
-<li><a href="#_p4d_license_expiry">4.2. P4D license expiry</a></li>
-<li><a href="#_cpu_usage_high">4.3. CPU Usage High</a></li>
-<li><a href="#_app_memory_usage_high">4.4. App Memory Usage High</a></li>
-<li><a href="#_hx_diskspace_predicted_low">4.5. HX Diskspace Predicted Low</a></li>
-<li><a href="#_root_diskspace_predicted_low">4.6. Root Diskspace Predicted Low</a></li>
-<li><a href="#_diskspace_percentage_used_above_percentage_threshold">4.7. Diskspace Percentage Used Above Percentage Threshold</a></li>
+<li><a href="#_p4_user_many_monitor_processes">4.1. P4 user has many monitor processes</a></li>
+<li><a href="#_checkpoint_not_taken">4.2. Checkpoint Not Taken</a></li>
+<li><a href="#_p4d_license_expiry">4.3. P4D license expiry</a></li>
+<li><a href="#_cpu_usage_high">4.4. CPU Usage High</a></li>
+<li><a href="#_app_memory_usage_high">4.5. App Memory Usage High</a></li>
+<li><a href="#_hx_diskspace_predicted_low">4.6. HX Diskspace Predicted Low</a></li>
+<li><a href="#_root_diskspace_predicted_low">4.7. Root Diskspace Predicted Low</a></li>
+<li><a href="#_diskspace_percentage_used_above_percentage_threshold">4.8. Diskspace Percentage Used Above Percentage Threshold</a></li>
 </ul>
 </li>
 <li><a href="#_severity_4_alerts">5. Severity 4 Alerts</a>
@@ -1591,7 +1592,101 @@ sudo journalctl -u p4metrics --no-pager | grep Memlimit | less</pre>
 <h2 id="_severity_3_alerts">4. Severity 3 Alerts</h2>
 <div class="sectionbody">
 <div class="sect2">
-<h3 id="_checkpoint_not_taken">4.1. Checkpoint Not Taken</h3>
+<h3 id="_p4_user_many_monitor_processes">4.1. P4 user has many monitor processes</h3>
+<div class="paragraph">
+<p>This alert fires when <code>p4_monitor_by_user</code> remains above the configured
+<code>rules.monitor_user_process_threshold</code> for five minutes. The default threshold
+is 500 and can be changed in <code>examples/prometheus/rules-src/default-values.yml</code>
+(or overridden in a local values file before rendering the rules).</p>
+</div>
+<div class="paragraph">
+<p>The metric counts monitor-table entries, including idle (<code>IDLE</code>) connections;
+it does not by itself prove a command is consuming excessive CPU or memory.
+Use the user, command, and program metrics in Grafana, filtered to the alert&#8217;s
+<code>instance</code>, <code>serverid</code>, and <code>user</code>:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>p4_monitor_by_user{user="&#8230;&#8203;"}</code></p>
+</li>
+<li>
+<p><code>p4_monitor_by_cmd</code></p>
+</li>
+<li>
+<p><code>p4_monitor_by_prog{prog="&#8230;&#8203;"}</code></p>
+</li>
+<li>
+<p><code>p4_monitor_by_state</code></p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Look for a command or program with unusually many entries or a sustained
+increase. <code>p4_monitor_by_prog</code> identifies the client/tool (for example, an
+automation agent or plugin); <code>p4_monitor_by_cmd</code> shows the Perforce operation.
+If necessary, inspect the full monitor table on the server:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-bash" data-lang="bash">p4 -F "%id%|%prog%|%runstate%|%user%|%elapsed%|%function%" monitor show -ale
+# or
+p4 monitor show -ale</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Filter the output for the affected user and inspect the PID, program, state,
+elapsed time, function, and command. In particular, distinguish many <code>IDLE</code>
+connections from long-running active commands.</p>
+</div>
+<div class="paragraph">
+<div class="title">Resolution</div>
+<p>Check with the user or tool owner before terminating sessions, and investigate runaway automation,
+connection leaks, or unexpectedly broad commands. The metrics are absent if
+their corresponding options (<code>cmds_by_user</code> or <code>cmds_by_prog</code>) are disabled.</p>
+</div>
+<div class="paragraph">
+<p>Options include:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Terminating idle sessions for the affected user</p>
+</li>
+<li>
+<p>Investigating and addressing runaway automation or connection leaks.</p>
+</li>
+<li>
+<p>Adjusting the <code>rules.monitor_user_process_threshold</code> if the workload justifies it.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Terminating sessions should be done with caution, ensuring that you are not disrupting active work.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-bash" data-lang="bash">p4 -F "%id%|%user%" monitor show -ale | grep "affected_user" | cut -d '|' -f 1 | while read pid; do p4 monitor terminate $pid; done</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If commands are hanging (verify with <code>sudo strace -p &lt;pid&gt;</code>), you can use <code>kill &lt;pid&gt;</code> to terminate the process.</p>
+</div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-important" title="Important"></i>
+</td>
+<td class="content">
+Never use <code>kill -9</code> on Perforce processes as it risks corrupting database files.
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_checkpoint_not_taken">4.2. Checkpoint Not Taken</h3>
 <div class="paragraph">
 <p>This alert indicates a checkpoint may not have been taken.</p>
 </div>
@@ -1639,7 +1734,7 @@ sudo systemctl status p4metrics</pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_p4d_license_expiry">4.2. P4D license expiry</h3>
+<h3 id="_p4d_license_expiry">4.3. P4D license expiry</h3>
 <div class="paragraph">
 <p>Validate the alert with Grafana and the server.</p>
 </div>
@@ -1649,7 +1744,7 @@ sudo systemctl status p4metrics</pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_cpu_usage_high">4.3. CPU Usage High</h3>
+<h3 id="_cpu_usage_high">4.4. CPU Usage High</h3>
 <div class="ulist">
 <ul>
 <li>
@@ -1689,7 +1784,7 @@ sudo systemctl status p4metrics</pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_app_memory_usage_high">4.4. App Memory Usage High</h3>
+<h3 id="_app_memory_usage_high">4.5. App Memory Usage High</h3>
 <div class="ulist">
 <ul>
 <li>
@@ -1742,7 +1837,7 @@ sudo setcap CAP_SYS_RESOURCE=+ep $(readlink -f /p4/common/bin/p4d_1_bin)
 </div>
 </div>
 <div class="sect2">
-<h3 id="_hx_diskspace_predicted_low">4.5. HX Diskspace Predicted Low</h3>
+<h3 id="_hx_diskspace_predicted_low">4.6. HX Diskspace Predicted Low</h3>
 <div class="paragraph">
 <p>Verify in Grafana and also on the server. These alerts may be overly cautious, so the algorithm may need to be adjusted to make it less sensitive.</p>
 </div>
@@ -1756,7 +1851,7 @@ sudo setcap CAP_SYS_RESOURCE=+ep $(readlink -f /p4/common/bin/p4d_1_bin)
 </div>
 </div>
 <div class="sect2">
-<h3 id="_root_diskspace_predicted_low">4.6. Root Diskspace Predicted Low</h3>
+<h3 id="_root_diskspace_predicted_low">4.7. Root Diskspace Predicted Low</h3>
 <div class="paragraph">
 <p>Verify in Grafana and also on the server. These alerts are usually incorrect, so the algorithm may need to be adjusted.</p>
 </div>
@@ -1770,7 +1865,7 @@ sudo setcap CAP_SYS_RESOURCE=+ep $(readlink -f /p4/common/bin/p4d_1_bin)
 </div>
 </div>
 <div class="sect2">
-<h3 id="_diskspace_percentage_used_above_percentage_threshold">4.7. Diskspace Percentage Used Above Percentage Threshold</h3>
+<h3 id="_diskspace_percentage_used_above_percentage_threshold">4.8. Diskspace Percentage Used Above Percentage Threshold</h3>
 <div class="paragraph">
 <p>This alert indicates disk space usage has crossed a threshold over time.</p>
 </div>
@@ -1837,7 +1932,7 @@ df -Th | grep /dev/nev      # limit usage to just</code></pre>
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-07-07 12:52:04 +0100
+Last updated 2026-11-27 15:49:33 UTC
 </div>
 </div>
 </body>

@@ -647,6 +647,63 @@ Check the configuration of `p4metrics` to see if the thresholds for OOM are set 
 
 ## Severity 3 Alerts
 
+[[_p4_user_many_monitor_processes]]
+### P4 user has many monitor processes
+
+This alert fires when `p4_monitor_by_user` remains above the configured
+`rules.monitor_user_process_threshold` for five minutes. The default threshold
+is 500 and can be changed in `examples/prometheus/rules-src/default-values.yml`
+(or overridden in a local values file before rendering the rules).
+
+The metric counts monitor-table entries, including idle (`IDLE`) connections;
+it does not by itself prove a command is consuming excessive CPU or memory.
+Use the user, command, and program metrics in Grafana, filtered to the alert's
+`instance`, `serverid`, and `user`:
+
+* `p4_monitor_by_user{user="..."}`
+* `p4_monitor_by_cmd`
+* `p4_monitor_by_prog{prog="..."}`
+* `p4_monitor_by_state`
+
+Look for a command or program with unusually many entries or a sustained
+increase. `p4_monitor_by_prog` identifies the client/tool (for example, an
+automation agent or plugin); `p4_monitor_by_cmd` shows the Perforce operation.
+If necessary, inspect the full monitor table on the server:
+
+[source,bash]
+----
+p4 -F "%id%|%prog%|%runstate%|%user%|%elapsed%|%function%" monitor show -ale
+# or
+p4 monitor show -ale
+----
+
+Filter the output for the affected user and inspect the PID, program, state,
+elapsed time, function, and command. In particular, distinguish many `IDLE`
+connections from long-running active commands.
+
+.Resolution
+
+Check with the user or tool owner before terminating sessions, and investigate runaway automation,
+connection leaks, or unexpectedly broad commands. The metrics are absent if
+their corresponding options (`cmds_by_user` or `cmds_by_prog`) are disabled.
+
+Options include:
+
+* Terminating idle sessions for the affected user
+* Investigating and addressing runaway automation or connection leaks.
+* Adjusting the `rules.monitor_user_process_threshold` if the workload justifies it.
+
+Terminating sessions should be done with caution, ensuring that you are not disrupting active work.
+
+[source,bash]
+----
+p4 -F "%id%|%user%" monitor show -ale | grep "affected_user" | cut -d '|' -f 1 | while read pid; do p4 monitor terminate $pid; done
+----
+
+If commands are hanging (verify with `sudo strace -p <pid>`), you can use `kill <pid>` to terminate the process.
+
+IMPORTANT: Never use `kill -9` on Perforce processes as it risks corrupting database files.
+
 ### Checkpoint Not Taken
 This alert indicates a checkpoint may not have been taken.
 

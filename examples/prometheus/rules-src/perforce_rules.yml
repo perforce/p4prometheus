@@ -88,6 +88,19 @@ groups:
       description: "One or more processes were killed due to out-of-memory in the last 5 minutes."
       runbook_id: _oom_kill_detected
 
+  - alert: P4 user has many monitor processes
+    expr: p4_monitor_by_user > (@= str(data.values.rules.monitor_user_process_threshold) @)
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "User {{ $labels.user }} has many Perforce processes on {{ $labels.instance }}"
+      description: >-
+        {{ $labels.instance }} (server {{ $labels.serverid }}) reports
+        {{ $value | printf "%.0f" }} monitor entries for user {{ $labels.user }},
+        above the configured threshold.
+      runbook_id: _p4_user_many_monitor_processes
+
   - alert: P4D excessive commands paused by resource pressure
     expr: >-
       (p4_cmds_paused > 100)
