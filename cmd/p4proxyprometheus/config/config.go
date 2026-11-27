@@ -32,7 +32,7 @@ p4p_log: /p4/1/logs/p4p.log
 
 # ----------------------
 # metrics_output: REQUIRED! Name of output file to write for processing by node_exporter.
-# For SDP it will add p4_proxy-<SDP_INSTANCE>.prom.
+# The .prom suffix is optional; the output is <base>-<SDP_INSTANCE>.prom.
 # Ensure that node_exporter service user has read access to this folder.
 metrics_output: /p4/metrics/p4_proxy.prom
 
@@ -82,9 +82,6 @@ func (c *Config) Validate() error {
 	}
 	if strings.TrimSpace(c.MetricsOutput) == "" {
 		return fmt.Errorf("metrics_output must be specified")
-	}
-	if !strings.HasSuffix(c.MetricsOutput, ".prom") {
-		return fmt.Errorf("metrics_output must end in .prom")
 	}
 	if strings.TrimSpace(c.SDPInstance) == "" {
 		return fmt.Errorf("sdp_instance must be specified")

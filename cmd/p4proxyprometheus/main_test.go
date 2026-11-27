@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/perforce/p4prometheus/cmd/p4proxyprometheus/config"
 	"github.com/rcowham/go-libp4dlog/p4plog"
 	"github.com/stretchr/testify/require"
 )
@@ -56,9 +57,17 @@ func TestWriteMetricsFileAtomically(t *testing.T) {
 }
 
 func TestMetricsOutputFilename(t *testing.T) {
-	require.Equal(
-		t,
-		"/p4/metrics/p4_proxy-1.prom",
-		metricsOutputFilename("/p4/metrics/p4_proxy.prom", "1"),
-	)
+	for _, output := range []string{"/p4/metrics/p4_proxy", "/p4/metrics/p4_proxy.prom"} {
+		t.Run(output, func(t *testing.T) {
+			cfg := config.Config{P4PLog: "/p4p.log", MetricsOutput: output, SDPInstance: "1"}
+			require.NoError(t, cfg.Validate())
+			require.Equal(t, "/p4/metrics/p4_proxy-1.prom", metricsOutputFilename(cfg.MetricsOutput, cfg.SDPInstance))
+		})
+	}
+}
+
+func TestExampleConfigLoads(t *testing.T) {
+	cfg, err := config.LoadConfigFile("p4proxyprometheus.yaml")
+	require.NoError(t, err)
+	require.Equal(t, "/p4/metrics/p4_proxy-1.prom", metricsOutputFilename(cfg.MetricsOutput, cfg.SDPInstance))
 }

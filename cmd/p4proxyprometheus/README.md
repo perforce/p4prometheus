@@ -23,9 +23,10 @@ from its current contents; leave it `false` for ordinary continuous operation.
 Copy and edit [p4proxyprometheus.yaml](./p4proxyprometheus.yaml), ensuring
 that `metrics_output` is in the directory configured for node_exporter's
 textfile collector. `sdp_instance` is required; the collector writes
-`<metrics_output-base>-<sdp_instance>.prom`. For example, with
-`metrics_output: /p4/metrics/p4_proxy.prom` and `sdp_instance: "1"`, the
-output file is `/p4/metrics/p4_proxy-1.prom`.
+`<metrics_output-base>-<sdp_instance>.prom`. The `.prom` suffix on
+`metrics_output` is optional: both `/p4/metrics/p4_proxy` and
+`/p4/metrics/p4_proxy.prom` produce `/p4/metrics/p4_proxy-1.prom` when
+`sdp_instance` is `"1"`.
 
 ```bash
 p4proxyprometheus --config p4proxyprometheus.yaml
