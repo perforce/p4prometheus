@@ -308,8 +308,19 @@ func evaluateMemLimits(
 	pidRSS := make(map[int]int64)                  // pid -> RSS bytes
 	userProcs := make(map[string][]MonitorProcess) // user -> processes
 	cmdProcs := make(map[string][]MonitorProcess)  // cmd -> processes
+	userCommands := make(map[string]*oomUserCommandCounts)
 
 	for _, proc := range processes {
+		counts := userCommands[proc.User]
+		if counts == nil {
+			counts = &oomUserCommandCounts{ByState: make(map[string]int)}
+			userCommands[proc.User] = counts
+		}
+		counts.Total++
+		counts.ByState[proc.State]++
+		if proc.Cmd == "IDLE" {
+			counts.Idle++
+		}
 		rss, err := memReader.GetPIDRSSBytes(proc.Pid)
 		if err != nil {
 			logger.Debugf("Could not get memory for PID %d: %v", proc.Pid, err)
@@ -334,6 +345,7 @@ func evaluateMemLimits(
 			return
 		}
 		killByPID[action.Pid] = struct{}{}
+		action.UserCommands = userCommands[action.User]
 		eval.KillCandidates = append(eval.KillCandidates, action)
 	}
 
@@ -635,6 +647,23 @@ type KillAction struct {
 	ReasonType     string // "cmd_max_percentage", "cmd_max_value", "user_cumulative_max_percentage", "user_cumulative_max_value"
 	MatchedGroup   string // Name of the matched memlimit group
 	ThresholdValue string // The threshold that was exceeded (e.g., "30%" or "2G")
+	UserCommands   *oomUserCommandCounts
+}
+
+type oomUserCommandCounts struct {
+	Total   int            `json:"total"`
+	ByState map[string]int `json:"by_state"`
+	Idle    int            `json:"idle"`
+}
+
+type oomCandidateGroup struct {
+	User         string                `json:"user"`
+	PIDs         []int                 `json:"pids"`
+	ProcessCount int                   `json:"process_count"`
+	RSSBytes     int64                 `json:"rss_bytes"`
+	Threshold    string                `json:"threshold"`
+	Reason       string                `json:"reason"`
+	UserCommands *oomUserCommandCounts `json:"user_commands,omitempty"`
 }
 
 // MemLimitEvaluation holds the results of evaluating memory limits
@@ -741,6 +770,7 @@ type P4MonitorMetrics struct {
 	vmAlertURL             string
 	vmAlertUsername        string
 	vmAlertPassword        string
+	oomNotificationTimes   map[string]time.Time
 }
 
 func newP4MonitorMetrics(config *config.Config, envVars *map[string]string, logger *logrus.Logger) (p4m *P4MonitorMetrics) {
@@ -2292,6 +2322,38 @@ func (p4m *P4MonitorMetrics) parseMonitorShow(monitorOutput []string) *monitorSh
 	return result
 }
 
+func isCumulativeOOMAction(action KillAction) bool {
+	return action.ReasonType == "user_cumulative_max_percentage" || action.ReasonType == "user_cumulative_max_value"
+}
+
+func groupOOMCandidates(actions []KillAction) []oomCandidateGroup {
+	type groupKey struct {
+		user, reason, threshold string
+	}
+	indexes := make(map[groupKey]int)
+	var groups []oomCandidateGroup
+	for _, action := range actions {
+		if !isCumulativeOOMAction(action) {
+			continue
+		}
+		key := groupKey{action.User, action.ReasonType, action.ThresholdValue}
+		index, exists := indexes[key]
+		if !exists {
+			index = len(groups)
+			indexes[key] = index
+			groups = append(groups, oomCandidateGroup{
+				User: action.User, Reason: action.ReasonType, Threshold: action.ThresholdValue,
+				UserCommands: action.UserCommands,
+			})
+		}
+		group := &groups[index]
+		group.PIDs = append(group.PIDs, action.Pid)
+		group.ProcessCount++
+		group.RSSBytes += action.RSSBytes
+	}
+	return groups
+}
+
 func (p4m *P4MonitorMetrics) buildOOMSlackMessage(kind string, actions []KillAction) string {
 	if len(actions) == 0 {
 		return ""
@@ -2302,6 +2364,9 @@ func (p4m *P4MonitorMetrics) buildOOMSlackMessage(kind string, actions []KillAct
 	}
 	msg := fmt.Sprintf("%s: %d candidates detected.\n", label, len(actions))
 	for _, action := range actions {
+		if isCumulativeOOMAction(action) {
+			continue
+		}
 		msg += fmt.Sprintf("• PID %d user=%s cmd=%s rss=%s pct=%.1f%% threshold=%s reason=%s\n",
 			action.Pid,
 			action.User,
@@ -2312,7 +2377,49 @@ func (p4m *P4MonitorMetrics) buildOOMSlackMessage(kind string, actions []KillAct
 			action.ReasonType,
 		)
 	}
+	for _, group := range groupOOMCandidates(actions) {
+		pids := make([]string, 0, len(group.PIDs))
+		for _, pid := range group.PIDs {
+			pids = append(pids, strconv.Itoa(pid))
+		}
+		msg += fmt.Sprintf("• user=%s processes=%d PIDs=%s candidate_rss=%s threshold=%s reason=%s",
+			group.User, group.ProcessCount, strings.Join(pids, ","), humanizeBytes(group.RSSBytes),
+			group.Threshold, group.Reason)
+		if counts := group.UserCommands; counts != nil {
+			states := make([]string, 0, len(counts.ByState))
+			for state := range counts.ByState {
+				states = append(states, state)
+			}
+			sort.Strings(states)
+			stateCounts := make([]string, 0, len(states))
+			for _, state := range states {
+				stateCounts = append(stateCounts, fmt.Sprintf("%s=%d", state, counts.ByState[state]))
+			}
+			msg += fmt.Sprintf("; user_commands=%d states=(%s) IDLE=%d",
+				counts.Total, strings.Join(stateCounts, ", "), counts.Idle)
+		}
+		msg += "\n"
+	}
 	return strings.TrimSpace(msg)
+}
+
+func (p4m *P4MonitorMetrics) oomNotificationCoolingDown(route, kind string, now time.Time) bool {
+	if p4m.config.Notifications.CooldownSeconds == 0 {
+		return false
+	}
+	last, sent := p4m.oomNotificationTimes[route+"/"+kind]
+	if sent && now.Sub(last).Seconds() < float64(p4m.config.Notifications.CooldownSeconds) {
+		p4m.logger.Debugf("OOM %s notification cooldown active for %s alert", route, kind)
+		return true
+	}
+	return false
+}
+
+func (p4m *P4MonitorMetrics) recordOOMNotification(route, kind string) {
+	if p4m.oomNotificationTimes == nil {
+		p4m.oomNotificationTimes = make(map[string]time.Time)
+	}
+	p4m.oomNotificationTimes[route+"/"+kind] = time.Now()
 }
 
 func (p4m *P4MonitorMetrics) sendOOMSlackNotification(kind string, actions []KillAction) {
@@ -2320,6 +2427,9 @@ func (p4m *P4MonitorMetrics) sendOOMSlackNotification(kind string, actions []Kil
 		return
 	}
 	if len(actions) == 0 {
+		return
+	}
+	if p4m.oomNotificationCoolingDown("slack", kind, time.Now()) {
 		return
 	}
 	msg := p4m.buildOOMSlackMessage(kind, actions)
@@ -2378,11 +2488,29 @@ func (p4m *P4MonitorMetrics) sendOOMSlackNotification(kind string, actions []Kil
 		p4m.logger.Warnf("OOM Slack notification failed with HTTP %d", resp.StatusCode)
 		return
 	}
+	if slackMode == "bot" {
+		var result struct {
+			OK    bool   `json:"ok"`
+			Error string `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			p4m.logger.Warnf("Failed to decode OOM Slack response: %v", err)
+			return
+		}
+		if !result.OK {
+			p4m.logger.Warnf("OOM Slack notification failed: %s", result.Error)
+			return
+		}
+	}
+	p4m.recordOOMNotification("slack", kind)
 	p4m.logger.Infof("OOM Slack notification sent for %s alert", kind)
 }
 
 func (p4m *P4MonitorMetrics) sendOOMVMAgentAlert(kind string, actions []KillAction) {
-	if p4m == nil || len(actions) == 0 || p4m.vmAlertURL == "" || p4m.vmAlertUsername == "" || p4m.vmAlertPassword == "" {
+	if p4m == nil || p4m.config == nil || len(actions) == 0 || p4m.vmAlertURL == "" || p4m.vmAlertUsername == "" || p4m.vmAlertPassword == "" {
+		return
+	}
+	if p4m.oomNotificationCoolingDown("vmagent", kind, time.Now()) {
 		return
 	}
 	type oomCandidate struct {
@@ -2407,19 +2535,21 @@ func (p4m *P4MonitorMetrics) sendOOMVMAgentAlert(kind string, actions []KillActi
 		})
 	}
 	payload := struct {
-		Event       string         `json:"event"`
-		Customer    string         `json:"customer"`
-		ServerID    string         `json:"serverid"`
-		SDPInstance string         `json:"sdp_instance,omitempty"`
-		Timestamp   string         `json:"timestamp"`
-		Candidates  []oomCandidate `json:"candidates"`
+		Event           string              `json:"event"`
+		Customer        string              `json:"customer"`
+		ServerID        string              `json:"serverid"`
+		SDPInstance     string              `json:"sdp_instance,omitempty"`
+		Timestamp       string              `json:"timestamp"`
+		Candidates      []oomCandidate      `json:"candidates"`
+		CandidateGroups []oomCandidateGroup `json:"candidate_groups,omitempty"`
 	}{
-		Event:       "oom_kill_candidate",
-		Customer:    p4m.vmAlertUsername,
-		ServerID:    p4m.serverID,
-		SDPInstance: p4m.sdpInstance,
-		Timestamp:   time.Now().UTC().Format(time.RFC3339),
-		Candidates:  candidates,
+		Event:           "oom_kill_candidate",
+		Customer:        p4m.vmAlertUsername,
+		ServerID:        p4m.serverID,
+		SDPInstance:     p4m.sdpInstance,
+		Timestamp:       time.Now().UTC().Format(time.RFC3339),
+		Candidates:      candidates,
+		CandidateGroups: groupOOMCandidates(actions),
 	}
 	if kind == "actual" {
 		payload.Event = "oom_kill"
@@ -2446,6 +2576,7 @@ func (p4m *P4MonitorMetrics) sendOOMVMAgentAlert(kind string, actions []KillActi
 		p4m.logger.Warnf("vmagent OOM alert push failed with HTTP %d", resp.StatusCode)
 		return
 	}
+	p4m.recordOOMNotification("vmagent", kind)
 	p4m.logger.Infof("Pushed %s OOM alert to vmagent endpoint", kind)
 }
 

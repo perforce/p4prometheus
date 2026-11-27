@@ -58,7 +58,8 @@ type SlackConfig struct {
 
 // NotificationConfig groups outbound notification integrations.
 type NotificationConfig struct {
-	Slack SlackConfig `yaml:"slack"`
+	CooldownSeconds int         `yaml:"cooldown_seconds"`
+	Slack           SlackConfig `yaml:"slack"`
 }
 
 // LicenseUpdates controls when the potentially expensive license -u command runs.
@@ -305,6 +306,7 @@ parse_journal:   true
 # notifications: Optional outbound alerts for OOM kill candidates and actual kills.
 # Set mode to "bot" to use chat.postMessage; otherwise use an incoming webhook.
 notifications:
+  cooldown_seconds: 300  # Per alert type and delivery route; 0 disables rate limiting.
   slack:
     enabled: false
     mode: "webhook"
@@ -391,6 +393,7 @@ func Unmarshal(config []byte) (*Config, error) {
 	cfg := &Config{
 		UpdateInterval: 60 * time.Second,
 		LicenseUpdates: LicenseUpdates{Mode: "every_update", StartWindow: 5 * time.Minute},
+		Notifications:  NotificationConfig{CooldownSeconds: 300},
 		MonitorSwarm:   false,
 		ParseJournal:   true,
 		SwarmSecure:    true}
@@ -522,6 +525,9 @@ func (c *Config) validate() error {
 			return fmt.Errorf("monitor_groups[%d]: failed to parse '%s' as a regex: %v", i, mg.Commands, err)
 		}
 		c.MonitorGroups[i].ReCommands = re
+	}
+	if c.Notifications.CooldownSeconds < 0 {
+		return fmt.Errorf("notifications.cooldown_seconds must be non-negative")
 	}
 	// Validate memlimits
 	if c.Notifications.Slack.Mode != "" {

@@ -762,6 +762,7 @@ EOF
 # notifications: Optional outbound alerts for OOM kill candidates and actual kills.
 # Set mode to "bot" to use chat.postMessage; otherwise use an incoming webhook.
 notifications:
+  cooldown_seconds: 300  # Per alert type and delivery route; 0 disables rate limiting.
   slack:
     enabled: false
     mode: "webhook"

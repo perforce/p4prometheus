@@ -181,6 +181,27 @@ func TestValidSlackNotificationsConfig(t *testing.T) {
 	}
 }
 
+func TestNotificationCooldownConfig(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		settings string
+		want     int
+	}{
+		{"omitted section", "", 300},
+		{"existing slack settings", "\nnotifications:\n  slack:\n    enabled: false\n", 300},
+		{"custom cooldown", "\nnotifications:\n  cooldown_seconds: 900\n", 900},
+		{"disabled cooldown", "\nnotifications:\n  cooldown_seconds: 0\n", 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := loadOrFail(t, defaultConfig+test.settings)
+			if cfg.Notifications.CooldownSeconds != test.want {
+				t.Fatalf("got cooldown %d, want %d", cfg.Notifications.CooldownSeconds, test.want)
+			}
+		})
+	}
+	ensureFail(t, defaultConfig+"\nnotifications:\n  cooldown_seconds: -1\n", "notifications.cooldown_seconds")
+}
+
 const configWithSlackNotificationEnvironment = `
 metrics_root: /hxlogs/metrics
 sdp_instance: 1

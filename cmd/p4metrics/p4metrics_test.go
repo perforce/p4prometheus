@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -233,19 +235,91 @@ func TestSendOOMVMAgentAlert(t *testing.T) {
 	p4m.vmAlertUsername = "customer"
 	p4m.vmAlertPassword = "secret"
 	p4m.serverID = "edge-1"
+	counts := &oomUserCommandCounts{Total: 7, ByState: map[string]int{"R": 2, "I": 3, "B": 1, "T": 1}, Idle: 3}
 	p4m.sendOOMVMAgentAlert("candidate", []KillAction{{
 		Pid: 1111, User: "alice", Cmd: "sync", RSSBytes: 2 * 1024 * 1024 * 1024,
 		MemPercentage: 51.2, ReasonType: "cmd_max_percentage", ThresholdValue: "50%",
+	}, {
+		Pid: 2222, User: "bob", Cmd: "IDLE", RSSBytes: 100,
+		ReasonType: "user_cumulative_max_percentage", ThresholdValue: "60%", UserCommands: counts,
+	}, {
+		Pid: 3333, User: "bob", Cmd: "IDLE", RSSBytes: 200,
+		ReasonType: "user_cumulative_max_percentage", ThresholdValue: "60%", UserCommands: counts,
 	}})
 
 	assert.Equal(t, "oom_kill_candidate", receivedAlert["event"])
 	assert.Equal(t, "customer", receivedAlert["customer"])
 	assert.Equal(t, "edge-1", receivedAlert["serverid"])
-	if assert.Len(t, receivedAlert["candidates"], 1) {
+	if assert.Len(t, receivedAlert["candidates"], 3) {
 		candidate := receivedAlert["candidates"].([]interface{})[0].(map[string]interface{})
 		assert.Equal(t, float64(1111), candidate["pid"])
 		assert.Equal(t, "alice", candidate["user"])
 		assert.Equal(t, "sync", candidate["command"])
+	}
+	if assert.Len(t, receivedAlert["candidate_groups"], 1) {
+		group := receivedAlert["candidate_groups"].([]interface{})[0].(map[string]interface{})
+		assert.Equal(t, "bob", group["user"])
+		assert.Equal(t, []interface{}{float64(2222), float64(3333)}, group["pids"])
+		assert.Equal(t, float64(2), group["process_count"])
+		assert.Equal(t, float64(300), group["rss_bytes"])
+		assert.Equal(t, "60%", group["threshold"])
+		userCommands := group["user_commands"].(map[string]interface{})
+		assert.Equal(t, float64(7), userCommands["total"])
+		assert.Equal(t, float64(3), userCommands["idle"])
+		assert.Equal(t, map[string]interface{}{"R": float64(2), "I": float64(3), "B": float64(1), "T": float64(1)}, userCommands["by_state"])
+	}
+}
+
+func TestOOMCumulativeSlackSummary(t *testing.T) {
+	cfg := config.Config{}
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+	counts := &oomUserCommandCounts{Total: 7, ByState: map[string]int{"T": 1, "R": 2, "I": 3, "B": 1}, Idle: 3}
+	actions := []KillAction{
+		{Pid: 11, User: "alice", Cmd: "IDLE", RSSBytes: 1024, ReasonType: "user_cumulative_max_percentage", ThresholdValue: "60%", UserCommands: counts},
+		{Pid: 22, User: "bob", Cmd: "sync", RSSBytes: 4096, ReasonType: "cmd_max_value", ThresholdValue: "2KiB"},
+		{Pid: 33, User: "alice", Cmd: "sync", RSSBytes: 2048, ReasonType: "user_cumulative_max_percentage", ThresholdValue: "60%", UserCommands: counts},
+		{Pid: 44, User: "carol", Cmd: "IDLE", RSSBytes: 1024, ReasonType: "user_cumulative_max_percentage", ThresholdValue: "70%"},
+		{Pid: 55, User: "alice", Cmd: "IDLE", RSSBytes: 1024, ReasonType: "user_cumulative_max_value", ThresholdValue: "2KiB", UserCommands: counts},
+	}
+	for _, kind := range []string{"candidate", "actual"} {
+		t.Run(kind, func(t *testing.T) {
+			msg := p4m.buildOOMSlackMessage(kind, actions)
+			assert.Contains(t, msg, "5 candidates detected.")
+			assert.Contains(t, msg, "user=alice processes=2 PIDs=11,33 candidate_rss=3.00 KB threshold=60% reason=user_cumulative_max_percentage; user_commands=7 states=(B=1, I=3, R=2, T=1) IDLE=3")
+			assert.Contains(t, msg, "PID 22 user=bob cmd=sync")
+			assert.Contains(t, msg, "user=carol processes=1 PIDs=44")
+			assert.Contains(t, msg, "user=alice processes=1 PIDs=55 candidate_rss=1.00 KB threshold=2KiB reason=user_cumulative_max_value")
+			assert.Equal(t, 5, len(strings.Split(msg, "\n")), "one header, one individual, and three grouped lines")
+		})
+	}
+}
+
+func TestOOMCandidateUserCommandCounts(t *testing.T) {
+	processes := []MonitorProcess{
+		{Pid: 1, State: "I", User: "alice", Cmd: "IDLE", TimeSeconds: 50},
+		{Pid: 2, State: "I", User: "alice", Cmd: "IDLE", TimeSeconds: 40},
+		{Pid: 3, State: "R", User: "alice", Cmd: "sync", TimeSeconds: 30},
+		{Pid: 4, State: "R", User: "alice", Cmd: "edit", TimeSeconds: 20},
+		{Pid: 5, State: "B", User: "alice", Cmd: "sync"},
+		{Pid: 6, State: "T", User: "alice", Cmd: "sync"},
+		{Pid: 7, State: "R", User: "bob", Cmd: "sync"},
+	}
+	limits := &config.MemLimits{
+		Enabled: true, ReCandidateCmds: regexp.MustCompile("^(IDLE|sync)$"),
+		Groups: []config.MemLimitGroup{{ReUsers: regexp.MustCompile(".*"), UserCumulativeMaxPercentageInt: 20}},
+	}
+	reader := &FakeMemReader{TotalMemory: 1000, RSSByPid: map[int]int64{1: 100, 2: 100, 3: 100, 4: 100, 6: 50, 7: 100}}
+	eval, err := evaluateMemLimits(processes, limits, reader, tlogger)
+	assert.NoError(t, err)
+	if !assert.Len(t, eval.KillCandidates, 2) {
+		return
+	}
+	for _, action := range eval.KillCandidates {
+		assert.Equal(t, "alice", action.User)
+		assert.Equal(t, &oomUserCommandCounts{
+			Total: 6, ByState: map[string]int{"I": 2, "R": 2, "B": 1, "T": 1}, Idle: 2,
+		}, action.UserCommands, "counts include non-candidates, excluded states and failed RSS reads, but not other users")
 	}
 }
 
@@ -253,6 +327,125 @@ func TestVMAgentAlertURLUsesDataPushGatewayPort(t *testing.T) {
 	assert.Equal(t,
 		"https://monitor.example.com:9092/alerts/",
 		strings.Replace("https://monitor.example.com:9093", ":9093", ":9092", 1)+"/alerts/")
+}
+
+func TestOOMNotificationCooldown(t *testing.T) {
+	for _, route := range []string{"slack", "vmagent"} {
+		t.Run(route, func(t *testing.T) {
+			var requests int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&requests, 1)
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+			cfg := config.Config{Notifications: config.NotificationConfig{
+				CooldownSeconds: 900,
+				Slack:           config.SlackConfig{Enabled: true, WebhookURL: server.URL},
+			}}
+			env := map[string]string{}
+			p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+			p4m.vmAlertURL, p4m.vmAlertUsername, p4m.vmAlertPassword = server.URL, "customer", "secret"
+			send := p4m.sendOOMSlackNotification
+			otherRoute := p4m.sendOOMVMAgentAlert
+			if route == "vmagent" {
+				send, otherRoute = otherRoute, send
+			}
+			actions := []KillAction{{Pid: 1111, User: "alice", MemPercentage: 61}}
+			send("candidate", nil)
+			assert.Equal(t, int32(0), atomic.LoadInt32(&requests))
+			send("candidate", actions)
+			assert.Equal(t, int32(1), atomic.LoadInt32(&requests))
+			last := p4m.oomNotificationTimes[route+"/candidate"]
+			assert.True(t, p4m.oomNotificationCoolingDown(route, "candidate", last.Add(900*time.Second-time.Nanosecond)))
+			assert.False(t, p4m.oomNotificationCoolingDown(route, "candidate", last.Add(900*time.Second)))
+			actions[0] = KillAction{Pid: 2222, User: "bob", MemPercentage: 75}
+			send("candidate", actions)
+			assert.Equal(t, int32(1), atomic.LoadInt32(&requests), "changed candidates must not bypass cooldown")
+			send("actual", actions)
+			send("actual", actions)
+			assert.Equal(t, int32(2), atomic.LoadInt32(&requests), "actual kills have their own cooldown")
+			otherRoute("candidate", actions)
+			assert.Equal(t, int32(3), atomic.LoadInt32(&requests), "routes have independent cooldowns")
+
+			// A custom 15-minute cooldown must still suppress after five minutes.
+			p4m.oomNotificationTimes[route+"/candidate"] = time.Now().Add(-6 * time.Minute)
+			send("candidate", actions)
+			assert.Equal(t, int32(3), atomic.LoadInt32(&requests))
+			p4m.oomNotificationTimes[route+"/candidate"] = time.Now().Add(-15 * time.Minute)
+			send("candidate", actions)
+			assert.Equal(t, int32(4), atomic.LoadInt32(&requests), "send again after cooldown")
+
+			cfg.Notifications.CooldownSeconds = 0
+			send("candidate", actions)
+			send("candidate", actions)
+			assert.Equal(t, int32(6), atomic.LoadInt32(&requests), "zero disables cooldown")
+		})
+	}
+}
+
+func TestOOMNotificationFailureDoesNotStartCooldown(t *testing.T) {
+	for _, route := range []string{"slack", "vmagent"} {
+		t.Run(route, func(t *testing.T) {
+			var requests int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if atomic.AddInt32(&requests, 1) == 1 {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+			cfg := config.Config{Notifications: config.NotificationConfig{
+				CooldownSeconds: 300,
+				Slack:           config.SlackConfig{Enabled: true, WebhookURL: server.URL},
+			}}
+			env := map[string]string{}
+			p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+			p4m.vmAlertURL, p4m.vmAlertUsername, p4m.vmAlertPassword = server.URL, "customer", "secret"
+			send := p4m.sendOOMSlackNotification
+			if route == "vmagent" {
+				send = p4m.sendOOMVMAgentAlert
+			}
+			actions := []KillAction{{Pid: 1111}}
+			send("candidate", actions)
+			send("candidate", actions)
+			send("candidate", actions)
+			assert.Equal(t, int32(2), atomic.LoadInt32(&requests), "retry after failure, suppress after success")
+		})
+	}
+}
+
+type oomSlackTestTransport func(*http.Request) (*http.Response, error)
+
+func (f oomSlackTestTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestOOMSlackBotCooldownRequiresSuccessfulAPIResponse(t *testing.T) {
+	transport := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = transport })
+	requests := 0
+	responses := []string{`{"ok":false,"error":"ratelimited"}`, `invalid JSON`, `{"ok":true}`}
+	http.DefaultTransport = oomSlackTestTransport(func(req *http.Request) (*http.Response, error) {
+		assert.Equal(t, "https://slack.com/api/chat.postMessage", req.URL.String())
+		body := responses[requests]
+		requests++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+		}, nil
+	})
+	cfg := config.Config{Notifications: config.NotificationConfig{
+		CooldownSeconds: 300,
+		Slack:           config.SlackConfig{Enabled: true, Mode: "bot", BotToken: "test-token", ChannelID: "test-channel"},
+	}}
+	env := map[string]string{}
+	p4m := newP4MonitorMetrics(&cfg, &env, tlogger)
+	for i := 0; i < 4; i++ {
+		p4m.sendOOMSlackNotification("candidate", []KillAction{{Pid: 1111}})
+	}
+	assert.Equal(t, 3, requests, "API errors must not start a cooldown; success must")
 }
 
 func TestP4MetricsLicense(t *testing.T) {

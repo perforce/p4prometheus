@@ -190,6 +190,48 @@ memlimits:
 - Individual kill failures are logged but don't stop processing
 - Only running processes (State='R') are evaluated
 
+### OOM Notification Rate Limiting
+
+```yaml
+notifications:
+  cooldown_seconds: 300
+  slack:
+    enabled: false
+    mode: webhook
+```
+
+`notifications.cooldown_seconds` defaults to `300` (five minutes), including
+for existing configurations that omit it. Set it to `0` to disable rate limiting;
+negative values are rejected.
+
+The first OOM alert is sent immediately. After a successful send, further alerts
+are suppressed during the cooldown even if PIDs, users, or memory usage change.
+Candidate and actual-kill alerts have separate cooldowns, as do direct Slack
+delivery (webhook or bot) and the vmagent alert gateway. Failed sends are logged
+and do not start a cooldown, allowing retries on the next monitoring update.
+After the cooldown, the next detected violation can send another alert.
+
+This limits notifications only: memory metrics and kill enforcement continue on
+every update. Cooldowns are kept in memory, survive SIGHUP configuration reloads,
+and reset when p4metrics restarts. Apply configuration changes with SIGHUP or
+`systemctl restart p4metrics`.
+
+Cumulative user-limit alerts group candidates by user, reason, and threshold,
+listing their process count and PIDs on one line. `candidate_rss` is the summed
+RSS of those candidates, not the user's total memory usage. Each summary also
+reports `user_commands` (all entries for that user in the current monitor
+snapshot), counts by every observed state (including idle `I` and `T`), and an
+`IDLE` command count. IDLE is a subset of the total, not an additional state.
+Counts include non-candidates and entries whose memory could not be read.
+Individual command-limit alerts retain their per-process format.
+
+Gateway JSON retains the existing `candidates` array and adds
+`candidate_groups` for cumulative limits. Each group contains `user`, `pids`,
+`process_count`, `rss_bytes`, `threshold`, `reason`, and `user_commands`
+(`total`, `by_state`, `idle`). The gateway's Slack renderer must consume these
+groups to display the compact format; direct Slack notifications use it
+automatically. Grouping does not change process selection or enforcement.
+
 ## Metrics
 
 p4metrics emits the following key metrics:
