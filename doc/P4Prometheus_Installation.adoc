@@ -1,7 +1,7 @@
 = Perforce P4Prometheus - Installation Guide
 Perforce Professional Services <consulting@perforce.com>
 :revnumber: v2026.1
-:revdate: 2026-09-15
+:revdate: 2026-11-27
 :doctype: book
 :icons: font
 :toc:
@@ -28,6 +28,9 @@ Install the following components for each role:
 |Helix Core server
 |link:../scripts/install_p4prom.sh[install_p4prom.sh]: node_exporter, p4prometheus, p4metrics, and lock-monitoring scripts.
 
+|Helix Proxy server
+|link:../scripts/install_p4proxyprom.sh[install_p4proxyprom.sh]: node_exporter and p4proxyprometheus for one proxy.
+
 |Other monitored server
 |link:../scripts/install_node.sh[install_node.sh]: node_exporter only, for example on Swarm, Hansoft, or Helix TeamHub hosts.
 |===
@@ -46,6 +49,9 @@ Use this table to confirm which services should be running (`systemctl status <s
 |Helix Core server
 |`node_exporter`, `p4prometheus`, `p4metrics`, `p4monitor_locks.timer` (which runs `p4monitor_locks.service`), and optionally `vmagent` (with `-push`)
 
+|Helix Proxy server
+|`node_exporter` and `p4proxyprometheus`
+
 |Other monitored server (Swarm, Hansoft, HTH, etc.)
 |`node_exporter` only
 |===
@@ -62,11 +68,21 @@ For a combined Helix Core + Swarm (or other monitored application) host:
 - Ensure the `node_exporter` `--collector.textfile.directories` value covers metrics written by any other locally-run application (this project only writes p4prometheus/p4metrics `.prom` files, so metrics from Swarm, etc. would require their own textfile-collector export mechanism configured separately).
 - Run `update_p4prom.sh` for upgrades on this host; do not additionally run `update_node.sh`.
 
+The proxy installer also installs and manages `node_exporter`; it refuses to
+overwrite an existing node_exporter or proxy service or binary. On a
+combined-role host with an existing node_exporter, configure
+`p4proxyprometheus` manually to write to its existing textfile directory
+instead. See link:../cmd/p4proxyprometheus/README.md[proxy collector instructions].
+
 == Automated Installation
 
 Run the relevant installer as `root`. Download the script from a checkout, or download its raw GitHub URL, make it executable, and review the available options before installing.
 
-`p4prom_common.sh` is a shared library required by all four install/update scripts (`install_prom_graf.sh`, `update_prom_graf.sh`, `install_p4prom.sh`, `update_p4prom.sh`). If missing, each script attempts to auto-download it from `master` on GitHub — but this will fail on a host with no internet access. Always download `p4prom_common.sh` into the same directory as whichever script you are running, especially for air-gapped installs (see <<air-gapped-installation>>).
+`p4prom_common.sh` is a shared library required by the monitoring-server,
+Helix Core, and proxy install/update scripts. The monitoring-server and Helix
+Core scripts attempt to download a missing library from GitHub; the proxy
+scripts require it to be present. Keep the library alongside the scripts,
+especially for air-gapped installs (see <<air-gapped-installation>>).
 
 For the monitoring server:
 
@@ -92,6 +108,43 @@ chmod +x install_p4prom.sh
 ----
 
 For a non-SDP server, use `./install_p4prom.sh -nosdp -h` to review the required connection and path options before installing.
+
+=== Helix Proxy Installation
+
+On a Linux host running systemd, download
+link:../scripts/install_p4proxyprom.sh[install_p4proxyprom.sh],
+link:../scripts/update_p4proxyprom.sh[update_p4proxyprom.sh], and
+link:../scripts/p4prom_common.sh[p4prom_common.sh] into the same directory.
+The installer supports one proxy per host. Use a release that includes the
+`p4proxyprometheus` assets, and replace the example version and log path:
+
+[source,bash]
+----
+VERSION=0.0.0 # replace with the release version, without the leading v
+sudo ./install_p4proxyprom.sh --version "$VERSION" --instance 1 \
+  --p4p-log /p4/1/logs/p4p.log -u perforce
+----
+
+The specified OS user must be able to read the proxy log and write the metrics
+directory. The installer writes `p4proxyprometheus.yaml` under
+`/etc/p4prometheus`, installs binaries under `/usr/local/bin`, and configures
+node_exporter to read `/var/metrics`. Use `-c`, `-b`, or `-m` to change those
+paths; custom binary and metrics directories must already exist and be writable.
+The proxy output is named `p4_proxy-<instance>.prom`. Edit the generated YAML
+as needed, then restart `p4proxyprometheus`.
+
+To update, use a release containing the proxy assets:
+
+[source,bash]
+----
+VERSION=0.0.0 # replace with the new release version
+sudo ./update_p4proxyprom.sh --version "$VERSION"
+----
+
+The updater preserves the YAML and systemd units. It reads paths from
+`/etc/p4prometheus/p4proxyprom_install.env`; if `-c` was used during
+installation, pass the same `-c` directory to the updater. Run either script
+with `--help` for all options.
 
 === Updating config files for new installation
 
@@ -141,6 +194,11 @@ Updates the monitoring components installed on a Helix Core server.
 include::../scripts/update_p4prom.sh[tags=includeManual]
 ----
 
+==== install_p4proxyprom.sh / update_p4proxyprom.sh
+
+Install or update the proxy collector and node_exporter. See
+<<_helix_proxy_installation>> for usage, paths, and update behavior.
+
 ==== install_node.sh
 
 Installs node_exporter on another monitored host, such as a Swarm, Hansoft, or Helix TeamHub server.
@@ -186,7 +244,7 @@ For very old installations where `update_p4prom.sh` was not downloaded, remove `
 
 == Enterprise Options
 
-All install and update scripts support a common set of options. Run the appropriate script with `-h` for the complete list.
+Options differ by installer and host role. Run the appropriate script with `-h` for the complete list.
 
 === Dedicated Data Volume
 
@@ -198,7 +256,7 @@ sudo ./install_prom_graf.sh -d /data
 sudo ./update_prom_graf.sh
 ----
 
-IMPORTANT: The `-d`, `-b`, and (for `install_p4prom.sh`) `-m` paths must already exist (e.g. a volume you have deliberately created or mounted) before running the installer. The scripts will fail with an error rather than create missing top-level paths automatically — this avoids silently writing data to the root filesystem if an intended dedicated volume failed to mount. Each path is also checked with a real test write, so a read-only mount is reported as an error. Paths left at their defaults (`/var/lib`, `/usr/local/bin`, `/hxlogs/metrics`) are not checked and are created if missing.
+IMPORTANT: Custom `-d`, `-b`, and (for the Helix Core and proxy installers) `-m` paths must already exist (e.g. a volume you have deliberately created or mounted) before running the installer. The scripts fail rather than create missing custom paths, avoiding silent writes to the root filesystem if a volume failed to mount. These paths are also checked with a real test write. For the proxy installer, the default metrics directory `/var/metrics` is created if missing, but the default binary directory `/usr/local/bin` must exist.
 
 The selected path is retained in `/etc/p4prometheus-monitoring/install.env`. To move an existing installation, use:
 
@@ -256,13 +314,20 @@ Download the required GitHub release assets on a connected machine, transfer the
 ----
 sudo ./install_prom_graf.sh -d /data --local-tarballs-dir /opt/installers
 sudo ./install_p4prom.sh --local-tarballs-dir /opt/installers
+sudo ./install_p4proxyprom.sh --version "$VERSION" --instance 1 \
+  --p4p-log /p4/1/logs/p4p.log --local-tarballs-dir /opt/installers
 ----
 
-`p4prom_common.sh` must be pre-staged alongside whichever script you are running on an air-gapped host — this applies to all four scripts (`install_prom_graf.sh`, `update_prom_graf.sh`, `install_p4prom.sh`, `update_p4prom.sh`), not just the Helix Core server ones. Each script attempts to auto-download it from GitHub if missing, which will fail with no network access.
+`p4prom_common.sh` must be pre-staged alongside the scripts on an air-gapped
+host. The proxy updater also requires `install_p4proxyprom.sh` alongside it.
+For the proxy scripts, stage `p4proxyprometheus.linux-<arch>.gz` from the
+selected project release and `node_exporter-1.12.1.linux-<arch>.tar.gz` from
+the node_exporter release, with `<arch>` set to `amd64` or `arm64`.
 
 === Install State and Fleet Configuration
 
 Monitoring-server scripts save state in `/etc/p4prometheus-monitoring/install.env`. Helix Core server scripts use `/p4/common/site/config/p4prom_install.env` with SDP, or `/etc/p4prometheus/p4prom_install.env` without it.
+The proxy installer stores its state in `/etc/p4prometheus/p4proxyprom_install.env` by default.
 
 For HMS fleets sharing `/p4/common`, create a hostname-specific configuration when required:
 
@@ -284,6 +349,15 @@ curl http://localhost:9100/metrics | grep p4_
 ----
 
 On the monitoring server, verify Prometheus targets and dashboards after running the relevant installer. See Troubleshooting section next for component-specific checks.
+
+On a proxy host, check the services and proxy metrics:
+
+[source,bash]
+----
+systemctl status p4proxyprometheus node_exporter
+journalctl -u p4proxyprometheus --no-pager
+curl -fsS http://localhost:9100/metrics | grep '^p4_proxy_'
+----
 
 === Troubleshooting
 

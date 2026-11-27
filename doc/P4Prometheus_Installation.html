@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="generator" content="Asciidoctor 2.0.20">
+<meta name="generator" content="Asciidoctor 2.0.22">
 <meta name="author" content="Perforce Professional Services">
 <title>Perforce P4Prometheus - Installation Guide</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,300italic,400,400italic,600,600italic%7CNoto+Serif:400,400italic,700,700italic%7CDroid+Sans+Mono:400,700">
@@ -141,7 +141,7 @@ p a>code:hover{color:rgba(0,0,0,.9)}
 #content::before{content:none}
 #header>h1:first-child{color:rgba(0,0,0,.85);margin-top:2.25rem;margin-bottom:0}
 #header>h1:first-child+#toc{margin-top:8px;border-top:1px solid #dddddf}
-#header>h1:only-child,body.toc2 #header>h1:nth-last-child(2){border-bottom:1px solid #dddddf;padding-bottom:8px}
+#header>h1:only-child{border-bottom:1px solid #dddddf;padding-bottom:8px}
 #header .details{border-bottom:1px solid #dddddf;line-height:1.45;padding-top:.25em;padding-bottom:.25em;padding-left:.25em;color:rgba(0,0,0,.6);display:flex;flex-flow:row wrap}
 #header .details span:first-child{margin-left:-.125em}
 #header .details span.email a{color:rgba(0,0,0,.85)}
@@ -163,6 +163,7 @@ p a>code:hover{color:rgba(0,0,0,.9)}
 #toctitle{color:#7a2518;font-size:1.2em}
 @media screen and (min-width:768px){#toctitle{font-size:1.375em}
 body.toc2{padding-left:15em;padding-right:0}
+body.toc2 #header>h1:nth-last-child(2){border-bottom:1px solid #dddddf;padding-bottom:8px}
 #toc.toc2{margin-top:0!important;background:#f8f8f7;position:fixed;width:15em;left:0;top:0;border-right:1px solid #e7e7e9;border-top-width:0!important;border-bottom-width:0!important;z-index:1000;padding:1.25em 1em;height:100%;overflow:auto}
 #toc.toc2 #toctitle{margin-top:0;margin-bottom:.8rem;font-size:1.2em}
 #toc.toc2>ul{font-size:.9em;margin-bottom:0}
@@ -328,7 +329,7 @@ a.image{text-decoration:none;display:inline-block}
 a.image object{pointer-events:none}
 sup.footnote,sup.footnoteref{font-size:.875em;position:static;vertical-align:super}
 sup.footnote a,sup.footnoteref a{text-decoration:none}
-sup.footnote a:active,sup.footnoteref a:active{text-decoration:underline}
+sup.footnote a:active,sup.footnoteref a:active,#footnotes .footnote a:first-of-type:active{text-decoration:underline}
 #footnotes{padding-top:.75em;padding-bottom:.75em;margin-bottom:.625em}
 #footnotes hr{width:20%;min-width:6.25em;margin:-.25em 0 .75em;border-width:1px 0 0}
 #footnotes .footnote{padding:0 .375em 0 .225em;line-height:1.3334;font-size:.875em;margin-left:1.2em;margin-bottom:.2em}
@@ -442,7 +443,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <span id="author" class="author">Perforce Professional Services</span><br>
 <span id="email" class="email"><a href="mailto:consulting@perforce.com">consulting@perforce.com</a></span><br>
 <span id="revnumber">version v2026.1,</span>
-<span id="revdate">2026-09-15</span>
+<span id="revdate">2026-11-27</span>
 </div>
 <div id="toc" class="toc">
 <div id="toctitle">Table of Contents</div>
@@ -456,19 +457,21 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 <li><a href="#_automated_installation">2. Automated Installation</a>
 <ul class="sectlevel2">
-<li><a href="#_updating_config_files_for_new_installation">2.1. Updating config files for new installation</a></li>
-<li><a href="#_script_reference">2.2. Script Reference</a>
+<li><a href="#_helix_proxy_installation">2.1. Helix Proxy Installation</a></li>
+<li><a href="#_updating_config_files_for_new_installation">2.2. Updating config files for new installation</a></li>
+<li><a href="#_script_reference">2.3. Script Reference</a>
 <ul class="sectlevel3">
-<li><a href="#_install_prom_graf_sh">2.2.1. install_prom_graf.sh</a></li>
-<li><a href="#_update_prom_graf_sh">2.2.2. update_prom_graf.sh</a></li>
-<li><a href="#_install_p4prom_sh">2.2.3. install_p4prom.sh</a></li>
-<li><a href="#_update_p4prom_sh">2.2.4. update_p4prom.sh</a></li>
-<li><a href="#_install_node_sh">2.2.5. install_node.sh</a></li>
-<li><a href="#_install_lslocks_sh">2.2.6. install_lslocks.sh</a></li>
-<li><a href="#_migrate_prom_graf_data_sh">2.2.7. migrate_prom_graf_data.sh</a></li>
+<li><a href="#_install_prom_graf_sh">2.3.1. install_prom_graf.sh</a></li>
+<li><a href="#_update_prom_graf_sh">2.3.2. update_prom_graf.sh</a></li>
+<li><a href="#_install_p4prom_sh">2.3.3. install_p4prom.sh</a></li>
+<li><a href="#_update_p4prom_sh">2.3.4. update_p4prom.sh</a></li>
+<li><a href="#_install_p4proxyprom_sh_update_p4proxyprom_sh">2.3.5. install_p4proxyprom.sh / update_p4proxyprom.sh</a></li>
+<li><a href="#_install_node_sh">2.3.6. install_node.sh</a></li>
+<li><a href="#_install_lslocks_sh">2.3.7. install_lslocks.sh</a></li>
+<li><a href="#_migrate_prom_graf_data_sh">2.3.8. migrate_prom_graf_data.sh</a></li>
 </ul>
 </li>
-<li><a href="#_upgrades">2.3. Upgrades</a></li>
+<li><a href="#_upgrades">2.4. Upgrades</a></li>
 </ul>
 </li>
 <li><a href="#_enterprise_options">3. Enterprise Options</a>
@@ -595,6 +598,10 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <td class="tableblock halign-left valign-top"><p class="tableblock"><a href="../scripts/install_p4prom.sh">install_p4prom.sh</a>: node_exporter, p4prometheus, p4metrics, and lock-monitoring scripts.</p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Helix Proxy server</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="../scripts/install_p4proxyprom.sh">install_p4proxyprom.sh</a>: node_exporter and p4proxyprometheus for one proxy.</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Other monitored server</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><a href="../scripts/install_node.sh">install_node.sh</a>: node_exporter only, for example on Swarm, Hansoft, or Helix TeamHub hosts.</p></td>
 </tr>
@@ -624,6 +631,10 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Helix Core server</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>node_exporter</code>, <code>p4prometheus</code>, <code>p4metrics</code>, <code>p4monitor_locks.timer</code> (which runs <code>p4monitor_locks.service</code>), and optionally <code>vmagent</code> (with <code>-push</code>)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Helix Proxy server</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>node_exporter</code> and <code>p4proxyprometheus</code></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Other monitored server (Swarm, Hansoft, HTH, etc.)</p></td>
@@ -665,6 +676,13 @@ Only <code>node_exporter</code> runs on "other monitored server" hosts; there is
 </li>
 </ul>
 </div>
+<div class="paragraph">
+<p>The proxy installer also installs and manages <code>node_exporter</code>; it refuses to
+overwrite an existing node_exporter or proxy service or binary. On a
+combined-role host with an existing node_exporter, configure
+<code>p4proxyprometheus</code> manually to write to its existing textfile directory
+instead. See <a href="../cmd/p4proxyprometheus/README.md">proxy collector instructions</a>.</p>
+</div>
 </div>
 </div>
 </div>
@@ -675,7 +693,11 @@ Only <code>node_exporter</code> runs on "other monitored server" hosts; there is
 <p>Run the relevant installer as <code>root</code>. Download the script from a checkout, or download its raw GitHub URL, make it executable, and review the available options before installing.</p>
 </div>
 <div class="paragraph">
-<p><code>p4prom_common.sh</code> is a shared library required by all four install/update scripts (<code>install_prom_graf.sh</code>, <code>update_prom_graf.sh</code>, <code>install_p4prom.sh</code>, <code>update_p4prom.sh</code>). If missing, each script attempts to auto-download it from <code>master</code> on GitHub — but this will fail on a host with no internet access. Always download <code>p4prom_common.sh</code> into the same directory as whichever script you are running, especially for air-gapped installs (see <a href="#air-gapped-installation">Section 3.3, &#8220;Air-Gapped Installation&#8221;</a>).</p>
+<p><code>p4prom_common.sh</code> is a shared library required by the monitoring-server,
+Helix Core, and proxy install/update scripts. The monitoring-server and Helix
+Core scripts attempt to download a missing library from GitHub; the proxy
+scripts require it to be present. Keep the library alongside the scripts,
+especially for air-gapped installs (see <a href="#air-gapped-installation">Section 3.3, &#8220;Air-Gapped Installation&#8221;</a>).</p>
 </div>
 <div class="paragraph">
 <p>For the monitoring server:</p>
@@ -706,7 +728,49 @@ chmod +x install_p4prom.sh
 <p>For a non-SDP server, use <code>./install_p4prom.sh -nosdp -h</code> to review the required connection and path options before installing.</p>
 </div>
 <div class="sect2">
-<h3 id="_updating_config_files_for_new_installation">2.1. Updating config files for new installation</h3>
+<h3 id="_helix_proxy_installation">2.1. Helix Proxy Installation</h3>
+<div class="paragraph">
+<p>On a Linux host running systemd, download
+<a href="../scripts/install_p4proxyprom.sh">install_p4proxyprom.sh</a>,
+<a href="../scripts/update_p4proxyprom.sh">update_p4proxyprom.sh</a>, and
+<a href="../scripts/p4prom_common.sh">p4prom_common.sh</a> into the same directory.
+The installer supports one proxy per host. Use a release that includes the
+<code>p4proxyprometheus</code> assets, and replace the example version and log path:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-bash" data-lang="bash">VERSION=0.0.0 # replace with the release version, without the leading v
+sudo ./install_p4proxyprom.sh --version "$VERSION" --instance 1 \
+  --p4p-log /p4/1/logs/p4p.log -u perforce</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The specified OS user must be able to read the proxy log and write the metrics
+directory. The installer writes <code>p4proxyprometheus.yaml</code> under
+<code>/etc/p4prometheus</code>, installs binaries under <code>/usr/local/bin</code>, and configures
+node_exporter to read <code>/var/metrics</code>. Use <code>-c</code>, <code>-b</code>, or <code>-m</code> to change those
+paths; custom binary and metrics directories must already exist and be writable.
+The proxy output is named <code>p4_proxy-&lt;instance&gt;.prom</code>. Edit the generated YAML
+as needed, then restart <code>p4proxyprometheus</code>.</p>
+</div>
+<div class="paragraph">
+<p>To update, use a release containing the proxy assets:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-bash" data-lang="bash">VERSION=0.0.0 # replace with the new release version
+sudo ./update_p4proxyprom.sh --version "$VERSION"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The updater preserves the YAML and systemd units. It reads paths from
+<code>/etc/p4prometheus/p4proxyprom_install.env</code>; if <code>-c</code> was used during
+installation, pass the same <code>-c</code> directory to the updater. Run either script
+with <code>--help</code> for all options.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_updating_config_files_for_new_installation">2.2. Updating config files for new installation</h3>
 <div class="paragraph">
 <p>The following files will typically need to be updated for your environment:</p>
 </div>
@@ -715,9 +779,9 @@ chmod +x install_p4prom.sh
 </div>
 </div>
 <div class="sect2">
-<h3 id="_script_reference">2.2. Script Reference</h3>
+<h3 id="_script_reference">2.3. Script Reference</h3>
 <div class="sect3">
-<h4 id="_install_prom_graf_sh">2.2.1. install_prom_graf.sh</h4>
+<h4 id="_install_prom_graf_sh">2.3.1. install_prom_graf.sh</h4>
 <div class="paragraph">
 <p>This section provides a reference for the <code>install_prom_graf.sh</code> script, including usage and available options.</p>
 </div>
@@ -767,7 +831,7 @@ Example:
 </div>
 </div>
 <div class="sect3">
-<h4 id="_update_prom_graf_sh">2.2.2. update_prom_graf.sh</h4>
+<h4 id="_update_prom_graf_sh">2.3.2. update_prom_graf.sh</h4>
 <div class="paragraph">
 <p>Updates the monitoring server while preserving paths and options stored by <code>install_prom_graf.sh</code>.</p>
 </div>
@@ -801,7 +865,7 @@ Note: If /etc/p4prometheus-monitoring/install.env exists from a prior
 </div>
 </div>
 <div class="sect3">
-<h4 id="_install_p4prom_sh">2.2.3. install_p4prom.sh</h4>
+<h4 id="_install_p4prom_sh">2.3.3. install_p4prom.sh</h4>
 <div class="paragraph">
 <p>Installs node_exporter, p4prometheus, p4metrics, and lock monitoring on a Helix Core server.</p>
 </div>
@@ -846,7 +910,7 @@ Examples:
 </div>
 </div>
 <div class="sect3">
-<h4 id="_update_p4prom_sh">2.2.4. update_p4prom.sh</h4>
+<h4 id="_update_p4prom_sh">2.3.4. update_p4prom.sh</h4>
 <div class="paragraph">
 <p>Updates the monitoring components installed on a Helix Core server.</p>
 </div>
@@ -893,7 +957,14 @@ Examples:
 </div>
 </div>
 <div class="sect3">
-<h4 id="_install_node_sh">2.2.5. install_node.sh</h4>
+<h4 id="_install_p4proxyprom_sh_update_p4proxyprom_sh">2.3.5. install_p4proxyprom.sh / update_p4proxyprom.sh</h4>
+<div class="paragraph">
+<p>Install or update the proxy collector and node_exporter. See
+<a href="#_helix_proxy_installation">Section 2.1, &#8220;Helix Proxy Installation&#8221;</a> for usage, paths, and update behavior.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_install_node_sh">2.3.6. install_node.sh</h4>
 <div class="paragraph">
 <p>Installs node_exporter on another monitored host, such as a Swarm, Hansoft, or Helix TeamHub server.</p>
 </div>
@@ -924,7 +995,7 @@ Examples:
 </div>
 </div>
 <div class="sect3">
-<h4 id="_install_lslocks_sh">2.2.6. install_lslocks.sh</h4>
+<h4 id="_install_lslocks_sh">2.3.7. install_lslocks.sh</h4>
 <div class="paragraph">
 <p>Installs lock monitoring only, without the full Helix Core monitoring stack.</p>
 </div>
@@ -960,7 +1031,7 @@ Examples:
 </div>
 </div>
 <div class="sect3">
-<h4 id="_migrate_prom_graf_data_sh">2.2.7. migrate_prom_graf_data.sh</h4>
+<h4 id="_migrate_prom_graf_data_sh">2.3.8. migrate_prom_graf_data.sh</h4>
 <div class="paragraph">
 <p>Moves existing monitoring-server data to a different base directory without a full reinstall.</p>
 </div>
@@ -1002,7 +1073,7 @@ Examples:
 </div>
 </div>
 <div class="sect2">
-<h3 id="_upgrades">2.3. Upgrades</h3>
+<h3 id="_upgrades">2.4. Upgrades</h3>
 <div class="paragraph">
 <p>In an SDP environment, run the update checker as the <code>perforce</code> user:</p>
 </div>
@@ -1023,7 +1094,7 @@ sudo ./update_p4prom.sh 1</code></pre>
 <h2 id="_enterprise_options">3. Enterprise Options</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>All install and update scripts support a common set of options. Run the appropriate script with <code>-h</code> for the complete list.</p>
+<p>Options differ by installer and host role. Run the appropriate script with <code>-h</code> for the complete list.</p>
 </div>
 <div class="sect2">
 <h3 id="_dedicated_data_volume">3.1. Dedicated Data Volume</h3>
@@ -1043,7 +1114,7 @@ sudo ./update_prom_graf.sh</code></pre>
 <i class="fa icon-important" title="Important"></i>
 </td>
 <td class="content">
-The <code>-d</code>, <code>-b</code>, and (for <code>install_p4prom.sh</code>) <code>-m</code> paths must already exist (e.g. a volume you have deliberately created or mounted) before running the installer. The scripts will fail with an error rather than create missing top-level paths automatically — this avoids silently writing data to the root filesystem if an intended dedicated volume failed to mount. Each path is also checked with a real test write, so a read-only mount is reported as an error. Paths left at their defaults (<code>/var/lib</code>, <code>/usr/local/bin</code>, <code>/hxlogs/metrics</code>) are not checked and are created if missing.
+Custom <code>-d</code>, <code>-b</code>, and (for the Helix Core and proxy installers) <code>-m</code> paths must already exist (e.g. a volume you have deliberately created or mounted) before running the installer. The scripts fail rather than create missing custom paths, avoiding silent writes to the root filesystem if a volume failed to mount. These paths are also checked with a real test write. For the proxy installer, the default metrics directory <code>/var/metrics</code> is created if missing, but the default binary directory <code>/usr/local/bin</code> must exist.
 </td>
 </tr>
 </table>
@@ -1123,17 +1194,24 @@ sudo ./install_prom_graf.sh -target myp4server:9100 -target replica1:9100</code>
 <div class="listingblock">
 <div class="content">
 <pre class="highlight"><code class="language-bash" data-lang="bash">sudo ./install_prom_graf.sh -d /data --local-tarballs-dir /opt/installers
-sudo ./install_p4prom.sh --local-tarballs-dir /opt/installers</code></pre>
+sudo ./install_p4prom.sh --local-tarballs-dir /opt/installers
+sudo ./install_p4proxyprom.sh --version "$VERSION" --instance 1 \
+  --p4p-log /p4/1/logs/p4p.log --local-tarballs-dir /opt/installers</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p><code>p4prom_common.sh</code> must be pre-staged alongside whichever script you are running on an air-gapped host — this applies to all four scripts (<code>install_prom_graf.sh</code>, <code>update_prom_graf.sh</code>, <code>install_p4prom.sh</code>, <code>update_p4prom.sh</code>), not just the Helix Core server ones. Each script attempts to auto-download it from GitHub if missing, which will fail with no network access.</p>
+<p><code>p4prom_common.sh</code> must be pre-staged alongside the scripts on an air-gapped
+host. The proxy updater also requires <code>install_p4proxyprom.sh</code> alongside it.
+For the proxy scripts, stage <code>p4proxyprometheus.linux-&lt;arch&gt;.gz</code> from the
+selected project release and <code>node_exporter-1.12.1.linux-&lt;arch&gt;.tar.gz</code> from
+the node_exporter release, with <code>&lt;arch&gt;</code> set to <code>amd64</code> or <code>arm64</code>.</p>
 </div>
 </div>
 <div class="sect2">
 <h3 id="_install_state_and_fleet_configuration">3.4. Install State and Fleet Configuration</h3>
 <div class="paragraph">
-<p>Monitoring-server scripts save state in <code>/etc/p4prometheus-monitoring/install.env</code>. Helix Core server scripts use <code>/p4/common/site/config/p4prom_install.env</code> with SDP, or <code>/etc/p4prometheus/p4prom_install.env</code> without it.</p>
+<p>Monitoring-server scripts save state in <code>/etc/p4prometheus-monitoring/install.env</code>. Helix Core server scripts use <code>/p4/common/site/config/p4prom_install.env</code> with SDP, or <code>/etc/p4prometheus/p4prom_install.env</code> without it.
+The proxy installer stores its state in <code>/etc/p4prometheus/p4proxyprom_install.env</code> by default.</p>
 </div>
 <div class="paragraph">
 <p>For HMS fleets sharing <code>/p4/common</code>, create a hostname-specific configuration when required:</p>
@@ -1162,6 +1240,16 @@ curl http://localhost:9100/metrics | grep p4_</code></pre>
 </div>
 <div class="paragraph">
 <p>On the monitoring server, verify Prometheus targets and dashboards after running the relevant installer. See Troubleshooting section next for component-specific checks.</p>
+</div>
+<div class="paragraph">
+<p>On a proxy host, check the services and proxy metrics:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-bash" data-lang="bash">systemctl status p4proxyprometheus node_exporter
+journalctl -u p4proxyprometheus --no-pager
+curl -fsS http://localhost:9100/metrics | grep '^p4_proxy_'</code></pre>
+</div>
 </div>
 <div class="sect2">
 <h3 id="_troubleshooting">4.1. Troubleshooting</h3>
@@ -2572,7 +2660,7 @@ Checking perforce_rules.yml
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-10-16 08:28:02 -0400
+Last updated 2026-11-27 16:02:44 UTC
 </div>
 </div>
 </body>

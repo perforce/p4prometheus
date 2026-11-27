@@ -8,9 +8,10 @@ The project includes:
 
 - `p4prometheus` for continuous p4d log parsing.
 - [`p4metrics`](cmd/p4metrics/README.md) for supplementary Helix Core and SDP metrics.
+- [`p4proxyprometheus`](cmd/p4proxyprometheus/README.md) for Helix Proxy log metrics.
 - `monitor_locks.py` for Linux lock monitoring.
 - `p4logtail` and `p4plogtail` for completed-command JSON output.
-- Automated installation and upgrade scripts for monitoring servers, Helix Core servers, and node-exporter-only hosts.
+- Automated installation and upgrade scripts for monitoring servers, Helix Core servers, Helix Proxy servers, and node-exporter-only hosts.
 
 ## Documentation
 

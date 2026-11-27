@@ -12,7 +12,16 @@ LDFLAGS=-ldflags "-w -s -X ${MODULE}/version.Version=${VERSION} -X ${MODULE}/ver
 build:
 	go build ${LDFLAGS}
 
+dist:
+	mkdir -p bin
+	GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}.linux-amd64 .
+	GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o bin/${BINARY}.linux-arm64 .
+	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}.darwin-amd64 .
+	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o bin/${BINARY}.darwin-arm64 .
+	GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o bin/${BINARY}.windows-amd64.exe .
+	gzip -f bin/${BINARY}.linux-amd64 bin/${BINARY}.linux-arm64 bin/${BINARY}.darwin-amd64 bin/${BINARY}.darwin-arm64 bin/${BINARY}.windows-amd64.exe
+
 test:
 	go test ./...
 
-.PHONY: build test
+.PHONY: build dist test

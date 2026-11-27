@@ -7,7 +7,7 @@ usage() {
     cat <<'EOF'
 Usage: draft_github_release.sh <tag> [--dry-run] [--skip-build]
 
-Builds the p4prometheus, p4metrics, p4logtail, and p4plogtail distribution
+Builds the p4prometheus, p4metrics, p4logtail, p4plogtail, and p4proxyprometheus distribution
 binaries for the supplied release tag, then creates a GitHub draft release and
 uploads the assets.
 
@@ -83,6 +83,7 @@ if [[ "$skip_build" == false ]]; then
     make -C cmd/p4metrics VERSION="$tag" dist
     make -C cmd/p4logtail VERSION="$tag" dist
     make -C cmd/p4plogtail VERSION="$tag" dist
+    make -C cmd/p4proxyprometheus VERSION="$tag" dist
 fi
 
 assets=(
@@ -106,6 +107,11 @@ assets=(
     cmd/p4plogtail/bin/p4plogtail.windows-amd64.exe.gz
     cmd/p4plogtail/bin/p4plogtail.darwin-amd64.gz
     cmd/p4plogtail/bin/p4plogtail.darwin-arm64.gz
+    cmd/p4proxyprometheus/bin/p4proxyprometheus.linux-amd64.gz
+    cmd/p4proxyprometheus/bin/p4proxyprometheus.linux-arm64.gz
+    cmd/p4proxyprometheus/bin/p4proxyprometheus.windows-amd64.exe.gz
+    cmd/p4proxyprometheus/bin/p4proxyprometheus.darwin-amd64.gz
+    cmd/p4proxyprometheus/bin/p4proxyprometheus.darwin-arm64.gz
 )
 
 for asset in "${assets[@]}"; do

@@ -1,7 +1,7 @@
 = Perforce P4 Runbook - Alert Handling Procedures
 Perforce Professional Services <consulting@perforce.com>
 :revnumber: v2026.1
-:revdate: 2026-06-22
+:revdate: 2026-11-27
 :doctype: book
 :icons: font
 :toc:

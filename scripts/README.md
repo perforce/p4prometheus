@@ -13,6 +13,7 @@ Use the installer that matches the host role:
 | --- | --- | --- |
 | Monitoring server | `install_prom_graf.sh` | Prometheus, VictoriaMetrics, Grafana, Alertmanager, node_exporter, optional Pushgateway and Pint |
 | Helix Core server | `install_p4prom.sh` | p4prometheus, p4metrics, lock monitor, node_exporter |
+| Helix Proxy server | `install_p4proxyprom.sh` | p4proxyprometheus, node_exporter |
 | Other monitored host | `install_node.sh` | node_exporter |
 
 For an SDP Helix Core server with instance `1`:
@@ -41,6 +42,7 @@ them through `sudo`.
 | `migrate_prom_graf_data.sh` | Move monitoring-server runtime data to a different base path. Start with `--dry-run`. |
 | `install_p4prom.sh` | Install all Helix Core host monitoring components. |
 | `update_p4prom.sh` | Update Helix Core host monitoring components and refresh their systemd units. |
+| `install_p4proxyprom.sh` / `update_p4proxyprom.sh` | Install or update a single proxy collector and node_exporter; see [proxy instructions](../cmd/p4proxyprometheus/README.md). |
 | `install_node.sh` / `update_node.sh` | Install or update node_exporter on a non-Helix-Core host. |
 | `install_lslocks.sh` | Install only lock monitoring for legacy or limited deployments. |
 | `check_for_updates.sh` | Download current scripts into the installed script directory. It updates and re-executes itself first. |

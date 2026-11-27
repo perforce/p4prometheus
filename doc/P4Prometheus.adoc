@@ -1,7 +1,7 @@
 = Perforce P4Prometheus - Overview
 Perforce Professional Services <consulting@perforce.com>
 :revnumber: v2026.1
-:revdate: 2026-09-15
+:revdate: 2026-11-27
 :doctype: book
 :icons: font
 :toc:
