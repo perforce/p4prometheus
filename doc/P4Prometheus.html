@@ -461,6 +461,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </ul>
 </li>
 <li><a href="#_related_tools">6. Related Tools</a></li>
+<li><a href="#_metrics_details">7. Metrics Details</a></li>
 </ul>
 </div>
 </div>
@@ -685,7 +686,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <tbody>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Process monitoring</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_monitor_by_cmd</code>, <code>p4_monitor_by_state</code>, <code>p4_monitor_by_user</code>, <code>p4_monitor_max_cmd_time</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_monitor_by_cmd</code>, <code>p4_monitor_by_prog</code>, <code>p4_monitor_by_state</code>, <code>p4_monitor_by_user</code>, <code>p4_monitor_max_cmd_time</code></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Memory and limits</p></td>
@@ -709,6 +710,11 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </tr>
 </tbody>
 </table>
+<div class="paragraph">
+<p><code>p4_monitor_by_prog{prog}</code> counts monitor-table entries by client program. The
+text " (brokered)" is removed from program names. It is enabled by default;
+set <code>cmds_by_prog: false</code> in the p4metrics configuration to disable it.</p>
+</div>
 </div>
 <div class="sect2">
 <h3 id="_lock_metrics">5.3. Lock Metrics</h3>
@@ -758,11 +764,753 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </div>
 </div>
 </div>
+<div class="sect1">
+<h2 id="_metrics_details">7. Metrics Details</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The following table lists the HELP text for metrics emitted by the collectors,
+sorted by metric name. Metrics are conditional on the relevant collector,
+configuration option, or P4D capability being enabled. P4D realtime metric
+names are generated from keys returned by <code>p4d --show-realtime</code>; the
+<code>p4_rtv_&lt;field&gt;</code> row documents their common HELP format.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 75%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Metric</th>
+<th class="tableblock halign-left valign-top">HELP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_active_memory_by_cmd</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Active memory in bytes used by monitor processes running cmd (all states)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_active_memory_by_user</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Active memory in bytes used by monitor processes running as user (all states)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_auth_ssl_cert_expires</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D Auth SSL certificate expiry epoch seconds</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_auth_version</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 Auth Svc version string</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_change_counter</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D change counter</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_counter</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A count of completed p4 cmds (by cmd)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_cpu_system_cumulative_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total in system CPU seconds (by cmd)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_cpu_user_cumulative_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total in user CPU seconds (by cmd)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_cumulative_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total in seconds (by cmd)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_error_counter</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A count of cmd errors (by cmd)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_ip_counter</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A count of completed p4 cmds (by IP)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_ip_cumulative_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total in seconds (by IP)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_mem_mb</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total of cmd memory usage (in MB)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_mem_peak_mb</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The peak total of cmd memory usage (in MB)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_program_counter</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A count of completed p4 cmds (by program)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_program_cumulative_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total in seconds (by program)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_replica_counter</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A count of completed p4 cmds (by broker/replica/proxy)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_replica_cumulative_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total in seconds (by broker/replica/proxy)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_running</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of running commands at any one time (deprecated use p4_cmds_running instead)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_user_counter</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A count of completed p4 cmds (by user)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_user_cumulative_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total in seconds (by user)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_user_detail_counter</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A count of completed p4 cmds (by user and cmd)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_user_detail_cumulative_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total in seconds (by user and cmd)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmds_fatal_errors</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of commands exited with server fatal error</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmds_paused</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of (resource pressure) paused commands at any one time</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmds_paused_cumulative</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Total time of commands paused due to resource pressure (seconds)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmds_paused_max</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The max number of (resource pressure) paused commands since last metric</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmds_running</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of running commands at any one time</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmds_running_max</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The max number of running commands at any one time since last metric</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_errors_count</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D error count by subsystem and level</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_filesys_min</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Minimum space for filesystem</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_journal_records_count</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4JOURNAL record count by table and action (rv/pv/dv)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_journal_size</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Size of P4JOURNAL in bytes</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_journals_rotated</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count of rotations of P4JOURNAL by p4metrics</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_binary_checkins</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Binary Checkins for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_binary_closes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Binary closes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_binary_copies</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Binary Copies for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_binary_digests</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Binary Digests for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_binary_exists</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Binary exists for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_binary_filesizes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Binary FileSizes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_binary_modtimes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Binary ModTimes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_binary_opens</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Binary opens for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_binary_readbytes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Binary ReadBytes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_binary_reads</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Binary Reads for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_binary_writebytes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Binary WriteBytes updated in workspaces by syncs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_binary_writes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Binary Writes updated in workspaces by syncs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_compress_checkins</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Compress Checkins for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_compress_closes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Compress Closes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_compress_copies</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Compress Copies for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_compress_digests</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Compress Digests for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_compress_exists</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Compress Exists for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_compress_filesizes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Compress FileSizes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_compress_modtimes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Compress ModTimes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_compress_opens</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Compress Opens for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_compress_readbytes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Compress ReadBytes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_compress_reads</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Compress Reads for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_compress_writebytes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Compress WriteBytes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_compress_writes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Compress Writes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_rcs_checkins</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Rcs Checkins for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_rcs_closes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Rcs closes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_rcs_copies</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Rcs Copies for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_rcs_digests</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Rcs Digests for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_rcs_exists</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Rcs exists for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_rcs_filesizes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Rcs FileSizes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_rcs_modtimes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Rcs ModTimes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_rcs_opens</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Rcs opens for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_rcs_readbytes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Rcs ReadBytes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_rcs_reads</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Rcs Reads for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_rcs_writebytes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Rcs WriteBytes updated in workspaces by syncs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_rcs_writes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Rcs Writes updated in workspaces by syncs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_uncompress_checkins</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Uncompress Checkins for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_uncompress_closes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Uncompress Closes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_uncompress_copies</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Uncompress Copies for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_uncompress_digests</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Uncompress Digests for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_uncompress_exists</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Uncompress Exists for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_uncompress_filesizes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Uncompress FileSizes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_uncompress_modtimes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Uncompress ModTimes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_uncompress_opens</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Uncompress Opens for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_uncompress_readbytes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Uncompress ReadBytes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_uncompress_reads</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Uncompress Reads for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_uncompress_writebytes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Uncompress WriteBytes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_lbr_uncompress_writes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of Lbr Uncompress Writes for commands</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_license_IP</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D Licensed IP</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_license_expires</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D License expiry (epoch secs)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_license_info</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D License info</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_license_last_success_timestamp_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Last successful P4D license collection (epoch secs), or 0 if never collected</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_license_support_expires</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D License support expiry (epoch secs)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_license_time_remaining</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D License time remaining (secs)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_licensed_user_count</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D Licensed User count</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_licensed_user_limit</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D Licensed User Limit</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_locks_cliententity_read</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">clientEntity read locks</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_locks_cliententity_write</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">clientEntity write locks</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_locks_cmds_blocked</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">cmds blocked by locks</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_locks_db_read</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Database read locks</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_locks_db_write</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Database write locks</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_locks_meta_read</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">meta db read locks</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_locks_meta_write</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">meta db write locks</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_log_size</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Size of P4LOG in bytes</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_login_error</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 monitoring login error</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_logs_file_count</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count of files in SDP logs directory</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_logs_rotated</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count of rotations of P4LOG by p4metrics</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_memlimit_kill_candidates</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Number of processes exceeding memory limits</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_memlimit_kills_total</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Total number of processes killed by memlimit enforcement</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_monitor_by_cmd</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 running processes by cmd in monitor table</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_monitor_by_prog</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 processes by program in monitor table</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_monitor_by_state</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 running processes by state in monitor table</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_monitor_by_user</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 running processes by user in monitor table</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_monitor_cmds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 running processes count grouped by command patterns</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_monitor_cmds_max_runtime</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 running processes max runtime (seconds) grouped by command patterns</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_monitor_cmds_runtime</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 running processes total runtime (seconds) grouped by command patterns</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_monitor_max_cmd_time</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 monitor max (non-svc) command run time</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_monitoring_up</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 monitoring initialised and working</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_p4d_build_info</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D Version/build info</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_p4d_server_type</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D server type/services</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_p4metrics_version</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4Metrics version</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_pause_rate_cpu</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The (resource pressure) pause rate for CPU</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_pause_rate_mem</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The (resource pressure) pause rate for Mem</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_pause_state_cpu</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The (resource pressure) pause state for CPU (0-2)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_pause_state_mem</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The (resource pressure) pause state for Mem (0-2)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_processes_count</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 count of running processes (via ps)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_prom_build_info</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Build info for p4prometheus</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_prom_cmds_pending</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A count of all current cmds (not completed)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_prom_cmds_processed</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A count of all cmds processed</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_prom_cpu_system</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">System CPU used by p4prometheus</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_prom_cpu_user</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">User CPU used by p4prometheus</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_prom_log_lines_read</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A count of log lines read</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_prom_memory</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">System memory used by p4prometheus (bytes)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_prom_svr_events_processed</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A count of all server events processed</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_proxy_bytes_total</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Bytes transferred by source.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_proxy_command_duration_seconds_total</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Sum of completed command lapse times in seconds.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_proxy_commands_completed_total</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Number of completed commands observed in the p4p log.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_proxy_files_total</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Files transferred by source.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_proxy_last_command_completion_timestamp_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Unix timestamp of the most recently completed command.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_pull_error_count</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count of p4 pull transfers in failed state</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_pull_queue_bytes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count of p4 pull total bytes</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_pull_queue_count</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count of p4 pull files (not in failed state)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_pull_queue_total</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count of p4 pull queue total files</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_pull_replica_bytes_behind</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count of how many bytes behind replica is</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_pull_replica_journals_behind</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count of how many journals behind replica is</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_pull_replica_lag</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count of how many bytes behind replica is</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_pull_replication_error</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Set to 1 if replication error is true</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_replica_curr_jnl</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Current journal for server</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_replica_curr_pos</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Current offset within for server</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_resource_terminations</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of commands terminated because the server was low on resources</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_rtv_&lt;field&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 realtime metric <code>&lt;rtv.name&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_checkpoint_duration</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Time taken for last checkpoint/restore action</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_checkpoint_error</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">SDP checkpoint error detected (1=error, 0=ok)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_checkpoint_log_time</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Time of last checkpoint log</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_directory_file_count</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count of regular files in an SDP directory</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_directory_file_count_by_age</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count of regular files in an SDP directory by age range</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_directory_oldest_file_age_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Age of the oldest regular file in an SDP directory in seconds</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_directory_scan_success</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Whether the SDP directory scan completed successfully</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_directory_size_bytes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Total size of regular files in an SDP directory in bytes</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_sync_replica_duration</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Time taken for last sync replica run</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_sync_replica_error</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">SDP sync replica error detected (1=error, 0=ok)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_sync_replica_log_time</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Time of last sync replica log</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_verify_duration</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Duration of last p4verify.sh script run</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_verify_errors</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count of verify errors in SDP p4verify.log</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_verify_log_modtime</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Time of modification of last SDP p4verify log</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sdp_version</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">SDP Version</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_server_uptime</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D Server uptime (seconds)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_ssl_cert_expires</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4D SSL certificate expiry epoch seconds</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_swarm_authorized</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Swarm API call authorized (1=yes or 0=no)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_swarm_error</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Swarm error (0=no or 1=yes)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_swarm_future_tasks</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Swarm future task queue size</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_swarm_max_workers</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Swarm current max number of workers</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_swarm_tasks</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Swarm current task queue size</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_swarm_version</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">P4 Swarm version string</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_swarm_workers</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Swarm current number of workers</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sync_bytes_added</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of bytes added to workspaces by syncs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sync_bytes_updated</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of bytes updated in workspaces by syncs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sync_files_added</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of files added to workspaces by syncs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sync_files_deleted</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of files deleted in workspaces by syncs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_sync_files_updated</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of files updated in workspaces by syncs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_total_read_held_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total read locks held in seconds (by table)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_total_read_wait_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total waiting for read locks in seconds (by table)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_total_trigger_lapse_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total lapse time for triggers in seconds (by trigger)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_total_write_held_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total write locks held in seconds (by table)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_total_write_wait_seconds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The total waiting for write locks in seconds (by table)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
 </div>
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-10-02 15:09:54 +0100
+Last updated 2026-11-27 15:50:00 UTC
 </div>
 </div>
 </body>

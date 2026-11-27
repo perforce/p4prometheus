@@ -23,7 +23,7 @@ full:	$(PDF) $(HTML)
 # General Rule for converting AsciiDoc files to PDF.
 %.pdf: %.adoc
 	rm -f $@
-	asciidoctor-pdf -r asciidoctor-diagram -a pdf-themesdir=themes -a pdf-theme=basic $^
+	asciidoctor-pdf -r asciidoctor-diagram -a allow-uri-read -a pdf-themesdir=themes -a pdf-theme=basic $^
 
 .PHONY: clean
 
