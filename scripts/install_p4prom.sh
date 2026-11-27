@@ -306,6 +306,12 @@ output_cmd_cost_by_cmd: false
 output_cmd_cost_by_user: false
 
 # ----------------------
+# Optional rate-limit and MaxCost error breakdowns.
+# Per-command defaults to true; per-user defaults to false and may create many series.
+output_rate_limit_errors_by_cmd: true
+output_rate_limit_errors_by_user: false
+
+# ----------------------
 # case_sensitive_server: true/false - if output_cmds_by_user=true then if this value is set to false
 # all userids will be written in lowercase - otherwise as they occur in the log file
 # If not present, this value will default to true on Windows and false otherwise.

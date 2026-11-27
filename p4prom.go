@@ -199,16 +199,18 @@ func getTailer(cfgInput *logConfig, logger *logrus.Logger) (fswatcher.FileTailer
 
 func newMetricsConfig(cfg *config.Config, debug int) *metrics.Config {
 	return &metrics.Config{
-		Debug:                 debug,
-		ServerID:              cfg.ServerID,
-		SDPInstance:           cfg.SDPInstance,
-		UpdateInterval:        cfg.UpdateInterval,
-		OutputCmdsByUser:      cfg.OutputCmdsByUser,
-		OutputCmdsByUserRegex: cfg.OutputCmdsByUserRegex,
-		OutputCmdsByIP:        cfg.OutputCmdsByIP,
-		OutputCmdCostByCmd:    cfg.OutputCmdCostByCmd,
-		OutputCmdCostByUser:   cfg.OutputCmdCostByUser,
-		CaseSensitiveServer:   cfg.CaseSensitiveServer,
+		Debug:                       debug,
+		ServerID:                    cfg.ServerID,
+		SDPInstance:                 cfg.SDPInstance,
+		UpdateInterval:              cfg.UpdateInterval,
+		OutputCmdsByUser:            cfg.OutputCmdsByUser,
+		OutputCmdsByUserRegex:       cfg.OutputCmdsByUserRegex,
+		OutputCmdsByIP:              cfg.OutputCmdsByIP,
+		OutputCmdCostByCmd:          cfg.OutputCmdCostByCmd,
+		OutputCmdCostByUser:         cfg.OutputCmdCostByUser,
+		OutputRateLimitErrorsByCmd:  cfg.OutputRateLimitErrorsByCmd,
+		OutputRateLimitErrorsByUser: cfg.OutputRateLimitErrorsByUser,
+		CaseSensitiveServer:         cfg.CaseSensitiveServer,
 	}
 }
 

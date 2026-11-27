@@ -665,6 +665,10 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_cost_cumulative</code>, <code>p4_cmd_user_cost_cumulative</code></p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Rate-limit errors</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_rate_limit_errors</code>, <code>p4_cmd_max_cost_errors</code></p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Lock timings</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_total_read_wait_seconds</code>, <code>p4_total_read_held_seconds</code>, <code>p4_total_write_wait_seconds</code>, <code>p4_total_write_held_seconds</code></p></td>
 </tr>
@@ -678,6 +682,15 @@ the p4prometheus configuration to enable these counters. Both default to
 positive command costs recorded in the log since the collector started.
 Commands without a cost field do not contribute, and the parser cannot
 distinguish a missing cost from zero.</p>
+</div>
+<div class="paragraph">
+<p>The rate-limit counters count logged CostThreshold/MaxCommands refusals and
+MaxCost terminations, including retries. <code>output_rate_limit_errors_by_cmd</code>
+defaults to <code>true</code>, enabling per-command breakdowns for both types. Set
+<code>output_rate_limit_errors_by_user</code> to <code>true</code> to enable per-user breakdowns;
+it defaults to <code>false</code> because it may create many series. If the log cannot
+associate an error with a user or command, the
+corresponding label is <code>(unknown)</code>. Counters reset when the collector restarts.</p>
 </div>
 </div>
 <div class="sect2">
@@ -852,6 +865,18 @@ names are generated from keys returned by <code>p4d --show-realtime</code>; the
 <td class="tableblock halign-left valign-top"><p class="tableblock">The total in seconds (by IP)</p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_max_cost_errors</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of commands terminated for exceeding MaxCost</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_max_cost_errors_by_cmd</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MaxCost terminations by cmd</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_max_cost_errors_by_user</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MaxCost terminations by user</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_mem_mb</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The total of cmd memory usage (in MB)</p></td>
 </tr>
@@ -866,6 +891,18 @@ names are generated from keys returned by <code>p4d --show-realtime</code>; the
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_program_cumulative_seconds</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The total in seconds (by program)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_rate_limit_errors</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of commands refused by CostThreshold or MaxCommands rate limits</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_rate_limit_errors_by_cmd</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Rate-limit refusals by cmd</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_rate_limit_errors_by_user</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Rate-limit refusals by user</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_replica_counter</code></p></td>
@@ -1531,7 +1568,7 @@ names are generated from keys returned by <code>p4d --show-realtime</code>; the
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-11-27 16:41:52 UTC
+Last updated 2026-11-27 16:49:07 UTC
 </div>
 </div>
 </body>

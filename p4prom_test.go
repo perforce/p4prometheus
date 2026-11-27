@@ -237,6 +237,57 @@ Perforce server info:
 	}
 }
 
+func TestRateLimitErrorConfiguration(t *testing.T) {
+	input := `Perforce server info:
+	2026/11/24 07:13:44 pid 1 Alice@workspace 127.0.0.1 [p4] 'user-info'
+Perforce server error:
+	Date 2026/11/24 07:13:44:
+	Pid 1
+	Operation: user-info
+	Command terminated by rate limit, try again in 5 seconds.
+Perforce server error:
+	Date 2026/11/24 07:13:44:
+	Pid 2
+	Operation: user-sync
+	Operation accumulated too much cost (over 500); see 'p4 help ratelimit'.
+`
+	for _, options := range []struct {
+		name, yaml    string
+		byCmd, byUser bool
+	}{
+		{"defaults", "", true, false},
+		{"disabled", "output_rate_limit_errors_by_cmd: false\n", false, false},
+		{"cmd", "output_rate_limit_errors_by_cmd: true\n", true, false},
+		{"user", "output_rate_limit_errors_by_cmd: false\noutput_rate_limit_errors_by_user: true\n", false, true},
+		{"both", "output_rate_limit_errors_by_cmd: true\noutput_rate_limit_errors_by_user: true\n", true, true},
+	} {
+		t.Run(options.name, func(t *testing.T) {
+			cfg, err := config.LoadConfigString([]byte("log_path: /p4/log\nmetrics_output: /tmp/metrics.prom\n" + options.yaml))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.CaseSensitiveServer = true
+			output := strings.Join(basicTest(t, cfg, input, false), "\n")
+			assert.Contains(t, output, `p4_cmd_rate_limit_errors{serverid="myserverid"} 1`)
+			assert.Contains(t, output, `p4_cmd_max_cost_errors{serverid="myserverid"} 1`)
+			if options.byCmd {
+				assert.Contains(t, output, `p4_cmd_rate_limit_errors_by_cmd{serverid="myserverid",cmd="user-info"} 1`)
+				assert.Contains(t, output, `p4_cmd_max_cost_errors_by_cmd{serverid="myserverid",cmd="user-sync"} 1`)
+			} else {
+				assert.NotContains(t, output, "p4_cmd_rate_limit_errors_by_cmd")
+				assert.NotContains(t, output, "p4_cmd_max_cost_errors_by_cmd")
+			}
+			if options.byUser {
+				assert.Contains(t, output, `p4_cmd_rate_limit_errors_by_user{serverid="myserverid",user="Alice"} 1`)
+				assert.Contains(t, output, `p4_cmd_max_cost_errors_by_user{serverid="myserverid",user="(unknown)"} 1`)
+			} else {
+				assert.NotContains(t, output, "p4_cmd_rate_limit_errors_by_user")
+				assert.NotContains(t, output, "p4_cmd_max_cost_errors_by_user")
+			}
+		})
+	}
+}
+
 func TestP4PromBasic(t *testing.T) {
 	cfg := &config.Config{
 		ServerID:              "myserverid",

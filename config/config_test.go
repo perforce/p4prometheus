@@ -128,6 +128,9 @@ sdp_instance: 		1
 	if cfg.OutputCmdCostByCmd || cfg.OutputCmdCostByUser {
 		t.Error("Command cost metrics must be disabled by default")
 	}
+	if !cfg.OutputRateLimitErrorsByCmd || cfg.OutputRateLimitErrorsByUser {
+		t.Error("Rate-limit error breakdowns must default to by-command only")
+	}
 	if runtime.GOOS == "windows" {
 		if cfg.CaseSensitiveServer {
 			t.Errorf("Failed default case_sensitive_server on Windows")
@@ -147,6 +150,17 @@ output_cmd_cost_by_user: true
 `)
 	if !cfg.OutputCmdCostByCmd || !cfg.OutputCmdCostByUser {
 		t.Fatal("Command cost options were not enabled")
+	}
+}
+
+func TestRateLimitErrorOptions(t *testing.T) {
+	cfg := loadOrFail(t, `log_path: /p4/log
+metrics_output: /tmp/metrics.prom
+output_rate_limit_errors_by_cmd: true
+output_rate_limit_errors_by_user: true
+`)
+	if !cfg.OutputRateLimitErrorsByCmd || !cfg.OutputRateLimitErrorsByUser {
+		t.Fatal("Rate-limit error breakdowns were not enabled")
 	}
 }
 

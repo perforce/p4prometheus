@@ -13,18 +13,20 @@ import (
 
 // Config for p4prometheus - see SampleConfig for details
 type Config struct {
-	LogPath               string        `yaml:"log_path"`
-	MetricsOutput         string        `yaml:"metrics_output"`
-	ServerID              string        `yaml:"server_id"`
-	ServerIDPath          string        `yaml:"server_id_path"`
-	SDPInstance           string        `yaml:"sdp_instance"`
-	UpdateInterval        time.Duration `yaml:"update_interval"`
-	OutputCmdsByUser      bool          `yaml:"output_cmds_by_user"`
-	OutputCmdsByUserRegex string        `yaml:"output_cmds_by_user_regex"`
-	OutputCmdsByIP        bool          `yaml:"output_cmds_by_ip"`
-	OutputCmdCostByCmd    bool          `yaml:"output_cmd_cost_by_cmd"`
-	OutputCmdCostByUser   bool          `yaml:"output_cmd_cost_by_user"`
-	CaseSensitiveServer   bool          `yaml:"case_senstive_server"`
+	LogPath                     string        `yaml:"log_path"`
+	MetricsOutput               string        `yaml:"metrics_output"`
+	ServerID                    string        `yaml:"server_id"`
+	ServerIDPath                string        `yaml:"server_id_path"`
+	SDPInstance                 string        `yaml:"sdp_instance"`
+	UpdateInterval              time.Duration `yaml:"update_interval"`
+	OutputCmdsByUser            bool          `yaml:"output_cmds_by_user"`
+	OutputCmdsByUserRegex       string        `yaml:"output_cmds_by_user_regex"`
+	OutputCmdsByIP              bool          `yaml:"output_cmds_by_ip"`
+	OutputCmdCostByCmd          bool          `yaml:"output_cmd_cost_by_cmd"`
+	OutputCmdCostByUser         bool          `yaml:"output_cmd_cost_by_user"`
+	OutputRateLimitErrorsByCmd  bool          `yaml:"output_rate_limit_errors_by_cmd"`
+	OutputRateLimitErrorsByUser bool          `yaml:"output_rate_limit_errors_by_user"`
+	CaseSensitiveServer         bool          `yaml:"case_senstive_server"`
 }
 
 // SampleConfig shows a sample config file - this can be used as a template
@@ -73,6 +75,12 @@ output_cmd_cost_by_cmd: false
 output_cmd_cost_by_user: false
 
 # ----------------------
+# Optional rate-limit and MaxCost error breakdowns.
+# Per-command defaults to true; per-user defaults to false and may create many series.
+output_rate_limit_errors_by_cmd: true
+output_rate_limit_errors_by_user: false
+
+# ----------------------
 # case_sensitive_server: true/false - if output_cmds_by_user=true then if this value is set to false
 # all userids will be written in lowercase - otherwise as they occur in the log file
 # If not present, this value will default to true on Windows and false otherwise.
@@ -107,9 +115,10 @@ func Unmarshal(config []byte) (*Config, error) {
 		caseSensitive = false
 	}
 	cfg := &Config{
-		UpdateInterval:      15 * time.Second,
-		OutputCmdsByUser:    true,
-		CaseSensitiveServer: caseSensitive}
+		UpdateInterval:             15 * time.Second,
+		OutputCmdsByUser:           true,
+		OutputRateLimitErrorsByCmd: true,
+		CaseSensitiveServer:        caseSensitive}
 	err := yaml.Unmarshal(config, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("invalid configuration: %v. make sure to use 'single quotes' around strings with special characters (like match patterns or label templates), and make sure to use '-' only for lists (metrics) but not for maps (labels)", err.Error())
