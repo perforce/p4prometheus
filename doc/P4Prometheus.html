@@ -661,11 +661,24 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_user_counter</code>, <code>p4_cmd_ip_counter</code>, <code>p4_cmd_replica_counter</code>, <code>p4_cmd_program_counter</code></p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Command cost (optional)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_cost_cumulative</code>, <code>p4_cmd_user_cost_cumulative</code></p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Lock timings</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_total_read_wait_seconds</code>, <code>p4_total_read_held_seconds</code>, <code>p4_total_write_wait_seconds</code>, <code>p4_total_write_held_seconds</code></p></td>
 </tr>
 </tbody>
 </table>
+<div class="paragraph">
+<p>If you are running p4d 2026.2 or later, command cost metrics are available.
+Set <code>output_cmd_cost_by_cmd</code> and/or <code>output_cmd_cost_by_user</code> to <code>true</code> in
+the p4prometheus configuration to enable these counters. Both default to
+<code>false</code>; per-user metrics create a series for each user. The counters sum
+positive command costs recorded in the log since the collector started.
+Commands without a cost field do not contribute, and the parser cannot
+distinguish a missing cost from zero.</p>
+</div>
 </div>
 <div class="sect2">
 <h3 id="_p4metrics_metrics">5.2. p4metrics Metrics</h3>
@@ -807,6 +820,10 @@ names are generated from keys returned by <code>p4d --show-realtime</code>; the
 <td class="tableblock halign-left valign-top"><p class="tableblock">P4D change counter</p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_cost_cumulative</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Cumulative command cost (by cmd)</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_counter</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">A count of completed p4 cmds (by cmd)</p></td>
 </tr>
@@ -861,6 +878,10 @@ names are generated from keys returned by <code>p4d --show-realtime</code>; the
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_running</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The number of running commands at any one time (deprecated use p4_cmds_running instead)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_user_cost_cumulative</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Cumulative command cost (by user)</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>p4_cmd_user_counter</code></p></td>
@@ -1510,7 +1531,7 @@ names are generated from keys returned by <code>p4d --show-realtime</code>; the
 <div id="footer">
 <div id="footer-text">
 Version v2026.1<br>
-Last updated 2026-11-27 16:02:58 UTC
+Last updated 2026-11-27 16:41:52 UTC
 </div>
 </div>
 </body>

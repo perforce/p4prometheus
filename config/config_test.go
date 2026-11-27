@@ -125,6 +125,9 @@ sdp_instance: 		1
 	if !cfg.OutputCmdsByUser {
 		t.Errorf("Failed default output_cmds_by_user")
 	}
+	if cfg.OutputCmdCostByCmd || cfg.OutputCmdCostByUser {
+		t.Error("Command cost metrics must be disabled by default")
+	}
 	if runtime.GOOS == "windows" {
 		if cfg.CaseSensitiveServer {
 			t.Errorf("Failed default case_sensitive_server on Windows")
@@ -133,6 +136,17 @@ sdp_instance: 		1
 		if !cfg.CaseSensitiveServer {
 			t.Errorf("Failed default case_sensitive_server on Linux/Mac")
 		}
+	}
+}
+
+func TestCommandCostOptions(t *testing.T) {
+	cfg := loadOrFail(t, `log_path: /p4/log
+metrics_output: /tmp/metrics.prom
+output_cmd_cost_by_cmd: true
+output_cmd_cost_by_user: true
+`)
+	if !cfg.OutputCmdCostByCmd || !cfg.OutputCmdCostByUser {
+		t.Fatal("Command cost options were not enabled")
 	}
 }
 

@@ -32,6 +32,12 @@ server_id_path:
 output_cmds_by_user: true
 
 # ----------------------
+# Optional cumulative command cost metrics. Both default to false.
+# Per-user metrics add one series per user.
+output_cmd_cost_by_cmd: false
+output_cmd_cost_by_user: false
+
+# ----------------------
 # case_sensitive_server: true/false - if output_cmds_by_user=true then if this value is set to false
 # all userids will be written in lowercase - otherwise as they occur in the log file
 # If not present, this value will default to true on Windows and false otherwise.

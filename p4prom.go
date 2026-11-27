@@ -197,6 +197,21 @@ func getTailer(cfgInput *logConfig, logger *logrus.Logger) (fswatcher.FileTailer
 	return tail, nil
 }
 
+func newMetricsConfig(cfg *config.Config, debug int) *metrics.Config {
+	return &metrics.Config{
+		Debug:                 debug,
+		ServerID:              cfg.ServerID,
+		SDPInstance:           cfg.SDPInstance,
+		UpdateInterval:        cfg.UpdateInterval,
+		OutputCmdsByUser:      cfg.OutputCmdsByUser,
+		OutputCmdsByUserRegex: cfg.OutputCmdsByUserRegex,
+		OutputCmdsByIP:        cfg.OutputCmdsByIP,
+		OutputCmdCostByCmd:    cfg.OutputCmdCostByCmd,
+		OutputCmdCostByUser:   cfg.OutputCmdCostByUser,
+		CaseSensitiveServer:   cfg.CaseSensitiveServer,
+	}
+}
+
 func runLogTailer(logger *logrus.Logger, logcfg *logConfig, cfg *config.Config, debug bool) {
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -215,16 +230,7 @@ func runLogTailer(logger *logrus.Logger, logcfg *logConfig, cfg *config.Config, 
 	if debug {
 		debugInt = 1
 	}
-	mcfg := &metrics.Config{
-		Debug:                 debugInt,
-		ServerID:              cfg.ServerID,
-		SDPInstance:           cfg.SDPInstance,
-		UpdateInterval:        cfg.UpdateInterval,
-		OutputCmdsByUser:      cfg.OutputCmdsByUser,
-		OutputCmdsByUserRegex: cfg.OutputCmdsByUserRegex,
-		OutputCmdsByIP:        cfg.OutputCmdsByIP,
-		CaseSensitiveServer:   cfg.CaseSensitiveServer,
-	}
+	mcfg := newMetricsConfig(cfg, debugInt)
 	logger.Infof("P4Prometheus config: %+v", mcfg)
 	version := &metrics.P4DMetricsVersion{
 		Version:   version.Version,

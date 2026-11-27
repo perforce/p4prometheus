@@ -170,12 +170,9 @@ func basicTest(t *testing.T, cfg *config.Config, input string, historical bool) 
 		GoVersion: runtime.Version(),
 		Version:   "test",
 	}
-	mconfig := &metrics.Config{
-		ServerID:              "myserverid",
-		UpdateInterval:        10 * time.Millisecond,
-		OutputCmdsByUser:      cfg.OutputCmdsByUser,
-		OutputCmdsByUserRegex: cfg.OutputCmdsByUserRegex,
-		OutputCmdsByIP:        cfg.OutputCmdsByIP}
+	mconfig := newMetricsConfig(cfg, 0)
+	mconfig.ServerID = "myserverid"
+	mconfig.UpdateInterval = 10 * time.Millisecond
 	p4m := metrics.NewP4DMetricsLogParser(mconfig, version, logger, historical)
 
 	_, metricsChan := p4m.ProcessEvents(ctx, linesChan, false)
@@ -202,6 +199,42 @@ func basicTest(t *testing.T, cfg *config.Config, input string, historical bool) 
 	wg.Wait()
 	logger.Debugf("Finished")
 	return output
+}
+
+func TestCommandCostConfiguration(t *testing.T) {
+	input := `Perforce server info:
+	2026/11/24 07:13:44 pid 1 Alice@workspace 127.0.0.1 [p4] 'user-info'
+Perforce server info:
+	2026/11/24 07:13:44 pid 1 completed .011s 11+0us 0+0io 0+0net 19616k 0pf 238c
+`
+	for _, options := range []struct {
+		name, yaml    string
+		byCmd, byUser bool
+	}{
+		{"defaults", "", false, false},
+		{"cmd", "output_cmd_cost_by_cmd: true\n", true, false},
+		{"user", "output_cmd_cost_by_user: true\n", false, true},
+		{"both", "output_cmd_cost_by_cmd: true\noutput_cmd_cost_by_user: true\n", true, true},
+	} {
+		t.Run(options.name, func(t *testing.T) {
+			cfg, err := config.LoadConfigString([]byte("log_path: /p4/log\nmetrics_output: /tmp/metrics.prom\n" + options.yaml))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.CaseSensitiveServer = true
+			output := strings.Join(basicTest(t, cfg, input, false), "\n")
+			if options.byCmd {
+				assert.Contains(t, output, `p4_cmd_cost_cumulative{serverid="myserverid",cmd="user-info"} 238`)
+			} else {
+				assert.NotContains(t, output, "p4_cmd_cost_cumulative")
+			}
+			if options.byUser {
+				assert.Contains(t, output, `p4_cmd_user_cost_cumulative{serverid="myserverid",user="Alice"} 238`)
+			} else {
+				assert.NotContains(t, output, "p4_cmd_user_cost_cumulative")
+			}
+		})
+	}
 }
 
 func TestP4PromBasic(t *testing.T) {

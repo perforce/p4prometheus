@@ -22,6 +22,8 @@ type Config struct {
 	OutputCmdsByUser      bool          `yaml:"output_cmds_by_user"`
 	OutputCmdsByUserRegex string        `yaml:"output_cmds_by_user_regex"`
 	OutputCmdsByIP        bool          `yaml:"output_cmds_by_ip"`
+	OutputCmdCostByCmd    bool          `yaml:"output_cmd_cost_by_cmd"`
+	OutputCmdCostByUser   bool          `yaml:"output_cmd_cost_by_user"`
 	CaseSensitiveServer   bool          `yaml:"case_senstive_server"`
 }
 
@@ -63,6 +65,12 @@ server_id_path:
 # If you have a p4d instance with thousands of users you may find the number
 # of metrics labels is too great (one per distinct user), so set this to false.
 output_cmds_by_user: true
+
+# ----------------------
+# Optional cumulative command cost metrics. Both default to false.
+# Per-user metrics add one series per user.
+output_cmd_cost_by_cmd: false
+output_cmd_cost_by_user: false
 
 # ----------------------
 # case_sensitive_server: true/false - if output_cmds_by_user=true then if this value is set to false

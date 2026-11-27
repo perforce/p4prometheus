@@ -107,9 +107,20 @@ The primary log parser reports command throughput, active commands, resource use
 |Command dimensions
 |`p4_cmd_user_counter`, `p4_cmd_ip_counter`, `p4_cmd_replica_counter`, `p4_cmd_program_counter`
 
+|Command cost (optional)
+|`p4_cmd_cost_cumulative`, `p4_cmd_user_cost_cumulative`
+
 |Lock timings
 |`p4_total_read_wait_seconds`, `p4_total_read_held_seconds`, `p4_total_write_wait_seconds`, `p4_total_write_held_seconds`
 |===
+
+If you are running p4d 2026.2 or later, command cost metrics are available.
+Set `output_cmd_cost_by_cmd` and/or `output_cmd_cost_by_user` to `true` in
+the p4prometheus configuration to enable these counters. Both default to
+`false`; per-user metrics create a series for each user. The counters sum
+positive command costs recorded in the log since the collector started.
+Commands without a cost field do not contribute, and the parser cannot
+distinguish a missing cost from zero.
 
 === p4metrics Metrics
 
@@ -187,6 +198,9 @@ names are generated from keys returned by `p4d --show-realtime`; the
 |`p4_change_counter`
 |P4D change counter
 
+|`p4_cmd_cost_cumulative`
+|Cumulative command cost (by cmd)
+
 |`p4_cmd_counter`
 |A count of completed p4 cmds (by cmd)
 
@@ -228,6 +242,9 @@ names are generated from keys returned by `p4d --show-realtime`; the
 
 |`p4_cmd_running`
 |The number of running commands at any one time (deprecated use p4_cmds_running instead)
+
+|`p4_cmd_user_cost_cumulative`
+|Cumulative command cost (by user)
 
 |`p4_cmd_user_counter`
 |A count of completed p4 cmds (by user)
