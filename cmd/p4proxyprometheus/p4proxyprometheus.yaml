@@ -1,0 +1,18 @@
+# Path to the p4p structured log.
+p4p_log: /p4/1/logs/p4p.log
+
+# metrics_output: Name of output file to write for processing by node_exporter.
+# For SDP it will add p4_proxy-<SDP_INSTANCE> and will always append .prom.
+metrics_output: /p4/metrics/p4_proxy
+
+# SDP instance identifier, appended to metrics_output before the .prom suffix.
+sdp_instance: "1"
+
+# Set to 0 to use filesystem notifications instead of polling.
+poll_interval_seconds: 1
+
+# Process the current log contents on startup. Keep false for normal operation.
+read_all: false
+
+# Allow startup before p4p creates the log file.
+fail_on_missing_logfile: false
