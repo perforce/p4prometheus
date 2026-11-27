@@ -1980,6 +1980,17 @@ func verifyHostDisabled(lines []string) bool {
 	return false
 }
 
+func authHTTPClient(skipTLSVerify bool) *http.Client {
+	client := &http.Client{Timeout: 30 * time.Second}
+	if skipTLSVerify {
+		client.Transport = &http.Transport{
+			TLSClientConfig:   &tls.Config{InsecureSkipVerify: true},
+			DisableKeepAlives: true,
+		}
+	}
+	return client
+}
+
 // GetCertificateExpiry takes a URL string and returns the expiration date
 // of its SSL certificate. It returns the expiry time and any error encountered.
 func (p4m *P4MonitorMetrics) getCertificateExpiry(certURL string, skipTLSVerify bool) (time.Time, error) {
@@ -1993,18 +2004,8 @@ func (p4m *P4MonitorMetrics) getCertificateExpiry(certURL string, skipTLSVerify 
 		return time.Time{}, fmt.Errorf("URL must use HTTPS scheme")
 	}
 
-	client := &http.Client{
-		// Set a reasonable timeout
-		Timeout: 30 * time.Second,
-	}
-	if skipTLSVerify {
-		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}
-	}
-
 	// Make a HEAD request to get the certificate
-	resp, err := client.Head(certURL)
+	resp, err := authHTTPClient(skipTLSVerify).Head(certURL)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to connect: %w", err)
 	}
@@ -2026,8 +2027,8 @@ type HASVersionResponse struct {
 }
 
 // getAuthVersion retrieves the app version from Helix Auth URL
-func (p4m *P4MonitorMetrics) getAuthVersion(url string) (string, error) {
-	resp, err := http.Get(url)
+func (p4m *P4MonitorMetrics) getAuthVersion(url string, skipTLSVerify bool) (string, error) {
+	resp, err := authHTTPClient(skipTLSVerify).Get(url)
 	if err != nil {
 		return "", fmt.Errorf("failed to send request: %v", err)
 	}
@@ -2056,6 +2057,9 @@ func (p4m *P4MonitorMetrics) monitorHelixAuthSvc() {
 	// Check expiry of HAS SSL certificate - if it exists!
 	p4m.startMonitor("monitorHelixAuthSvc", "p4_auth_ssl_info")
 	defer p4m.completeMonitor()
+	if !p4m.config.MonitorP4Auth {
+		return
+	}
 	// TODO: update frequency
 	p4cmd, errbuf, p := p4m.newP4CmdPipe("extension --list --type extensions")
 	ext, err := p.Exec(p4cmd).Match("extension Auth::loginhook").Column(2).String()
@@ -2078,7 +2082,7 @@ func (p4m *P4MonitorMetrics) monitorHelixAuthSvc() {
 		p4m.handleP4Error("Error running %s: %v, err:%q", p4cmd, err, errbuf)
 		return
 	}
-	skipTLSVerify := verifyHostDisabled(lines)
+	skipTLSVerify := !p4m.config.P4AuthSecure || verifyHostDisabled(lines)
 	urlAuth := p4m.extractServiceURL(lines)
 	if !strings.HasPrefix(urlAuth, "https") {
 		p4m.logger.Debug("Auth URL not https so exiting")
@@ -2097,7 +2101,7 @@ func (p4m *P4MonitorMetrics) monitorHelixAuthSvc() {
 		labels: []labelStruct{{name: "url", value: urlAuth}}})
 
 	urlStatus := fmt.Sprintf("%s/status", urlAuth)
-	versionString, err := p4m.getAuthVersion(urlStatus)
+	versionString, err := p4m.getAuthVersion(urlStatus, skipTLSVerify)
 	if err != nil {
 		p4m.logger.Errorf("Error getting Auth status %s: %v", urlStatus, err)
 	} else {

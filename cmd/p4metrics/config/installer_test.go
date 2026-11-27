@@ -42,6 +42,7 @@ memlimits:
 `},
 		{name: "preserve disabled", existing: defaultConfig + "\nlicense_updates:\n  mode: disabled\n"},
 		{name: "preserve every update", existing: defaultConfig + "\nlicense_updates:\n  mode: every_update\n"},
+		{name: "preserve HAS settings", existing: defaultConfig + "\nmonitor_p4auth: false\np4auth_secure: false\n"},
 		{name: "add limits with existing memory reporting", existing: defaultConfig + "\nmemory_by_user: false\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -78,6 +79,11 @@ write_or_update_p4metrics_config_file
 			}
 			first := generate()
 			cfg := loadOrFail(t, string(first))
+			if test.existing == "" &&
+				(!strings.Contains(string(first), "\nmonitor_p4auth: true\n") ||
+					!strings.Contains(string(first), "\np4auth_secure: true\n")) {
+				t.Error("new installer config is missing HAS defaults")
+			}
 			wantLicense := sample.LicenseUpdates
 			wantMemlimits := sample.MemLimits
 			if test.existing != "" {
@@ -100,6 +106,13 @@ write_or_update_p4metrics_config_file
 			}
 			if strings.Contains(test.existing, "\nmemory_by_user: false") && cfg.MemoryByUser {
 				t.Error("existing memory_by_user setting was overwritten")
+			}
+			wantAuth := sample
+			if test.existing != "" {
+				wantAuth = loadOrFail(t, test.existing)
+			}
+			if cfg.MonitorP4Auth != wantAuth.MonitorP4Auth || cfg.P4AuthSecure != wantAuth.P4AuthSecure {
+				t.Error("HAS settings differ from expected values")
 			}
 			if second := generate(); string(second) != string(first) {
 				t.Fatal("repeated installer run modified existing configuration")

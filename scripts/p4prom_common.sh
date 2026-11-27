@@ -583,6 +583,15 @@ swarm_url:
 # Defaults to true, but if you have a self-signed certificate or similar set to false
 swarm_secure: true
 
+# ----------------------
+# monitor_p4auth: monitor the HAS extension when present. Disable on replicas
+# that forward login but cannot reach the HAS server.
+monitor_p4auth: true
+
+# p4auth_secure: validate the HAS HTTPS certificate unless the extension has
+# Verify-Host: false. Set false for a self-signed certificate.
+p4auth_secure: true
+
 EOF
     fi
 

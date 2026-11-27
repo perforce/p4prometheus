@@ -193,6 +193,107 @@ func TestGetCertificateExpiryTLSVerification(t *testing.T) {
 	assert.Equal(t, server.Certificate().NotAfter, expiry)
 }
 
+func TestAuthCommandHelper(t *testing.T) {
+	index := -1
+	for i, arg := range os.Args {
+		if arg == "--" {
+			index = i
+			break
+		}
+	}
+	if index == -1 {
+		return
+	}
+	args := os.Args[index+1:]
+	if len(args) < 5 {
+		os.Exit(2)
+	}
+	marker, serviceURL, verifyHost, extension := args[0], args[1], args[2], args[3]
+	f, err := os.OpenFile(marker, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		os.Exit(2)
+	}
+	if _, err := f.WriteString("p4\n"); err != nil {
+		os.Exit(2)
+	}
+	if err := f.Close(); err != nil {
+		os.Exit(2)
+	}
+	switch strings.Join(args[4:], " ") {
+	case "extension --list --type extensions":
+		if extension == "present" {
+			fmt.Println("extension Auth::loginhook")
+		}
+	case "extension --configure Auth::loginhook -o":
+		fmt.Printf("Service-URL:\n\t%s\nVerify-Host:\n\t%s\n", serviceURL, verifyHost)
+	default:
+		os.Exit(2)
+	}
+	os.Exit(0)
+}
+
+func TestMonitorHelixAuthSvcConfiguration(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.Method == http.MethodGet && r.URL.Path == "/status" {
+			fmt.Fprint(w, `{"app_version":"1.2.3","status":"ok"}`)
+		}
+	}))
+	defer server.Close()
+
+	for _, test := range []struct {
+		name, verifyHost, extension  string
+		monitor, secure, wantMetrics bool
+		wantP4, wantRequests         int
+	}{
+		{"disabled", "true", "present", false, true, false, 0, 0},
+		{"extension absent", "true", "absent", true, true, false, 1, 0},
+		{"secure self-signed", "true", "present", true, true, false, 2, 0},
+		{"config skips verification", "true", "present", true, false, true, 2, 2},
+		{"extension skips verification", "false", "present", true, true, true, 2, 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			requests.Store(0)
+			dir := t.TempDir()
+			marker := path.Join(dir, "p4-calls")
+			cfg := config.Config{MetricsRoot: dir, MonitorP4Auth: test.monitor, P4AuthSecure: test.secure}
+			env := map[string]string{}
+			logger := logrus.New()
+			logger.SetOutput(io.Discard)
+			p4m := newP4MonitorMetrics(&cfg, &env, logger)
+			p4m.serverID = "test"
+			p4m.p4Cmd = fmt.Sprintf("%q -test.run=^TestAuthCommandHelper$ -- %q %q %q %q",
+				os.Args[0], marker, server.URL, test.verifyHost, test.extension)
+			metricsFile := p4m.metricsFilename("p4_auth_ssl_info")
+			if err := os.WriteFile(metricsFile, []byte("stale"), 0600); err != nil {
+				t.Fatal(err)
+			}
+
+			p4m.monitorHelixAuthSvc()
+
+			if test.wantP4 == 0 {
+				assert.NoFileExists(t, marker)
+			} else {
+				calls, err := os.ReadFile(marker)
+				if assert.NoError(t, err) {
+					assert.Equal(t, test.wantP4, strings.Count(string(calls), "p4\n"))
+				}
+			}
+			assert.Equal(t, int32(test.wantRequests), requests.Load())
+			if test.wantMetrics {
+				output, err := os.ReadFile(metricsFile)
+				if assert.NoError(t, err) {
+					assert.Contains(t, string(output), "p4_auth_ssl_cert_expires")
+					assert.Contains(t, string(output), `p4_auth_version{serverid="test",version="1.2.3"} 1`)
+				}
+			} else {
+				assert.NoFileExists(t, metricsFile)
+			}
+		})
+	}
+}
+
 func TestOOMSlackMessageFormatting(t *testing.T) {
 	cfg := config.Config{
 		Notifications: config.NotificationConfig{

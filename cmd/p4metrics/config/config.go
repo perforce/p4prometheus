@@ -84,6 +84,8 @@ type Config struct {
 	LongUpdateInterval   time.Duration  `yaml:"long_update_interval"`
 	LicenseUpdates       LicenseUpdates `yaml:"license_updates"`
 	MonitorSwarm         bool           `yaml:"monitor_swarm"`
+	MonitorP4Auth        bool           `yaml:"monitor_p4auth"`
+	P4AuthSecure         bool           `yaml:"p4auth_secure"`
 	ParseJournal         bool           `yaml:"parse_journal"`       // Whether to parse active P4JOURNAL in background and emit table/type counts
 	SwarmURL             string         `yaml:"swarm_url"`           // Swarm URL - if the value returned by p4 property -l does not work (VPN etc)
 	SwarmSecure          bool           `yaml:"swarm_secure"`        // Whether to validate the Swarm HTTPS certificate
@@ -187,6 +189,15 @@ swarm_url:
 # swarm_secure: true/false - Whether to validate SSL for swarm
 # Defaults to true, but if you have a self-signed certificate or similar set to false
 swarm_secure: true
+
+# ----------------------
+# monitor_p4auth: monitor the HAS extension when present. Disable on replicas
+# that forward login but cannot reach the HAS server.
+monitor_p4auth: true
+
+# p4auth_secure: validate the HAS HTTPS certificate unless the extension has
+# Verify-Host: false. Set false for a self-signed certificate.
+p4auth_secure: true
 
 # ----------------------
 # max_journal_size: Maximum size of journal file to monitor, e.g. 10G, 0 means no limit
@@ -401,6 +412,8 @@ func Unmarshal(config []byte) (*Config, error) {
 		LicenseUpdates: LicenseUpdates{Mode: "every_update", StartWindow: 5 * time.Minute},
 		Notifications:  NotificationConfig{CooldownSeconds: 300},
 		MonitorSwarm:   false,
+		MonitorP4Auth:  true,
+		P4AuthSecure:   true,
 		ParseJournal:   true,
 		SwarmSecure:    true}
 	err := yaml.Unmarshal(config, cfg)

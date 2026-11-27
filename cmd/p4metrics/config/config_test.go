@@ -68,6 +68,25 @@ func TestCmdsByProgConfig(t *testing.T) {
 	}
 }
 
+func TestP4AuthConfig(t *testing.T) {
+	for _, test := range []struct {
+		name, settings  string
+		monitor, secure bool
+	}{
+		{"defaults", "", true, true},
+		{"disabled", "\nmonitor_p4auth: false\n", false, true},
+		{"insecure", "\np4auth_secure: false\n", true, false},
+		{"both disabled", "\nmonitor_p4auth: false\np4auth_secure: false\n", false, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := loadOrFail(t, defaultConfig+test.settings)
+			if cfg.MonitorP4Auth != test.monitor || cfg.P4AuthSecure != test.secure {
+				t.Errorf("got monitor_p4auth=%v p4auth_secure=%v", cfg.MonitorP4Auth, cfg.P4AuthSecure)
+			}
+		})
+	}
+}
+
 func TestLicenseUpdatesConfig(t *testing.T) {
 	cfg := loadOrFail(t, defaultConfig)
 	checkValue(t, "LicenseUpdates.Mode", cfg.LicenseUpdates.Mode, "every_update")

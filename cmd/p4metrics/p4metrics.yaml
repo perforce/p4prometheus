@@ -82,6 +82,15 @@ swarm_url:
 swarm_secure:     true
 
 # ----------------------
+# monitor_p4auth: monitor the HAS extension when present. Disable on replicas
+# that forward login but cannot reach the HAS server.
+monitor_p4auth: true
+
+# p4auth_secure: validate the HAS HTTPS certificate unless the extension has
+# Verify-Host: false. Set false for a self-signed certificate.
+p4auth_secure: true
+
+# ----------------------
 # max_journal_size: Maximum size of journal file to monitor, e.g. 10G, 0 means no limit
 # Units are K/M/G/T/P (powers of 1024), e.g. 10M, 1.5G etc
 # If the journal file is larger than this value it will be rotated using: p4 admin journal

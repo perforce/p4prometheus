@@ -67,6 +67,20 @@ Run `p4metrics --sample.config > p4metrics.yaml` to create an example.
 
 Note that [the installer](../../scripts/install_p4prom.sh) will create a default version of this file - suitable for SDP and non-SDP
 
+## Helix Authentication Service monitoring
+
+`monitor_p4auth` defaults to `true`: when the `Auth::loginhook` extension is
+present, p4metrics connects to its configured HAS URL to collect certificate
+expiry and version metrics. Set it to `false` on replicas with
+`rpl.forward.login` that cannot reach the remote HAS server; this skips the
+extension lookup and connection attempts and removes any previous HAS metrics.
+
+`p4auth_secure` defaults to `true` and verifies the HTTPS certificate for both
+requests. Set it to `false` to skip verification (for example, with a
+self-signed certificate). The extension's `Verify-Host: false` also disables
+verification, regardless of `p4auth_secure`. Disabling verification weakens
+TLS security.
+
 ## License Update Scheduling
 
 `p4 license -u` can trigger a costly server statistics scan when p4d's cached
